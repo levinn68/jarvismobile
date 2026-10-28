@@ -36,12 +36,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SettingsVoice
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -77,8 +79,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.UK
-                tts?.setSpeechRate(0.94f)
+                val voices = tts?.voices.orEmpty()
+                val englishVoices = voices.filter { it.locale.language == "en" }
+                val maleVoice = englishVoices.firstOrNull {
+                    val n = it.name.lowercase(Locale.ROOT)
+                    n.contains("male") || n.contains("iom") || n.contains("rjs") || n.contains("davis")
+                } ?: englishVoices.sortedByDescending { it.quality }.firstOrNull()
+                if (maleVoice != null) tts?.voice = maleVoice else tts?.language = Locale.US
+                tts?.setSpeechRate(0.88f)
+                tts?.setPitch(0.82f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) { handler.postDelayed({ startListening() }, 550) }
@@ -393,7 +402,7 @@ private fun JarvisScreen(
                 }
                 Spacer(Modifier.width(6.dp))
                 IconButton(onClick = { apiKeyDraft = ""; settingsOpen = true }) {
-                    Icon(Icons.Default.SettingsVoice, contentDescription = "AI settings", tint = Cyan)
+                    Icon(Icons.Default.Settings, contentDescription = "AI settings", tint = Cyan)
                 }
             }
 
@@ -488,72 +497,55 @@ private fun JarvisScreen(
                     }
                 }
 
-                if (searchVisible && searchQuery.isNotBlank()) {
+                if (geminiBusy) {
                     item {
-                        Column(
-                            Modifier.fillMaxWidth()
-                                .background(Color(0xCC091523), RoundedCornerShape(16.dp))
-                                .border(1.dp, Color(0x5539DFF9), RoundedCornerShape(16.dp))
-                                .padding(14.dp)
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
-                                    Box(Modifier.size(26.dp).border(1.5.dp, Cyan, CircleShape).scale(if (searchLoading) orbScale else 1f))
-                                    Box(Modifier.size(6.dp).background(Cyan, CircleShape))
-                                }
-                                Spacer(Modifier.width(10.dp))
-                                Column(Modifier.weight(1f)) {
-                                    Text(if (searchLoading) "MENCARI DI WEB" else "PENCARIAN SIAP", color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                                    Text(searchQuery, color = TextMuted, fontSize = 11.sp, maxLines = 2)
-                                }
-                                if (searchLoading) {
-                                    androidx.compose.material3.CircularProgressIndicator(
-                                        modifier = Modifier.size(19.dp), color = Cyan, strokeWidth = 2.dp
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                repeat(18) { i ->
-                                    Box(
-                                        Modifier.weight(1f).height(if (searchLoading) (5 + ((i * 7) % 12)).dp else 3.dp)
-                                            .background(if (searchLoading && i % 3 != 0) Cyan.copy(alpha = 0.8f) else Color(0xFF1D4B5D), RoundedCornerShape(2.dp))
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            if (searchLoading) {
-                                Text("Menganalisis kata kunci dan menyiapkan hasil…", color = TextMuted, fontSize = 12.sp)
-                            } else {
-                                Text("HASIL WEB", color = Color(0xFFD9ECF5), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                                Spacer(Modifier.height(8.dp))
-                                AndroidView(
-                                    modifier = Modifier.fillMaxWidth().height(300.dp)
-                                        .background(Color(0xFF101923), RoundedCornerShape(12.dp)),
-                                    factory = { context ->
-                                        WebView(context).apply {
-                                            webViewClient = object : WebViewClient() {
-                                                override fun onPageFinished(view: WebView?, url: String?) {
-                                                    super.onPageFinished(view, url)
-                                                    view?.evaluateJavascript(
-                                                        "(function(){var s=document.createElement('style');s.innerHTML='body{background:#101923!important;color:#e6f5ff!important;font-family:Arial,sans-serif!important}#header,#top_header,#bottom_spacing, .feedback-btn, .nav-link, .badge-link, .header-wrap, .footer, .serp__bottom, .results--sidebar{display:none!important}.results, #links, .results_links, .result{background:#101923!important;color:#e6f5ff!important;border-color:#234152!important}.result__title a,.result__url,.result__snippet{color:#ccecf8!important}a{color:#70e7ff!important}input{max-width:100%!important}';document.head.appendChild(s);})();",
-                                                        null
-                                                    )
-                                                }
-                                            }
-                                            settings.javaScriptEnabled = true
-                                            settings.domStorageEnabled = true
-                                            setBackgroundColor(android.graphics.Color.rgb(16, 25, 35))
-                                            loadUrl("https://html.duckduckgo.com/html/?q=" + Uri.encode(searchQuery))
-                                        }
-                                    },
-                                    update = { view ->
-                                        val target = "https://html.duckduckgo.com/html/?q=" + Uri.encode(searchQuery)
-                                        if (view.tag != target) { view.tag = target; view.loadUrl(target) }
+                            Column(
+                                Modifier.widthIn(max = 310.dp)
+                                    .background(Color(0xCC0C1828), RoundedCornerShape(17.dp))
+                                    .border(1.dp, Color(0x5539DFF9), RoundedCornerShape(17.dp))
+                                    .padding(horizontal = 14.dp, vertical = 13.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                                        Box(Modifier.size(34.dp).rotate(ringRotation).border(1.dp, Cyan.copy(alpha = 0.85f), CircleShape))
+                                        Box(Modifier.size(25.dp).rotate(-ringRotation * 1.3f).border(1.dp, Color(0x6685F1FF), RoundedCornerShape(8.dp)))
+                                        Box(Modifier.size(8.dp).background(Cyan, CircleShape))
                                     }
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Text("Hasil ditampilkan di dalam JARVIS. Ringkasan AI dan perbandingan harga otomatis memerlukan sumber data/API tambahan.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text("J.A.R.V.I.S. IS THINKING", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                                        Text("Gemini is generating a response…", color = TextMuted, fontSize = 11.sp)
+                                    }
+                                }
+                                Spacer(Modifier.height(12.dp))
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    repeat(24) { i ->
+                                        val barHeight by rememberInfiniteTransition(label = "wave-$i").animateFloat(
+                                            initialValue = 4f,
+                                            targetValue = (7 + (i * 11 % 15)).toFloat(),
+                                            animationSpec = infiniteRepeatable(
+                                                animation = tween(360 + i * 27, delayMillis = i * 24),
+                                                repeatMode = RepeatMode.Reverse
+                                            ),
+                                            label = "bar-$i"
+                                        )
+                                        Box(
+                                            Modifier.weight(1f).height(barHeight.dp)
+                                                .background(Cyan.copy(alpha = 0.35f + (i % 4) * 0.15f), RoundedCornerShape(4.dp))
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(7.dp))
+                                Text("PROCESSING REQUEST · $searchQuery", color = TextMuted, fontSize = 8.sp, maxLines = 2, letterSpacing = 0.6.sp)
                             }
                         }
                     }
