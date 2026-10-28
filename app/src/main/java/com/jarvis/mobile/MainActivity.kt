@@ -114,10 +114,8 @@ private fun JarvisScreen(onSpeak: (String) -> Unit, onSearch: (String) -> Unit, 
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(220.dp)) {
                 Surface(modifier = Modifier.size(214.dp), shape = CircleShape, color = Color(0x2225DFFF), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x6649E8FF))) {}
                 Surface(modifier = Modifier.size(174.dp), shape = CircleShape, color = Color(0x3325DFFF), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xAA49E8FF))) {}
-                Surface(modifier = Modifier.size(126.dp), shape = CircleShape, color = Brush.radialGradient(listOf(Color(0xFFB8FAFF), Color(0xFF16A9D5), Color(0xFF063B65)))) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("J", color = Color.White, fontSize = 54.sp, fontWeight = FontWeight.Light)
-                    }
+                Box(modifier = Modifier.size(126.dp).background(Brush.radialGradient(listOf(Color(0xFFB8FAFF), Color(0xFF16A9D5), Color(0xFF063B65))), CircleShape), contentAlignment = Alignment.Center) {
+                    Text("J", color = Color.White, fontSize = 54.sp, fontWeight = FontWeight.Light)
                 }
             }
             Spacer(Modifier.height(22.dp))
