@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private var permissionAsked = false
+    private var greetingSpoken = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -129,6 +130,11 @@ class MainActivity : ComponentActivity() {
             }
             return
         }
+        if (!greetingSpoken) {
+            greetingSpoken = true
+            speak("Good day. JARVIS is online. I am listening.")
+            return
+        }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
             speech.cancel()
@@ -152,7 +158,6 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 voiceStatus.value = "MICROPHONE READY"
-                startListening()
                 speak("Good day. JARVIS is online. I am listening.")
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
