@@ -177,13 +177,40 @@ class MainActivity : ComponentActivity() {
             voiceStatus.value = "APP SHORTCUT NOT CONFIGURED"
             return
         }
-        val launch = packageManager.getLaunchIntentForPackage(pkg)
-        if (launch != null) {
+        // First look up the installed app package, then launch its APK entry point.
+        // The app label lookup also handles devices where the app's package name differs.
+        val candidatePackages = when (pkg) {
+            "com.roblox.client" -> listOf("com.roblox.client")
+            "com.google.android.youtube" -> listOf("com.google.android.youtube", "com.google.android.youtube.tv")
+            "com.whatsapp" -> listOf("com.whatsapp", "com.whatsapp.w4b")
+            "com.android.chrome" -> listOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev")
+            else -> listOf(pkg)
+        }
+        var launch: Intent? = null
+        var installedPackage = ""
+        for (candidate in candidatePackages) {
+            try {
+                val appInfo = packageManager.getApplicationInfo(candidate, 0)
+                installedPackage = appInfo.packageName
+                launch = packageManager.getLaunchIntentForPackage(candidate)
+                if (launch != null) break
+            } catch (_: PackageManager.NameNotFoundException) {
+                // Try the next known package variant.
+            }
+        }
+
+        try {
+            voiceStatus.value = "SEARCHING INSTALLED APPS"
+            val finalIntent = launch ?: Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                setPackage(installedPackage.ifBlank { pkg })
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             voiceStatus.value = "LAUNCHING REQUESTED APP"
-            startActivity(launch)
-        } else {
+            startActivity(finalIntent)
+        } catch (_: Exception) {
             voiceStatus.value = "APP NOT FOUND"
-            speak("That app does not appear to be installed.")
+            speak("I could not find an installed launchable copy of that app. Please check whether it is installed.")
         }
     }
 
