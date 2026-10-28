@@ -612,7 +612,6 @@ private fun JarvisScreen(
                             )
                         )
                         Text("Jangan gunakan key yang sudah dibagikan. Penyimpanan lokal lebih praktis, tetapi key dalam aplikasi tetap bisa diekstrak oleh pengguna teknis.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
-                        TextButton(onClick = { GenUiOpenAiStudioPlaceholder() }) { }
                     }
                 },
                 confirmButton = {
