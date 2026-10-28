@@ -4,6 +4,10 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.ComponentName
+import android.media.MediaPlayer
+import android.util.Base64
+import java.io.File
+import java.io.FileOutputStream
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.net.Uri
@@ -70,6 +74,8 @@ class MainActivity : ComponentActivity() {
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private var permissionAsked = false
+    @Volatile private var geminiSpeechInProgress = false
+    private var speechPlayer: MediaPlayer? = null
     private var greetingSpoken = false
     private var voiceModeEnabled = true
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
@@ -90,9 +96,13 @@ class MainActivity : ComponentActivity() {
                 tts?.setPitch(0.82f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
-                    override fun onDone(utteranceId: String?) { handler.postDelayed({ startListening() }, 550) }
+                    override fun onDone(utteranceId: String?) {
+                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 550)
+                    }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(utteranceId: String?) { handler.postDelayed({ startListening() }, 700) }
+                    override fun onError(utteranceId: String?) {
+                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 700)
+                    }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
             }
@@ -186,7 +196,108 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
-    private fun speak(text: String) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response") }
+    private fun speak(text: String) {
+        val key = geminiKey
+        if (key.isBlank() || text.isBlank()) {
+            speakWithAndroid(text)
+            return
+        }
+        geminiSpeechInProgress = true
+        tts?.stop()
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=" + java.net.URLEncoder.encode(key, "UTF-8"))
+                connection = endpoint.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 15000
+                connection.readTimeout = 60000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                val body = JSONObject()
+                    .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "Read the following response aloud exactly as written. Do not add or omit words. Text: " + text))))
+                    .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "Voice persona: a sophisticated male AI assistant inspired by a cinematic British butler. Calm, composed, intelligent, subtly authoritative, measured pace, clear British English pronunciation when speaking English, warm low-register delivery. Never imitate a specific actor or copyrighted character voice. Preserve the language of the supplied text."))))
+                    .put("generationConfig", JSONObject()
+                        .put("responseModalities", JSONArray().put("AUDIO"))
+                        .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
+                            .put("prebuiltVoiceConfig", JSONObject().put("voiceName", "Alnilam")))))
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val response = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                if (code !in 200..299) throw IllegalStateException("Gemini TTS HTTP " + code)
+                val json = JSONObject(response)
+                val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                var audioData = ""
+                if (parts != null) {
+                    for (i in 0 until parts.length()) {
+                        val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data").orEmpty()
+                        if (data.isNotBlank()) { audioData = data; break }
+                    }
+                }
+                if (audioData.isBlank()) throw IllegalStateException("Gemini TTS returned no audio")
+                val pcm = Base64.decode(audioData, Base64.DEFAULT)
+                val wav = pcmToWav(pcm, 24000, 1, 16)
+                val audioFile = File(cacheDir, "jarvis_voice.wav")
+                FileOutputStream(audioFile).use { it.write(wav) }
+                handler.post {
+                    try {
+                        speechPlayer?.release()
+                        speechPlayer = MediaPlayer().apply {
+                            setDataSource(audioFile.absolutePath)
+                            setOnPreparedListener {
+                                voiceStatus.value = "JARVIS SPEAKING"
+                                it.start()
+                            }
+                            setOnCompletionListener {
+                                it.release()
+                                speechPlayer = null
+                                geminiSpeechInProgress = false
+                                handler.postDelayed({ startListening() }, 350)
+                            }
+                            setOnErrorListener { player, _, _ ->
+                                player.release()
+                                speechPlayer = null
+                                geminiSpeechInProgress = false
+                                speakWithAndroid(text)
+                                true
+                            }
+                            prepareAsync()
+                        }
+                    } catch (_: Exception) {
+                        speechPlayer?.release()
+                        speechPlayer = null
+                        geminiSpeechInProgress = false
+                        speakWithAndroid(text)
+                    }
+                }
+            } catch (_: Exception) {
+                handler.post {
+                    geminiSpeechInProgress = false
+                    speakWithAndroid(text)
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun speakWithAndroid(text: String) {
+        geminiSpeechInProgress = false
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
+    }
+
+    private fun pcmToWav(pcm: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
+        val out = java.io.ByteArrayOutputStream(pcm.size + 44)
+        fun writeInt(value: Int) { out.write(byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte())) }
+        fun writeShort(value: Int) { out.write(byteArrayOf(value.toByte(), (value shr 8).toByte())) }
+        out.write("RIFF".toByteArray(Charsets.US_ASCII)); writeInt(pcm.size + 36)
+        out.write("WAVE".toByteArray(Charsets.US_ASCII)); out.write("fmt ".toByteArray(Charsets.US_ASCII))
+        writeInt(16); writeShort(1); writeShort(channels); writeInt(sampleRate)
+        writeInt(sampleRate * channels * bitsPerSample / 8); writeShort(channels * bitsPerSample / 8); writeShort(bitsPerSample)
+        out.write("data".toByteArray(Charsets.US_ASCII)); writeInt(pcm.size); out.write(pcm)
+        return out.toByteArray()
+    }
 
     private fun startListening() {
         if (isFinishing || isDestroyed || !voiceModeEnabled) return
@@ -265,6 +376,8 @@ class MainActivity : ComponentActivity() {
         recognizer?.destroy()
         recognizer = null
         tts?.stop()
+        speechPlayer?.release()
+        speechPlayer = null
         tts?.shutdown()
         super.onDestroy()
     }
