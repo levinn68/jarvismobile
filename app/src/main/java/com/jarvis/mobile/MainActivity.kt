@@ -221,18 +221,35 @@ private fun JarvisScreen(
         if (q.isBlank()) return
         lastCommand = q
         typedCommand = ""
-        val openIntent = q.startsWith("open ", true) || q.startsWith("buka ", true) || q.startsWith("launch ", true) || q.startsWith("jalankan ", true)
-        if (openIntent) {
-            onOpenApp(q)
-            reply = "Understood. Attempting to open " + q.substringAfter(' ').trim() + "."
-            translation = "Dimengerti. Saya mencoba membuka " + q.substringAfter(' ').trim() + "."
-            if (q.contains("roblox", true) || q.contains("youtube", true) || q.contains("whatsapp", true) || q.contains("chrome", true) || q.contains("browser", true) || q.contains("settings", true) || q.contains("pengaturan", true)) {
-                reply = "Opening the requested app now."
-                translation = "Membuka aplikasi yang kamu minta."
+        val normalized = q.lowercase(Locale.ROOT)
+            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+        // Interpret the spoken phrase itself. App names can be spoken alone or with natural Indonesian/English commands.
+        val appName = when {
+            Regex("\\broblox\\b").containsMatchIn(normalized) -> "roblox"
+            Regex("\\byoutube\\b").containsMatchIn(normalized) -> "youtube"
+            Regex("\\bwhatsapp\\b").containsMatchIn(normalized) || Regex("\\bwa\\b").containsMatchIn(normalized) -> "whatsapp"
+            Regex("\\bchrome\\b").containsMatchIn(normalized) || Regex("\\bbrowser\\b").containsMatchIn(normalized) || Regex("\\bperamban\\b").containsMatchIn(normalized) -> "chrome"
+            Regex("\\b(settings|setting|pengaturan)\\b").containsMatchIn(normalized) -> "settings"
+            else -> ""
+        }
+        val appAction = Regex("\\b(buka|bukakan|jalankan|mainkan|main|open|launch|run|tolong|please|start)\\b").containsMatchIn(normalized)
+        val standaloneAppRequest = appName.isNotBlank() && normalized.split(" ").all { it in setOf(appName, "tolong", "please", "ya", "dong", "sekarang", "aplikasi", "app", "the", "please") }
+        if (appName.isNotBlank() && (appAction || standaloneAppRequest)) {
+            onOpenApp(appName)
+            val spokenName = when (appName) {
+                "roblox" -> "Roblox"
+                "youtube" -> "YouTube"
+                "whatsapp" -> "WhatsApp"
+                "chrome" -> "Chrome"
+                else -> "Settings"
             }
+            reply = "Opening $spokenName now."
+            translation = "Membuka $spokenName sekarang."
         } else {
-            reply = "I am opening a web search for " + q + ". Direct AI answers will be added when the AI backend is connected."
-            translation = "Saya membuka pencarian web untuk " + q + ". Jawaban AI langsung akan tersedia setelah backend AI terhubung."
+            reply = "I heard: $q. I will search the web for that."
+            translation = "Saya mendengar: $q. Saya akan mencari di web."
             onSearch(q)
         }
         onSpeak(reply)
