@@ -28,6 +28,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -456,18 +457,35 @@ private fun JarvisScreen(
                             if (searchLoading) {
                                 Text("Menganalisis kata kunci dan menyiapkan hasil…", color = TextMuted, fontSize = 12.sp)
                             } else {
-                                Text("Hasil web untuk pencarian ini tersedia di dalam tampilan JARVIS.", color = Color(0xFFD9ECF5), fontSize = 12.sp, lineHeight = 18.sp)
+                                Text("HASIL WEB", color = Color(0xFFD9ECF5), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                                 Spacer(Modifier.height(8.dp))
-                                OutlinedButton(
-                                    onClick = { onSearch(searchQuery) },
-                                    border = BorderStroke(1.dp, Color(0x8843DDF7)),
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Cyan),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                ) {
-                                    Text("MUAT HASIL WEB", fontSize = 10.sp, letterSpacing = 1.sp)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                                Text("Catatan: koneksi pencarian saat ini menggunakan halaman web; ringkasan AI dan perbandingan harga otomatis memerlukan sumber data/API tambahan.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                                AndroidView(
+                                    modifier = Modifier.fillMaxWidth().height(300.dp)
+                                        .background(Color(0xFF101923), RoundedCornerShape(12.dp)),
+                                    factory = { context ->
+                                        WebView(context).apply {
+                                            webViewClient = object : WebViewClient() {
+                                                override fun onPageFinished(view: WebView?, url: String?) {
+                                                    super.onPageFinished(view, url)
+                                                    view?.evaluateJavascript(
+                                                        "(function(){var s=document.createElement('style');s.innerHTML='body{background:#101923!important;color:#e6f5ff!important;font-family:Arial,sans-serif!important}#header,#top_header,#bottom_spacing, .feedback-btn, .nav-link, .badge-link, .header-wrap, .footer, .serp__bottom, .results--sidebar{display:none!important}.results, #links, .results_links, .result{background:#101923!important;color:#e6f5ff!important;border-color:#234152!important}.result__title a,.result__url,.result__snippet{color:#ccecf8!important}a{color:#70e7ff!important}input{max-width:100%!important}';document.head.appendChild(s);})();",
+                                                        null
+                                                    )
+                                                }
+                                            }
+                                            settings.javaScriptEnabled = true
+                                            settings.domStorageEnabled = true
+                                            setBackgroundColor(android.graphics.Color.rgb(16, 25, 35))
+                                            loadUrl("https://html.duckduckgo.com/html/?q=" + Uri.encode(searchQuery))
+                                        }
+                                    },
+                                    update = { view ->
+                                        val target = "https://html.duckduckgo.com/html/?q=" + Uri.encode(searchQuery)
+                                        if (view.tag != target) { view.tag = target; view.loadUrl(target) }
+                                    }
+                                )
+                                Spacer(Modifier.height(6.dp))
+                                Text("Hasil ditampilkan di dalam JARVIS. Ringkasan AI dan perbandingan harga otomatis memerlukan sumber data/API tambahan.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
                             }
                         }
                     }
