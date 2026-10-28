@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private var permissionAsked = false
     private var greetingSpoken = false
+    private var voiceModeEnabled = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -109,6 +110,11 @@ class MainActivity : ComponentActivity() {
                 onConsumed = { voiceText.value = "" },
                 onSpeak = { speak(it) },
                 onStartListening = { startListening() },
+                onModeChanged = { voiceMode ->
+                    voiceModeEnabled = voiceMode
+                    if (voiceMode) startListening() else recognizer?.cancel()
+                    voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
+                },
                 onSearch = { q ->
                     voiceStatus.value = "OPENING WEB SEARCH"
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(q))))
@@ -121,7 +127,7 @@ class MainActivity : ComponentActivity() {
     private fun speak(text: String) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response") }
 
     private fun startListening() {
-        if (isFinishing || isDestroyed) return
+        if (isFinishing || isDestroyed || !voiceModeEnabled) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
                 permissionAsked = true
@@ -233,17 +239,19 @@ private fun JarvisScreen(
     onConsumed: () -> Unit,
     onSpeak: (String) -> Unit,
     onStartListening: () -> Unit,
+    onModeChanged: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
     onOpenApp: (String) -> Unit
 ) {
     var typedCommand by remember { mutableStateOf("") }
+    var voiceMode by remember { mutableStateOf(true) }
     var lastCommand by remember { mutableStateOf("Say “open Roblox” or ask me to search the web.") }
     var reply by remember { mutableStateOf("Good day. JARVIS is online. I am listening.") }
     var translation by remember { mutableStateOf("JARVIS aktif dan siap mendengarkan.") }
     val pulse = rememberInfiniteTransition(label = "orb")
     val orbScale by pulse.animateFloat(initialValue = 0.96f, targetValue = 1.04f, animationSpec = infiniteRepeatable(animation = tween(1800), repeatMode = RepeatMode.Reverse), label = "orbPulse")
 
-    fun execute(raw: String) {
+    fun execute(raw: String, speakResponse: Boolean = true) {
         val q = raw.trim()
         if (q.isBlank()) return
         lastCommand = q
@@ -279,12 +287,12 @@ private fun JarvisScreen(
             translation = "Saya mendengar: $q. Saya akan mencari di web."
             onSearch(q)
         }
-        onSpeak(reply)
+        if (speakResponse) onSpeak(reply)
     }
 
     LaunchedEffect(recognizedText) {
-        if (recognizedText.isNotBlank()) {
-            execute(recognizedText)
+        if (recognizedText.isNotBlank() && voiceMode) {
+            execute(recognizedText, true)
             onConsumed()
         }
     }
@@ -311,8 +319,13 @@ private fun JarvisScreen(
                 }
             }
 
-            Spacer(Modifier.height(34.dp))
-            Box(Modifier.size(250.dp), contentAlignment = Alignment.Center) {
+            Spacer(Modifier.height(22.dp))
+            Row(modifier = Modifier.fillMaxWidth().background(Color(0xFF0B1421), RoundedCornerShape(16.dp)).padding(5.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Button(onClick = { voiceMode = true; onModeChanged(true) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (voiceMode) Color(0xFF123C50) else Color.Transparent), shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text("VOICE MODE") }
+                Button(onClick = { voiceMode = false; onModeChanged(false) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (!voiceMode) Color(0xFF123C50) else Color.Transparent), shape = RoundedCornerShape(12.dp)) { Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(7.dp)); Text("CHAT MODE") }
+            }
+            Spacer(Modifier.height(18.dp))
+            Box(Modifier.size(if (voiceMode) 220.dp else 130.dp), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(240.dp).scale(orbScale).border(1.dp, Color(0x5539DFF9), CircleShape).background(Color(0x0828DFFF), CircleShape))
                 Box(Modifier.size(200.dp).border(1.dp, Color(0x8845DDF5), CircleShape).background(Color(0x1026C8F0), CircleShape))
                 Box(Modifier.size(158.dp).border(1.dp, Color(0xAA64E8FF), CircleShape).background(Brush.radialGradient(listOf(Color(0xFF5AE9FF), Color(0xFF087DAA), Color(0xFF07182E))), CircleShape), contentAlignment = Alignment.Center) {
@@ -322,7 +335,7 @@ private fun JarvisScreen(
             Spacer(Modifier.height(20.dp))
             Text(status.uppercase(), color = Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(8.dp))
-            Text("Speak naturally. Commands execute automatically.", color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
+            Text(if (voiceMode) "Speak naturally. Commands execute automatically." else "Type a message or command, then send.", color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
             Spacer(Modifier.height(24.dp))
 
             Surface(modifier = Modifier.fillMaxWidth(), color = Color(0xCC0D1A2A), shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Color(0x222FE2FF))) {
@@ -343,20 +356,17 @@ private fun JarvisScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            Row(Modifier.fillMaxWidth().background(Color(0xFF0B1421), RoundedCornerShape(18.dp)).border(1.dp, Color(0x5537CDE8), RoundedCornerShape(18.dp)).padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                BasicTextField(
-                    value = typedCommand, onValueChange = { typedCommand = it },
-                    modifier = Modifier.weight(1f).padding(vertical = 10.dp), singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp),
-                    decorationBox = { inner -> if (typedCommand.isEmpty()) Text("Type only if you prefer…", color = TextMuted, fontSize = 13.sp); inner() }
-                )
-                IconButton(onClick = { execute(typedCommand) }) { Icon(Icons.Default.Send, contentDescription = "Send typed command", tint = Cyan) }
-            }
-            Spacer(Modifier.height(13.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Icon(Icons.Default.Mic, contentDescription = null, tint = Cyan, modifier = Modifier.size(15.dp))
-                Spacer(Modifier.width(7.dp))
-                Text("HANDS-FREE MODE · FOREGROUND LISTENING", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
+            if (!voiceMode) {
+                Row(Modifier.fillMaxWidth().background(Color(0xFF0B1421), RoundedCornerShape(18.dp)).border(1.dp, Color(0x5537CDE8), RoundedCornerShape(18.dp)).padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(value = typedCommand, onValueChange = { typedCommand = it }, modifier = Modifier.weight(1f).padding(vertical = 10.dp), singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp), decorationBox = { inner -> if (typedCommand.isEmpty()) Text("Message JARVIS…", color = TextMuted, fontSize = 13.sp); inner() })
+                    IconButton(onClick = { execute(typedCommand, false) }) { Icon(Icons.Default.Send, contentDescription = "Send message", tint = Cyan) }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    Icon(Icons.Default.Mic, contentDescription = null, tint = Cyan, modifier = Modifier.size(15.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("HANDS-FREE · APP FOREGROUND", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
+                }
             }
             Spacer(Modifier.height(8.dp))
         }
