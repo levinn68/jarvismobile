@@ -214,13 +214,21 @@ class MainActivity : ComponentActivity() {
                 connection.readTimeout = 60000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                val textPart = JSONObject().put("text", "Read the following response aloud exactly as written. Do not add or omit words. Text: " + text)
+                val contentParts = JSONArray().put(textPart)
+                val contents = JSONArray().put(JSONObject().put("parts", contentParts))
+                val persona = JSONObject().put("text", "Voice persona: a sophisticated male AI assistant inspired by a cinematic British butler. Calm, composed, intelligent, subtly authoritative, measured pace, clear British English pronunciation when speaking English, warm low-register delivery. Never imitate a specific actor or copyrighted character voice. Preserve the language of the supplied text.")
+                val systemInstruction = JSONObject().put("parts", JSONArray().put(persona))
+                val prebuiltVoice = JSONObject().put("voiceName", "Alnilam")
+                val voiceConfig = JSONObject().put("prebuiltVoiceConfig", prebuiltVoice)
+                val speechConfig = JSONObject().put("voiceConfig", voiceConfig)
+                val generationConfig = JSONObject()
+                    .put("responseModalities", JSONArray().put("AUDIO"))
+                    .put("speechConfig", speechConfig)
                 val body = JSONObject()
-                    .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "Read the following response aloud exactly as written. Do not add or omit words. Text: " + text))))
-                    .put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "Voice persona: a sophisticated male AI assistant inspired by a cinematic British butler. Calm, composed, intelligent, subtly authoritative, measured pace, clear British English pronunciation when speaking English, warm low-register delivery. Never imitate a specific actor or copyrighted character voice. Preserve the language of the supplied text."))))
-                    .put("generationConfig", JSONObject()
-                        .put("responseModalities", JSONArray().put("AUDIO"))
-                        .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
-                            .put("prebuiltVoiceConfig", JSONObject().put("voiceName", "Alnilam")))))
+                    .put("contents", contents)
+                    .put("systemInstruction", systemInstruction)
+                    .put("generationConfig", generationConfig)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
