@@ -146,7 +146,7 @@ private fun JarvisScreen(onSpeak: (String) -> Unit, onSearch: (String) -> Unit, 
                         putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak to JARVIS")
                     }
                     try { speechLauncher.launch(intent) } catch (_: Exception) { status = "VOICE INPUT UNAVAILABLE" }
-                }) { Icon(Icons.Default.Mic, contentDescription = "Voice input", tint = Cyan) },
+                }) { Icon(Icons.Default.Mic, contentDescription = "Voice input", tint = Cyan) } },
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White, focusedBorderColor = Cyan, unfocusedBorderColor = Color(0x665A839C)),
                 shape = RoundedCornerShape(16.dp), singleLine = true
             )
