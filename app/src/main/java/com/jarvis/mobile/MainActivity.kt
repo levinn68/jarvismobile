@@ -49,6 +49,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import java.util.Locale
+import java.net.HttpURLConnection
+import java.net.URL
+import org.json.JSONObject
+import org.json.JSONArray
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 private val Background = Color(0xFF050912)
 private val Panel = Color(0xFF0D1726)
@@ -64,6 +70,8 @@ class MainActivity : ComponentActivity() {
     private var permissionAsked = false
     private var greetingSpoken = false
     private var voiceModeEnabled = true
+    private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
+    private val geminiKey get() = prefs.getString("gemini_api_key", "").orEmpty()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,9 +129,52 @@ class MainActivity : ComponentActivity() {
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "SEARCHING THE WEB" },
+                geminiConfigured = { !geminiKey.isBlank() },
+                onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
+                onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
                 onOpenApp = { q -> openRequestedApp(q) }
             )
         }
+    }
+
+
+    private fun askGemini(prompt: String, callback: (String) -> Unit) {
+        val key = geminiKey
+        if (key.isBlank()) {
+            callback("Gemini belum dikonfigurasi. Buka Settings (ikon gear), lalu masukkan Gemini API key baru.")
+            return
+        }
+        Thread {
+            var connection: HttpURLConnection? = null
+            val answer = try {
+                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(key, "UTF-8"))
+                connection = endpoint.openConnection() as HttpURLConnection
+                connection.requestMethod = "POST"
+                connection.connectTimeout = 15000
+                connection.readTimeout = 30000
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                val body = JSONObject().put("contents", JSONArray().put(
+                    JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                )).put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "You are JARVIS, a concise, helpful personal AI assistant. Reply in the same language as the user. Do not claim to perform actions you cannot perform."))))
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val text = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                if (code !in 200..299) {
+                    val detail = try { JSONObject(text).optJSONObject("error")?.optString("message").orEmpty() } catch (_: Exception) { "" }
+                    "Gemini API error ($code): " + if (detail.isNotBlank()) detail else "Periksa API key, kuota, dan akses model."
+                } else {
+                    val json = JSONObject(text)
+                    json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
+                        ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
+                        ?.takeIf { it.isNotBlank() } ?: "Gemini tidak mengembalikan jawaban. Coba lagi."
+                }
+            } catch (e: Exception) {
+                "Gagal menghubungi Gemini: periksa koneksi internet lalu coba lagi."
+            } finally { connection?.disconnect() }
+            handler.post { callback(answer) }
+        }.start()
     }
 
     private fun speak(text: String) { tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response") }
@@ -219,6 +270,9 @@ private fun JarvisScreen(
     onStartListening: () -> Unit,
     onModeChanged: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
+    geminiConfigured: () -> Boolean,
+    onSaveGeminiKey: (String) -> Unit,
+    onAskGemini: (String, (String) -> Unit) -> Unit,
     onOpenApp: (String) -> Boolean
 ) {
     data class ChatLine(val isUser: Boolean, val text: String)
@@ -228,6 +282,9 @@ private fun JarvisScreen(
     var searchVisible by remember { mutableStateOf(false) }
     var searchLoading by remember { mutableStateOf(false) }
     var statusLabel by remember { mutableStateOf("SYSTEM ONLINE") }
+    var settingsOpen by remember { mutableStateOf(false) }
+    var apiKeyDraft by remember { mutableStateOf("") }
+    var geminiBusy by remember { mutableStateOf(false) }
     val messages = remember {
         mutableStateListOf(
             ChatLine(false, "JARVIS online. Ada yang bisa gue bantu?")
@@ -284,7 +341,14 @@ private fun JarvisScreen(
             statusLabel = "SEARCHING NETWORK"
             messages.add(ChatLine(false, "Gue cari informasi tentang “$q”. Tunggu sebentar, gue susun hasilnya."))
             onSearch(q)
-            if (speakResponse) onSpeak("Oke, gue cari informasi tentang $q.")
+            geminiBusy = true
+            onAskGemini(q) { answer ->
+                messages.add(ChatLine(false, answer))
+                geminiBusy = false
+                searchLoading = false
+                statusLabel = "GEMINI RESPONSE READY"
+                if (speakResponse) onSpeak(answer)
+            }
         }
     }
 
@@ -325,7 +389,11 @@ private fun JarvisScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(7.dp).background(if (searchLoading) Color(0xFFFFC857) else Color(0xFF63D6A3), CircleShape))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (searchLoading) "WORKING" else "ONLINE", color = Cyan, fontSize = 10.sp, letterSpacing = 1.1.sp)
+                    Text(if (geminiBusy) "THINKING" else if (geminiConfigured()) "GEMINI READY" else "SETUP AI", color = Cyan, fontSize = 10.sp, letterSpacing = 1.1.sp)
+                }
+                Spacer(Modifier.width(6.dp))
+                IconButton(onClick = { apiKeyDraft = ""; settingsOpen = true }) {
+                    Icon(Icons.Default.SettingsVoice, contentDescription = "AI settings", tint = Cyan)
                 }
             }
 
@@ -520,6 +588,45 @@ private fun JarvisScreen(
                     Text("VOICE ACTIVE · KEEP JARVIS IN FOREGROUND", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.sp)
                 }
             }
+
+        if (settingsOpen) {
+            AlertDialog(
+                onDismissRequest = { settingsOpen = false },
+                containerColor = Color(0xFF0C1726),
+                title = { Text("JARVIS AI SETTINGS", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(if (geminiConfigured()) "API key tersimpan di penyimpanan privat aplikasi." else "Masukkan Gemini API key baru dari Google AI Studio.", color = TextMuted, fontSize = 12.sp)
+                        OutlinedTextField(
+                            value = apiKeyDraft,
+                            onValueChange = { apiKeyDraft = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Gemini API key") },
+                            placeholder = { Text("Paste key baru di sini") },
+                            singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White, unfocusedTextColor = Color.White,
+                                focusedBorderColor = Cyan, unfocusedBorderColor = Color(0xFF365165),
+                                focusedLabelColor = Cyan, unfocusedLabelColor = TextMuted
+                            )
+                        )
+                        Text("Jangan gunakan key yang sudah dibagikan. Penyimpanan lokal lebih praktis, tetapi key dalam aplikasi tetap bisa diekstrak oleh pengguna teknis.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                        TextButton(onClick = { GenUiOpenAiStudioPlaceholder() }) { }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (apiKeyDraft.trim().isNotBlank()) onSaveGeminiKey(apiKeyDraft.trim())
+                        settingsOpen = false
+                        apiKeyDraft = ""
+                    }) { Text("SIMPAN", color = Cyan) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { settingsOpen = false }) { Text("BATAL", color = TextMuted) }
+                }
+            )
+        }
         }
     }
 }
