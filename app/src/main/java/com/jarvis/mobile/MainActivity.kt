@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
+                    if (geminiSpeechInProgress) return
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "DIDN'T CATCH THAT · TRY AGAIN"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
@@ -309,7 +310,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startListening() {
-        if (isFinishing || isDestroyed || !voiceModeEnabled) return
+        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
                 permissionAsked = true
