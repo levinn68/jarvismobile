@@ -3,6 +3,9 @@ package com.jarvis.mobile
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.ComponentName
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -35,6 +38,7 @@ import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
@@ -115,10 +119,7 @@ class MainActivity : ComponentActivity() {
                     if (voiceMode) startListening() else recognizer?.cancel()
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
-                onSearch = { q ->
-                    voiceStatus.value = "OPENING WEB SEARCH"
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(q))))
-                },
+                onSearch = { _ -> voiceStatus.value = "SEARCHING THE WEB" },
                 onOpenApp = { q -> openRequestedApp(q) }
             )
         }
@@ -169,55 +170,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun openRequestedApp(command: String) {
-        val pkg = when {
-            command.contains("roblox", true) -> "com.roblox.client"
-            command.contains("youtube", true) -> "com.google.android.youtube"
-            command.contains("whatsapp", true) -> "com.whatsapp"
-            command.contains("chrome", true) || command.contains("browser", true) -> "com.android.chrome"
-            command.contains("settings", true) || command.contains("pengaturan", true) -> "com.android.settings"
-            else -> ""
-        }
-        if (pkg.isBlank()) {
-            speak("I do not have a direct app shortcut for that yet.")
-            voiceStatus.value = "APP SHORTCUT NOT CONFIGURED"
-            return
-        }
-        // First look up the installed app package, then launch its APK entry point.
-        // The app label lookup also handles devices where the app's package name differs.
-        val candidatePackages = when (pkg) {
-            "com.roblox.client" -> listOf("com.roblox.client")
-            "com.google.android.youtube" -> listOf("com.google.android.youtube", "com.google.android.youtube.tv")
-            "com.whatsapp" -> listOf("com.whatsapp", "com.whatsapp.w4b")
-            "com.android.chrome" -> listOf("com.android.chrome", "com.chrome.beta", "com.chrome.dev")
-            else -> listOf(pkg)
-        }
-        var launch: Intent? = null
-        var installedPackage = ""
-        for (candidate in candidatePackages) {
-            try {
-                val appInfo = packageManager.getApplicationInfo(candidate, 0)
-                installedPackage = appInfo.packageName
-                launch = packageManager.getLaunchIntentForPackage(candidate)
-                if (launch != null) break
-            } catch (_: PackageManager.NameNotFoundException) {
-                // Try the next known package variant.
+    private fun openRequestedApp(command: String): Boolean {
+        val normalized = command.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
+        val cleaned = normalized.replace(Regex("^(tolong |please |buka(kan)? |jalankan |mainkan |main |open |launch |run |start |aplikasi )+"), "").replace(Regex("^(aplikasi |app |the )+"), "").trim()
+        if (cleaned.isBlank()) return false
+        voiceStatus.value = "SEARCHING INSTALLED APPS"
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val candidates = try {
+            packageManager.queryIntentActivities(launcherIntent, 0).mapNotNull { info ->
+                val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                val pkg = info.activityInfo?.packageName.orEmpty()
+                val activity = info.activityInfo?.name.orEmpty()
+                if (label.isNotBlank() && pkg.isNotBlank() && activity.isNotBlank()) Triple(label, pkg, activity) else null
             }
-        }
-
-        try {
-            voiceStatus.value = "SEARCHING INSTALLED APPS"
-            val finalIntent = launch ?: Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-                setPackage(installedPackage.ifBlank { pkg })
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            voiceStatus.value = "LAUNCHING REQUESTED APP"
-            startActivity(finalIntent)
-        } catch (_: Exception) {
-            voiceStatus.value = "APP NOT FOUND"
-            speak("I could not find an installed launchable copy of that app. Please check whether it is installed.")
-        }
+        } catch (_: Exception) { emptyList() }
+        val found = candidates.firstOrNull { it.first.equals(cleaned, true) }
+            ?: candidates.firstOrNull { it.first.startsWith(cleaned, true) }
+            ?: candidates.firstOrNull { it.first.contains(cleaned, true) }
+            ?: candidates.firstOrNull { item -> cleaned.split(" ").all { token -> token.length > 1 && item.first.contains(token, true) } }
+        if (found == null) { voiceStatus.value = "APP NOT FOUND · SEARCHING WEB"; return false }
+        return try {
+            val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(ComponentName(found.second, found.third)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launch)
+            voiceStatus.value = "OPENING " + found.first.uppercase(Locale.ROOT)
+            true
+        } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
     }
 
     override fun onPause() { recognizer?.cancel(); super.onPause() }
