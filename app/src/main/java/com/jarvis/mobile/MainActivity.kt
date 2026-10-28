@@ -218,13 +218,15 @@ private fun JarvisScreen(
     onStartListening: () -> Unit,
     onModeChanged: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
-    onOpenApp: (String) -> Unit
+    onOpenApp: (String) -> Boolean
 ) {
     var typedCommand by remember { mutableStateOf("") }
     var voiceMode by remember { mutableStateOf(true) }
     var lastCommand by remember { mutableStateOf("Say “open Roblox” or ask me to search the web.") }
     var reply by remember { mutableStateOf("Good day. JARVIS is online. I am listening.") }
     var translation by remember { mutableStateOf("JARVIS aktif dan siap mendengarkan.") }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchVisible by remember { mutableStateOf(false) }
     val pulse = rememberInfiniteTransition(label = "orb")
     val orbScale by pulse.animateFloat(initialValue = 0.96f, targetValue = 1.04f, animationSpec = infiniteRepeatable(animation = tween(1800), repeatMode = RepeatMode.Reverse), label = "orbPulse")
 
@@ -233,35 +235,21 @@ private fun JarvisScreen(
         if (q.isBlank()) return
         lastCommand = q
         typedCommand = ""
-        val normalized = q.lowercase(Locale.ROOT)
-            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
-            .replace(Regex("\\s+"), " ")
-            .trim()
-        // Interpret the spoken phrase itself. App names can be spoken alone or with natural Indonesian/English commands.
-        val appName = when {
-            Regex("\\broblox\\b").containsMatchIn(normalized) -> "roblox"
-            Regex("\\byoutube\\b").containsMatchIn(normalized) -> "youtube"
-            Regex("\\bwhatsapp\\b").containsMatchIn(normalized) || Regex("\\bwa\\b").containsMatchIn(normalized) -> "whatsapp"
-            Regex("\\bchrome\\b").containsMatchIn(normalized) || Regex("\\bbrowser\\b").containsMatchIn(normalized) || Regex("\\bperamban\\b").containsMatchIn(normalized) -> "chrome"
-            Regex("\\b(settings|setting|pengaturan)\\b").containsMatchIn(normalized) -> "settings"
-            else -> ""
-        }
-        val appAction = Regex("\\b(buka|bukakan|jalankan|mainkan|main|open|launch|run|tolong|please|start)\\b").containsMatchIn(normalized)
-        val standaloneAppRequest = appName.isNotBlank() && normalized.split(" ").all { it in setOf(appName, "tolong", "please", "ya", "dong", "sekarang", "aplikasi", "app", "the", "please") }
-        if (appName.isNotBlank() && (appAction || standaloneAppRequest)) {
-            onOpenApp(appName)
-            val spokenName = when (appName) {
-                "roblox" -> "Roblox"
-                "youtube" -> "YouTube"
-                "whatsapp" -> "WhatsApp"
-                "chrome" -> "Chrome"
-                else -> "Settings"
-            }
-            reply = "Opening $spokenName now."
-            translation = "Membuka $spokenName sekarang."
+        val normalized = q.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
+        val hasOpenVerb = Regex("\\b(buka|bukakan|jalankan|mainkan|main|open|launch|run|start)\\b").containsMatchIn(normalized)
+        val standaloneAppLike = normalized.split(" ").size <= 3 && !Regex("\\b(cari|search|berapa|harga|kenapa|mengapa|apa|siapa|kapan|dimana|where|what|why|how|find|compare|bandingkan)\\b").containsMatchIn(normalized)
+        val opened = (hasOpenVerb || standaloneAppLike) && onOpenApp(q)
+        if (opened) {
+            val cleanedName = normalized.replace(Regex("^(tolong |please |buka(kan)? |jalankan |mainkan |main |open |launch |run |start |aplikasi |app )+"), "").trim()
+            reply = "Membuka aplikasi " + cleanedName + "."
+            translation = "Perintah aplikasi berhasil dikirim."
+            searchVisible = false
+            searchQuery = ""
         } else {
-            reply = "I heard: $q. I will search the web for that."
-            translation = "Saya mendengar: $q. Saya akan mencari di web."
+            searchQuery = q
+            searchVisible = true
+            reply = "Aku sedang mencari informasi tentang: " + q
+            translation = "Hasil pencarian akan ditampilkan di dalam JARVIS."
             onSearch(q)
         }
         if (speakResponse) onSpeak(reply)
@@ -330,11 +318,31 @@ private fun JarvisScreen(
                     Text(reply, color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, lineHeight = 23.sp)
                     Spacer(Modifier.height(10.dp))
                     Text(translation, color = TextMuted, fontSize = 12.sp, lineHeight = 18.sp)
+                    if (searchVisible && searchQuery.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("LIVE SEARCH RESULTS", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.3.sp)
+                        Spacer(Modifier.height(6.dp))
+                        AndroidView(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 180.dp, max = 360.dp),
+                            factory = { context -> WebView(context).apply {
+                                webViewClient = WebViewClient()
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                loadUrl("https://www.google.com/search?q=" + Uri.encode(searchQuery))
+                                tag = "https://www.google.com/search?q=" + Uri.encode(searchQuery)
+                            } },
+                            update = { view ->
+                                val targetUrl = "https://www.google.com/search?q=" + Uri.encode(searchQuery)
+                                if (view.tag != targetUrl) { view.tag = targetUrl; view.loadUrl(targetUrl) }
+                            }
+                        )
+                    }
                 }
             }
             Spacer(Modifier.weight(1f))
             if (!voiceMode) {
-                Row(Modifier.fillMaxWidth().background(Color(0xFF0B1421), RoundedCornerShape(18.dp)).border(1.dp, Color(0x5537CDE8), RoundedCornerShape(18.dp)).padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (!voiceMode) Row(Modifier.fillMaxWidth().background(Color(0xFF0B1421), RoundedCornerShape(18.dp)).border(1.dp, Color(0x5537CDE8), RoundedCornerShape(18.dp)).padding(start = 16.dp, end = 8.dp, top = 7.dp, bottom = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(value = typedCommand, onValueChange = { typedCommand = it }, modifier = Modifier.weight(1f).padding(vertical = 10.dp), singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 14.sp), decorationBox = { inner -> if (typedCommand.isEmpty()) Text("Message JARVIS…", color = TextMuted, fontSize = 13.sp); inner() })
                     IconButton(onClick = { execute(typedCommand, false) }) { Icon(Icons.Default.Send, contentDescription = "Send message", tint = Cyan) }
                 }
