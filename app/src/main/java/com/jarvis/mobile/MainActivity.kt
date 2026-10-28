@@ -151,7 +151,8 @@ class MainActivity : ComponentActivity() {
                 geminiConfigured = { !geminiKey.isBlank() },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
-                onOpenApp = { q -> openRequestedApp(q) }
+                onOpenApp = { q -> openRequestedApp(q) },
+                onInstalledApps = { installedAppNames() }
             )
         }
     }
@@ -350,6 +351,17 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun installedAppNames(): List<String> {
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return try {
+            packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                .mapNotNull { it.loadLabel(packageManager)?.toString()?.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .sortedBy { it.lowercase(Locale.ROOT) }
+        } catch (_: Exception) { emptyList() }
+    }
+
     private fun openRequestedApp(command: String): Boolean {
         val normalized = command.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
         val cleaned = normalized.replace(Regex("^(tolong |please |buka(kan)? |jalankan |mainkan |main |open |launch |run |start |aplikasi )+"), "").replace(Regex("^(aplikasi |app |the )+"), "").trim()
@@ -403,7 +415,8 @@ private fun JarvisScreen(
     geminiConfigured: () -> Boolean,
     onSaveGeminiKey: (String) -> Unit,
     onAskGemini: (String, (String) -> Unit) -> Unit,
-    onOpenApp: (String) -> Boolean
+    onOpenApp: (String) -> Boolean,
+    onInstalledApps: () -> List<String>
 ) {
     data class ChatLine(val isUser: Boolean, val text: String)
     var typedCommand by remember { mutableStateOf("") }
@@ -452,6 +465,22 @@ private fun JarvisScreen(
             .containsMatchIn(normalized)
         val standaloneAppLike = normalized.split(" ").size <= 3 && !explicitSearch &&
             !Regex("\\b(halo|hai|hey|hi|pagi|siang|malam|tes|test)\\b").containsMatchIn(normalized)
+        val wantsAppList = Regex("\\b(daftar|list|lihat|tampilkan)\\b").containsMatchIn(normalized) &&
+            Regex("\\b(aplikasi|app|apps)\\b").containsMatchIn(normalized)
+        if (wantsAppList) {
+            val apps = onInstalledApps()
+            val response = if (apps.isEmpty()) {
+                "Gue belum bisa membaca daftar aplikasi di perangkat ini. Periksa izin dan coba lagi."
+            } else {
+                "Ini aplikasi yang terdeteksi di perangkat lu (${apps.size}):\\n" +
+                    apps.take(70).joinToString(", ") +
+                    if (apps.size > 70) "\\nDan ${apps.size - 70} aplikasi lainnya." else ""
+            }
+            messages.add(ChatLine(false, response))
+            statusLabel = "INSTALLED APPS DETECTED"
+            if (speakResponse) onSpeak(response)
+            return
+        }
         val opened = (hasOpenVerb || standaloneAppLike) && onOpenApp(q)
         if (opened) {
             val appName = normalized.replace(
@@ -463,6 +492,21 @@ private fun JarvisScreen(
             searchLoading = false
             searchQuery = ""
             statusLabel = "COMMAND COMPLETE"
+            if (speakResponse) onSpeak(response)
+        } else if (hasOpenVerb) {
+            val apps = onInstalledApps()
+            val lastWord = normalized.substringAfterLast(" ").trim()
+            val suggestion = apps.filter { lastWord.isNotBlank() && it.contains(lastWord, true) }.take(8)
+            val response = if (suggestion.isNotEmpty()) {
+                "Aplikasi yang paling mendekati: " + suggestion.joinToString(", ") + ". Sebutkan nama aplikasinya dengan lebih jelas."
+            } else {
+                "Aplikasi itu tidak ditemukan di daftar aplikasi yang terpasang. Coba perintah 'daftar aplikasi' untuk melihat aplikasi yang terdeteksi."
+            }
+            messages.add(ChatLine(false, response))
+            searchVisible = false
+            searchLoading = false
+            searchQuery = ""
+            statusLabel = "APP NOT FOUND"
             if (speakResponse) onSpeak(response)
         } else {
             searchQuery = q
