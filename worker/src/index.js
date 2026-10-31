@@ -355,6 +355,20 @@ async function handleChat(body, env) {
     }
   }
 
+  // Place verified visual results near the top so users see them without
+  // scrolling through long explanations or comparison tables.
+  const renderedImages = [...String(finalAnswer || "").matchAll(imagePattern)]
+    .map((match) => match[0]);
+  const uniqueRenderedImages = [...new Set(renderedImages)].slice(0, 4);
+  if (uniqueRenderedImages.length) {
+    const textOnlyAnswer = String(finalAnswer || "").replace(imagePattern, "").trim();
+    const firstParagraphEnd = textOnlyAnswer.indexOf("\n\n");
+    finalAnswer = firstParagraphEnd >= 0
+      ? textOnlyAnswer.slice(0, firstParagraphEnd) + "\n\n" +
+        uniqueRenderedImages.join("\n") + "\n\n" + textOnlyAnswer.slice(firstParagraphEnd + 2)
+      : textOnlyAnswer + "\n\n" + uniqueRenderedImages.join("\n");
+  }
+
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
 
   return json({
