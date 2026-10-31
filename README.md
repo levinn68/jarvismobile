@@ -11,3 +11,6 @@ GitHub Actions builds a debug APK and stores it as an artifact. Open the **Actio
 The Android source project is provided in `JarvisMobile-source.zip`. The workflow extracts it and runs `gradle assembleDebug` using Java 17 and Android SDK 35.
 
 Firebase AI features require your own Firebase project configuration. Do not commit private API keys or credentials.
+
+
+<!-- Trigger signed J.A.R.V.I.S build after signing secret refresh. -->
