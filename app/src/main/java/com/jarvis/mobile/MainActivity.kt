@@ -91,6 +91,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
@@ -838,7 +839,7 @@ private fun JarvisScreen(
     val inputFocus = remember { FocusRequester() }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
-        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().imePadding()
+        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
@@ -1031,20 +1032,10 @@ private fun JarvisScreen(
                                     RichMessageText(line.displayText.value)
                                     if (!line.user) {
                                         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            TextButton(onClick = { onSpeak(line.text) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.VolumeUp, null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Bacakan", color = TextMuted, fontSize = 9.sp)
-                                            }
                                             TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
                                                 Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
                                                 Spacer(Modifier.width(4.dp))
                                                 Text("Salin", color = TextMuted, fontSize = 9.sp)
-                                            }
-                                            TextButton(onClick = { if (!busy && lastPrompt.isNotBlank()) send(lastPrompt) }, enabled = !busy && lastPrompt.isNotBlank(), contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.Refresh, null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Ulangi", color = TextMuted, fontSize = 9.sp)
                                             }
                                             TextButton(onClick = {
                                                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1095,10 +1086,18 @@ private fun JarvisScreen(
                         .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
                         .padding(start=7.dp,end=5.dp,top=3.dp,bottom=3.dp), verticalAlignment=Alignment.CenterVertically) {
                         Box {
-                            IconButton(onClick={ attachmentMenu = true }, enabled=!busy, modifier=Modifier.size(38.dp)) {
-                                Icon(Icons.Default.Add, "Tambah lampiran", tint=Cyan, modifier=Modifier.size(24.dp))
+                            Box(
+                                Modifier.size(36.dp)
+                                    .background(Color(0xFF103442), CircleShape)
+                                    .border(1.dp, Color(0x8852DFF2), CircleShape)
+                                    .clickable(enabled = !busy) { attachmentMenu = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Add, "Tambah lampiran", tint = Cyan,
+                                    modifier = Modifier.size(23.dp).rotate(if (attachmentMenu) 45f else 0f))
                             }
                             DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
+                                properties = PopupProperties(focusable = false),
                                 modifier=Modifier.background(Color(0xFF102632))) {
                                 DropdownMenuItem(text={ Text("File / Dokumen", color=Color.White) },
                                     onClick={ attachmentMenu=false; attachmentPicker.launch(arrayOf("*/*")) },
