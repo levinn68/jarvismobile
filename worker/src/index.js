@@ -88,13 +88,36 @@ async function fetchPreviewImage(pageUrl) {
       const match = tag.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']+)[\"']", "i"));
       return match?.[1] || "";
     };
+    // Prefer canonical social/product image metadata.
     for (const tag of tags) {
       const property = (readAttr(tag, "property") || readAttr(tag, "name")).toLowerCase();
-      if (property !== "og:image" && property !== "og:image:url" && property !== "twitter:image" && property !== "twitter:image:src") continue;
+      if (property !== "og:image" && property !== "og:image:url" &&
+          property !== "twitter:image" && property !== "twitter:image:src" &&
+          property !== "og:image:secure_url") continue;
       const raw = readAttr(tag, "content");
       if (!raw) continue;
       const imageUrl = new URL(raw, page).toString();
-      if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) return imageUrl;
+      if (/^https?:\\/\\//i.test(imageUrl)) return imageUrl;
+    }
+    // Many marketplace product pages expose the actual product photo only in
+    // an <img> element, not in Open Graph metadata. Use a real page image as a
+    // fallback; reject tiny icons, trackers, logos and data URLs.
+    const imageTags = html.match(/<img\\b[^>]*>/gi) || [];
+    const candidates = imageTags.map((tag) => {
+      const raw = readAttr(tag, "src") || readAttr(tag, "data-src") ||
+        readAttr(tag, "data-original") || readAttr(tag, "data-lazy-src");
+      const alt = readAttr(tag, "alt").toLowerCase();
+      const width = Number(readAttr(tag, "width") || 0);
+      const height = Number(readAttr(tag, "height") || 0);
+      return { raw, alt, width, height };
+    }).filter((item) => item.raw && !item.raw.startsWith("data:") &&
+      !/(logo|icon|avatar|sprite|tracking|pixel|banner)/i.test(item.raw + " " + item.alt) &&
+      !(item.width > 0 && item.width < 100) && !(item.height > 0 && item.height < 100));
+    for (const item of candidates) {
+      try {
+        const imageUrl = new URL(item.raw.replace(/&amp;/g, "&"), page).toString();
+        if (/^https?:\\/\\//i.test(imageUrl)) return imageUrl;
+      } catch (_) {}
     }
   } catch (_) {}
   return null;
