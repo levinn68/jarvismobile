@@ -840,9 +840,10 @@ private fun JarvisScreen(
         }
     }
     LaunchedEffect(page, voiceListening) {
+        // onModeChanged owns SpeechRecognizer start/cancel. A second start here
+        // raced with it and could trigger duplicate-recognition errors.
         val voiceOn = page == "VOICE" && voiceListening
         onModeChanged(voiceOn)
-        if (voiceOn) onStartListening()
     }
     LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
     LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
@@ -878,9 +879,10 @@ private fun JarvisScreen(
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
                 if (page == "VOICE") {
-                    Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp, bottom = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                            modifier = Modifier.padding(top = 2.dp, bottom = 2.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 220.dp else 246.dp
@@ -993,9 +995,9 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)
-                            .background(Color(0x5520AFC4), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp)
+                            .background(Color(0x5520AFC4), RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(14.dp)).padding(vertical = 9.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = { voiceListening = !voiceListening }, modifier = Modifier.size(38.dp)) {
@@ -1021,7 +1023,7 @@ private fun JarvisScreen(
                         }
                         Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
                             color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
-                            modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
+                            modifier = Modifier.padding(top = 3.dp, bottom = 2.dp))
                     }
                } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -1195,7 +1197,13 @@ private fun JarvisScreen(
                         .background(Color(0xFF071923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
                         listOf("COMMAND", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "COMMAND") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
+                            TextButton(onClick = {
+                                attachmentMenu = false
+                                keyboard?.hide()
+                                focusManager.clearFocus()
+                                voiceListening = tab == "VOICE"
+                                page = tab
+                            }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
                                 Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
