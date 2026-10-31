@@ -133,7 +133,7 @@ async function commonsImagePreviews(prompt) {
     return (data.query?.pages || []).map((page) => ({
       title: String(page.title || "Visual reference").replace(/^File:/, "").replace(/\\.[^.]+$/, "").slice(0, 90),
       url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "",
-    })).filter((item) => /^https?:\\/\\//i.test(item.url)).slice(0, 3);
+    })).filter((item) => item.url.startsWith("https://") || item.url.startsWith("http://")).slice(0, 3);
   } catch (_) {
     return [];
   }
