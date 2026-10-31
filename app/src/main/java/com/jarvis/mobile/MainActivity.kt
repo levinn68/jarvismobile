@@ -1,3 +1,16 @@
+private fun spokenSummary(text: String): String {
+    val clean = text
+        .replace(Regex("!\\[[^\\]]*\\]\\(https?://[^ )]+\\)"), "")
+        .replace(Regex("\\[([^\\]]+)\\]\\(https?://[^ )]+\\)"), "$1")
+        .replace(Regex("https?://\\S+"), "")
+        .replace(Regex("(?m)^\\s*[-*•#>]+\\s*"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (clean.length <= 190) return clean
+    val firstSentence = clean.split(Regex("(?<=[.!?])\\s+")).firstOrNull().orEmpty()
+    return if (firstSentence.length in 35..190) firstSentence else clean.take(187).trimEnd() + "..."
+}
+
 package com.jarvis.mobile
 
 import android.Manifest
@@ -224,10 +237,10 @@ class MainActivity : ComponentActivity() {
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
                 val voices = tts?.voices.orEmpty()
-                val englishVoice = voices.firstOrNull {
-                    it.locale.toLanguageTag().equals("en-US", true) && !it.isNetworkConnectionRequired
-                } ?: voices.firstOrNull { it.locale.language.equals("en", true) }
-                if (englishVoice != null) tts?.voice = englishVoice else tts?.language = Locale.US
+                val indonesianVoice = voices.firstOrNull {
+                    it.locale.toLanguageTag().equals("id-ID", true) && !it.isNetworkConnectionRequired
+                } ?: voices.firstOrNull { it.locale.language.equals("id", true) }
+                if (indonesianVoice != null) tts?.voice = indonesianVoice else tts?.language = Locale("id", "ID")
                 tts?.setSpeechRate(0.86f)
                 tts?.setPitch(0.78f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -437,8 +450,8 @@ class MainActivity : ComponentActivity() {
             speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "id-ID")
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
@@ -531,6 +544,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed class MarkdownBlock {
+    data class Image(val alt: String, val url: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Code(val language: String, val text: String) : MarkdownBlock()
     data class Table(val rows: List<List<String>>) : MarkdownBlock()
@@ -550,6 +564,12 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
+        val imageMatch = Regex("^!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)$").matchEntire(line.trim())
+        if (imageMatch != null) {
+            blocks.add(MarkdownBlock.Image(imageMatch.groupValues[1], imageMatch.groupValues[2]))
+            i++
+            continue
+        }
         if (line.isBlank()) { i++; continue }
         if (line.trimStart().startsWith("```")) {
             val language = line.trim().removePrefix("```").trim()
@@ -634,10 +654,29 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 }
 
 @Composable
+private fun RemoteMessageImage(url: String, alt: String) {
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val connection = URL(url).openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 9000
+                connection.readTimeout = 12000
+                connection.setRequestProperty("User-Agent", "JARVIS-Android")
+                try { connection.inputStream.use { BitmapFactory.decodeStream(it) } }
+                finally { connection.disconnect() }
+            }.getOrNull()
+        }
+    }
+    if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = alt.ifBlank { "Visual result" },
+        modifier = Modifier.fillMaxWidth().heightIn(max = 230.dp))
+}
+
+@Composable
 private fun RichMessageText(markdown: String) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         parseMarkdownBlocks(markdown).forEach { block ->
             when (block) {
+                is MarkdownBlock.Image -> RemoteMessageImage(block.url, block.alt)
                 is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text)
                 is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text(if (block.ordered) "1." else "•", color = Cyan, fontSize = 14.sp)
@@ -723,7 +762,7 @@ private fun JarvisScreen(
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
-    var page by remember { mutableStateOf("COMMAND") }
+    var page by remember { mutableStateOf("CHAT") }
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
@@ -785,7 +824,7 @@ private fun JarvisScreen(
         lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
-            val greeting = "I'm online. How may I assist?"
+            val greeting = "Saya online. Ada yang bisa saya bantu?"
             lines.add(Line(false, greeting))
             statusText = "JARVIS ONLINE"
             if (voice) onSpeak(greeting)
@@ -795,15 +834,15 @@ private fun JarvisScreen(
         val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
         val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
         if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
-            val answer = "Baik. Perintah dijalankan."
+            val answer = "Baik, aplikasi dibuka."
             lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak(spokenSummary(answer))
             return
         }
         if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
             lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak(spokenSummary(answer))
             return
         }
         busy = true
@@ -823,7 +862,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 responseLine.revealed.value = true
             }
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak(spokenSummary(answer))
         }
     }
 
@@ -840,7 +879,7 @@ private fun JarvisScreen(
                     // then discarded the following command because it lacked "Jarvis".
                     voiceArmed = true
                     statusText = "JARVIS ACTIVATED · LISTENING FOR COMMAND"
-                    onSpeak("I'm listening. Give me a command.")
+                    onSpeak("Saya mendengarkan. Silakan beri perintah.")
                 } else {
                     voiceArmed = false
                     send(request, true)
@@ -1024,7 +1063,7 @@ private fun JarvisScreen(
                                     color = if (voiceListening) Cyan else Color(0xFFFF8A8A), fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { voiceListening = false; page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
+                                IconButton(onClick = { voiceListening = false; page = "CHAT" }, modifier = Modifier.size(38.dp)) {
                                     Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(20.dp))
                                 }
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
@@ -1042,7 +1081,7 @@ private fun JarvisScreen(
                     }
                } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                        Text("CHAT CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -1088,7 +1127,7 @@ private fun JarvisScreen(
                                     .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
-                                        Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
+                                        Text(if(line.user) "YOU / CHAT" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
                                         
                                     }
@@ -1211,10 +1250,10 @@ private fun JarvisScreen(
                     Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
                         .background(Color(0xFF071923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("COMMAND", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "COMMAND") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
+                        listOf("CHAT", "VOICE").forEach { tab ->
+                            TextButton(onClick = { if (tab == "CHAT") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
+                                Text(if (tab == "VOICE") "◉  VOICE" else "◉  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
                         }
                     }
