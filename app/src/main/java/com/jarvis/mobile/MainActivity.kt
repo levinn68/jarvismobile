@@ -900,7 +900,7 @@ private fun JarvisScreen(
         val text: String,
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
-        val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
+        val displayText: MutableState<String> = mutableStateOf(text),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
     var page by remember { mutableStateOf("CHAT") }
@@ -1458,7 +1458,10 @@ private fun JarvisScreen(
                         Spacer(Modifier.width(9.dp))
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
-                            singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
+                            singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(
+                                color=Color.White, fontSize=15.sp,
+                                textDecoration = TextDecoration.None
+                            ),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
                             decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
