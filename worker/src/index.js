@@ -69,6 +69,42 @@ function keyOrder(provider, env) {
   return names.filter((name) => typeof env[name] === "string" && env[name].trim());
 }
 
+async function fetchPreviewImage(pageUrl) {
+  try {
+    const page = new URL(pageUrl);
+    if (page.protocol !== "https:" && page.protocol !== "http:") return null;
+    const response = await fetch(page.toString(), {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; JARVISBot/1.0)", "Accept": "text/html" },
+      signal: AbortSignal.timeout(5500),
+    });
+    if (!response.ok) return null;
+    const html = (await response.text()).slice(0, 500000);
+    const tags = html.match(/<meta\\b[^>]*>/gi) || [];
+    const readAttr = (tag, name) => {
+      const match = tag.match(new RegExp(name + "\\\\s*=\\\\s*[\"']([^\"']+)[\"']", "i"));
+      return match?.[1] || "";
+    };
+    for (const tag of tags) {
+      const property = (readAttr(tag, "property") || readAttr(tag, "name")).toLowerCase();
+      if (property !== "og:image" && property !== "og:image:url" && property !== "twitter:image" && property !== "twitter:image:src") continue;
+      const raw = readAttr(tag, "content");
+      if (!raw) continue;
+      const imageUrl = new URL(raw, page).toString();
+      if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) return imageUrl;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function previewImagesFromSources(sources) {
+  const selected = sources.slice(0, 4);
+  const previews = await Promise.all(selected.map(async (source) => ({
+    title: String(source.title || "Visual reference").replace(/[\\[\\]\\n]/g, " ").trim().slice(0, 80),
+    url: await fetchPreviewImage(source.uri),
+  })));
+  return previews.filter((item) => item.url).slice(0, 3);
+}
+
 async function callGemini(env, prompt, system, keyName) {
   const key = env[keyName];
   const response = await fetch(
@@ -98,6 +134,12 @@ async function callGemini(env, prompt, system, keyName) {
     .slice(0, 6);
   if (sources.length) {
     text += "\\n\\nSumber yang bisa dibuka:\\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\\n");
+    // Add real page-preview images only when the source page exposes a verified
+    // Open Graph/Twitter image. Never synthesize or guess an image URL.
+    const previews = await previewImagesFromSources(sources);
+    if (previews.length) {
+      text += "\\n\\n" + previews.map((item) => "![ " + item.title + " ](" + item.url + ")").join("\\n");
+    }
   }
   return text;
 }
@@ -246,6 +288,18 @@ async function handleChat(body, env) {
       finalAnswer = successful[0].answer + (discussion.length > 1 ? "\n\nCatatan: proses sintesis akhir gagal; ini adalah jawaban dari AI pertama yang berhasil." : "");
     }
   }
+  // Keep verified preview images from the grounded search results even if the
+  // final synthesis model omits visual Markdown while summarizing.
+  const imageMarkdown = discussion.flatMap((item) =>
+    [...String(item.message || "").matchAll(/!\\[([^\\]]*)\\]\\((https?:\\/\\/[^ )]+)\\)/g)]
+      .map((match) => match[0])
+  );
+  const uniqueImages = [...new Set(imageMarkdown)].slice(0, 3);
+  for (const image of uniqueImages) {
+    const imageUrl = image.match(/\\((https?:\\/\\/[^ )]+)\\)/)?.[1];
+    if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\\n\\n" + image;
+  }
+
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
 
   return json({
