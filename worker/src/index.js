@@ -79,9 +79,9 @@ async function fetchPreviewImage(pageUrl) {
     });
     if (!response.ok) return null;
     const html = (await response.text()).slice(0, 500000);
-    const tags = html.match(/<meta\\b[^>]*>/gi) || [];
+    const tags = html.match(/<meta\b[^>]*>/gi) || [];
     const readAttr = (tag, name) => {
-      const match = tag.match(new RegExp(name + "\\\\s*=\\\\s*[\"']([^\"']+)[\"']", "i"));
+      const match = tag.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']+)[\"']", "i"));
       return match?.[1] || "";
     };
     for (const tag of tags) {
@@ -99,7 +99,7 @@ async function fetchPreviewImage(pageUrl) {
 async function previewImagesFromSources(sources) {
   const selected = sources.slice(0, 4);
   const previews = await Promise.all(selected.map(async (source) => ({
-    title: String(source.title || "Visual reference").replace(/[\\[\\]\\n]/g, " ").trim().slice(0, 80),
+    title: String(source.title || "Visual reference").replace(/[\[\]\n]/g, " ").trim().slice(0, 80),
     url: await fetchPreviewImage(source.uri),
   })));
   return previews.filter((item) => item.url).slice(0, 3);
