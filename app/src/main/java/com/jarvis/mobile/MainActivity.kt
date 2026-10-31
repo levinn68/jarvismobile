@@ -971,6 +971,7 @@ private fun JarvisScreen(
                                 }
                                 Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
+                        }
                         Text("TAP THE REACTOR OR SAY “JARVIS”", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
