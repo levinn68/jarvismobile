@@ -244,6 +244,8 @@ class MainActivity : ComponentActivity() {
     private var speechPlayer: MediaPlayer? = null
     private var voiceLoudnessEnhancer: LoudnessEnhancer? = null
     @Volatile private var queuedSpeechText: String? = null
+    @Volatile private var androidTtsReady = false
+    @Volatile private var pendingAndroidSpeech: String? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
     private var voiceModeEnabled = false
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
@@ -255,6 +257,7 @@ class MainActivity : ComponentActivity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
+                androidTtsReady = true
                 // Select Android fallback voice per response language.
                 tts?.language = Locale("id", "ID")
                 tts?.setSpeechRate(0.86f)
@@ -278,6 +281,13 @@ class MainActivity : ComponentActivity() {
                     }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
+                pendingAndroidSpeech?.let { pending ->
+                    pendingAndroidSpeech = null
+                    speakWithAndroid(pending)
+                }
+            } else {
+                androidTtsReady = false
+                voiceStatus.value = "ANDROID SPEECH ENGINE UNAVAILABLE"
             }
         }
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
@@ -303,7 +313,7 @@ class MainActivity : ComponentActivity() {
                 override fun onResults(results: Bundle?) {
                     val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                     val wakeCandidate = candidates.firstOrNull {
-                        Regex("(?i)^\\s*(jarvis|jervis)[\\s,]+(open|buka)\\b").containsMatchIn(it)
+                        Regex("(?i)^\\s*(jarvis|jervis|jerwis)[\\s,]+(open|buka|buk[a]?kan)\\b").containsMatchIn(it)
                     }
                     val text = wakeCandidate ?: candidates.firstOrNull().orEmpty()
                     if (text.isNotBlank()) {
@@ -409,8 +419,8 @@ class MainActivity : ComponentActivity() {
                 val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/tts")
                 connection = endpoint.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
-                connection.connectTimeout = 20000
-                connection.readTimeout = 90000
+                connection.connectTimeout = 8000
+                connection.readTimeout = 18000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                 val body = JSONObject().put("text", text)
@@ -505,12 +515,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun speakWithAndroid(text: String) {
+        if (text.isBlank()) return
+        if (!androidTtsReady || tts == null) {
+            pendingAndroidSpeech = text
+            voiceStatus.value = "PREPARING VOICE OUTPUT"
+            return
+        }
         val locale = if (isLikelyEnglish(text)) Locale.US else Locale("id", "ID")
         val result = tts?.setLanguage(locale)
         if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
             tts?.language = Locale.getDefault()
         }
-        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
+        val speakResult = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
+        if (speakResult == TextToSpeech.ERROR) {
+            voiceStatus.value = "VOICE OUTPUT FAILED"
+        } else {
+            voiceStatus.value = "JARVIS SPEAKING"
+        }
     }
 
     private fun startListening() {
@@ -532,9 +553,6 @@ class MainActivity : ComponentActivity() {
                 // Indonesian remains the fallback for older recognition services.
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "id-ID")
-                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES",
-                    arrayListOf("id-ID", "en-US"))
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
@@ -1135,7 +1153,7 @@ private fun JarvisScreen(
 
             // A strict two-word wake phrase is required before any command is accepted.
             // Speech outside an armed session is discarded silently.
-            val wakeMatch = Regex("(?i)^\\s*(jarvis|jervis)[\\s,]+(open|buka)\\b[\\s,!.?]*").find(heard)
+            val wakeMatch = Regex("(?i)^\\s*(jarvis|jervis|jerwis)[\\s,]+(open|buka|buk[a]?kan)\\b[\\s,!.?]*").find(heard)
             if (!voiceArmed) {
                 if (wakeMatch != null) {
                     voiceArmed = true
@@ -1671,7 +1689,7 @@ private fun JarvisScreen(
                                     voiceListening = tab == "VOICE"
                                     voiceArmed = false
                                 }, contentAlignment = Alignment.Center) {
-                                Text(if (tab == "VOICE") "◉  VOICE MODE" else "◉  CHAT",
+                                Text(if (tab == "VOICE") "◉  VOICE" else "◉  CHAT",
                                     color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
                                     letterSpacing = 1.05.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
