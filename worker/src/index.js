@@ -133,12 +133,12 @@ async function callGemini(env, prompt, system, keyName) {
     .filter((web, index, all) => all.findIndex((item) => item.uri === web.uri) === index)
     .slice(0, 6);
   if (sources.length) {
-    text += "\\n\\nSumber yang bisa dibuka:\\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\\n");
+    text += "\n\nSumber yang bisa dibuka:\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\n");
     // Add real page-preview images only when the source page exposes a verified
     // Open Graph/Twitter image. Never synthesize or guess an image URL.
     const previews = await previewImagesFromSources(sources);
     if (previews.length) {
-      text += "\\n\\n" + previews.map((item) => "![ " + item.title + " ](" + item.url + ")").join("\\n");
+      text += "\n\n" + previews.map((item) => "![ " + item.title + " ](" + item.url + ")").join("\n");
     }
   }
   return text;
@@ -297,7 +297,7 @@ async function handleChat(body, env) {
   const uniqueImages = [...new Set(imageMarkdown)].slice(0, 3);
   for (const image of uniqueImages) {
     const imageUrl = image.match(/\\((https?:\\/\\/[^ )]+)\\)/)?.[1];
-    if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\\n\\n" + image;
+    if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\n\n" + image;
   }
 
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
