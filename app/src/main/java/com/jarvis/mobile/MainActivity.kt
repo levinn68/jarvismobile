@@ -306,7 +306,10 @@ class MainActivity : ComponentActivity() {
                         voiceStatus.value = "COMMAND RECEIVED"
                     } else handler.postDelayed({ startListening() }, 600)
                 }
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                    if (!partial.isNullOrBlank()) voiceStatus.value = "HEARING · ${partial.take(36)}"
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         } else voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"
@@ -530,6 +533,10 @@ class MainActivity : ComponentActivity() {
                     arrayListOf("id-ID", "en-US"))
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1400L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 900L)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             }
             speech.startListening(intent)
@@ -782,30 +789,38 @@ private fun RichMessageText(markdown: String) {
                 }
                 is MarkdownBlock.Table -> {
                     val headers = block.rows.firstOrNull().orEmpty()
-                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        block.rows.drop(1).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        block.rows.drop(1).forEachIndexed { rowIndex, row ->
                             Column(
-                                Modifier.fillMaxWidth()
-                                    .background(Color(0xFF091923), RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(10.dp))
-                                    .padding(horizontal = 11.dp, vertical = 9.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                Modifier.width(248.dp)
+                                    .background(Color(0xFF091923), RoundedCornerShape(12.dp))
+                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
-                                row.forEachIndexed { index, value ->
+                                Text(row.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
+                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    lineHeight = 18.sp)
+                                Box(Modifier.fillMaxWidth().height(1.dp)
+                                    .background(Color(0x6652DFF2)))
+                                row.drop(1).forEachIndexed { offset, value ->
+                                    val index = offset + 1
                                     if (value.isNotBlank()) {
                                         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                             Text(headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
                                                 color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp,
                                                 fontWeight = FontWeight.Bold)
-                                            Text(value, color = Color(0xFFE2F5F8), fontSize = 12.sp,
-                                                lineHeight = 17.sp)
-                                        }
-                                        if (index != row.lastIndex) {
-                                            Box(Modifier.fillMaxWidth().height(.5.dp)
-                                                .background(Color(0x3349B8CB)))
+                                            Text(value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
+                                                color = Color(0xFFDCEFF3), fontSize = 11.sp,
+                                                lineHeight = 16.sp)
                                         }
                                     }
                                 }
+                                Text("GESER UNTUK MEMBANDINGKAN  ·  ${rowIndex + 1}/${block.rows.size - 1}",
+                                    color = TextMuted, fontSize = 7.sp, letterSpacing = .6.sp)
                             }
                         }
                     }
@@ -1061,13 +1076,12 @@ private fun JarvisScreen(
                     lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
                     onSpeak("J.A.R.V.I.S. aktif, Sir. Saya siap membantu.")
                 }
-            } else if (voiceArmed) {
-                // The wake phrase is not repeated: every subsequent utterance is a normal command.
-                send(heard, true)
+            } else if (voiceArmed || (page == "VOICE" && voiceListening)) {
+                // Voice mode is hands-free: accept the user's speech without a wake phrase.
                 voiceArmed = true
+                send(heard, true)
             } else {
-                // Ignore background speech until the explicit wake phrase starts a session.
-                statusText = "STANDBY · SAY JARVIS, OPEN"
+                statusText = "VOICE MODE STANDBY"
             }
         } else if (page != "VOICE" || !voiceListening) {
             voiceArmed = false
@@ -1075,6 +1089,7 @@ private fun JarvisScreen(
     }
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
+        voiceArmed = voiceOn
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
@@ -1471,7 +1486,12 @@ private fun JarvisScreen(
                         .background(Color(0xFF071923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
                         listOf("CHAT", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "CHAT") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
+                            TextButton(onClick = {
+                                page = tab
+                                voiceListening = tab == "VOICE"
+                                voiceArmed = tab == "VOICE"
+                                if (tab == "CHAT") onModeChanged(false)
+                            }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
                                 Text(if (tab == "VOICE") "◉  VOICE" else "◉  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
