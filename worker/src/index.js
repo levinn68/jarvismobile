@@ -106,6 +106,30 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
     }
     if (metaCandidates.length) return metaCandidates[0];
 
+    // Product pages commonly expose their exact photo in schema.org JSON-LD.
+    const jsonLdBlocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
+    for (const block of jsonLdBlocks) {
+      try {
+        const parsed = JSON.parse(block[1].replace(/&quot;/g, '"').trim());
+        const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
+        while (queue.length) {
+          const node = queue.shift();
+          if (!node || typeof node !== "object") continue;
+          if (Array.isArray(node)) { queue.push(...node); continue; }
+          if (node["@graph"]) queue.push(...(Array.isArray(node["@graph"]) ? node["@graph"] : [node["@graph"]]));
+          const type = Array.isArray(node["@type"]) ? node["@type"].join(" ") : String(node["@type"] || "");
+          if (/Product|IndividualProduct|ProductGroup/i.test(type) && node.image) {
+            const images = Array.isArray(node.image) ? node.image : [node.image];
+            for (const raw of images) {
+              const candidate = typeof raw === "string" ? raw : raw?.url || raw?.contentUrl;
+              const url = absolute(candidate);
+              if (url && !/(logo|icon|avatar|sprite|tracking|pixel|banner|placeholder)/i.test(url)) return url;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     const imageTags = html.match(/<img\b[^>]*>/gi) || [];
     const expected = String(expectedTitle || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x.length > 2);
     const candidates = [];
@@ -365,12 +389,13 @@ async function handleChat(body, env) {
   // Recover real product/article preview images from links returned by the
   // agents. This covers providers that return marketplace links but omit image
   // Markdown. Only page metadata is used; never construct or guess image URLs.
-  const markdownLinks = [...discussion.flatMap((item) =>
-    [...String(item.message || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^ )]+)\)/g)]
-      .map((match) => ({ title: match[1], uri: match[2] }))
-  ), ...[...String(finalAnswer || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^ )]+)\)/g)]
-    .map((match) => ({ title: match[1], uri: match[2] }))];
-  const uniqueLinks = markdownLinks
+  const allAgentText = [...discussion.map((item) => String(item.message || "")), String(finalAnswer || "")].join("\n");
+  const markdownLinks = [...allAgentText.matchAll(/\[([^\]]+)\]\((https?:\/\/[^ )]+)\)/g)]
+    .map((match) => ({ title: match[1], uri: match[2] }));
+  const linkedUrls = [...allAgentText.matchAll(/https?:\/\/[^\s<>")]+/g)]
+    .map((match) => match[0].replace(/[.,;!?]+$/, ""));
+  const sourceLinks = [...markdownLinks, ...linkedUrls.map((uri) => ({ title: "", uri }))];
+  const uniqueLinks = sourceLinks
     .filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index)
     .filter((item) => !/\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(item.uri))
     .slice(0, 8);
