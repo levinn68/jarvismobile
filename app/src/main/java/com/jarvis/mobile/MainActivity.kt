@@ -1320,14 +1320,14 @@ private fun JarvisScreen(
                                 drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
                             }
                             Text("J.A.R.V.I.S.", color = Color(0xFFBDFBFF), fontSize = 15.sp, letterSpacing = 2.6.sp,
-                                fontWeight = FontWeight.Light, modifier = Modifier.align(Alignment.Center))
-                            Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
+                                fontWeight = FontWeight.Light, modifier = Modifier.align(Alignment.Center).offset(y = reactorOffset))
+                            Column(Modifier.align(Alignment.TopEnd).offset(y = reactorOffset).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
                                 Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
                                     color = Color(0xFF6FCFE0), fontSize = 10.sp, letterSpacing = 1.4.sp)
                                 Text(if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO INPUT STANDBY",
                                     color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
                             }
-                            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Column(Modifier.align(Alignment.BottomCenter).offset(y = reactorOffset).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                                 Spacer(Modifier.height(7.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
