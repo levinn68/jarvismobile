@@ -184,8 +184,18 @@ class MainActivity : ComponentActivity() {
                     val level = json.optString("level", "general").uppercase(Locale.ROOT)
                     val rounds = json.optInt("rounds", 1)
                     val answer = json.optString("answer", "JARVIS tidak menerima jawaban akhir.")
+                    val discussion = json.optJSONArray("discussion") ?: JSONArray()
+                    val debateText = (0 until discussion.length()).map { index ->
+                        val item = discussion.optJSONObject(index) ?: JSONObject()
+                        val agent = item.optString("agent", "AI").uppercase(Locale.ROOT)
+                        val round = item.optInt("round", 1)
+                        val message = item.optString("message", "").replace("\\n", " ").take(420)
+                        "PUTARAN $round · $agent\\n$message"
+                    }.joinToString("\\n\\n")
                     "AI COUNCIL · $level · ${names.size} PROVIDER · $rounds ROUND\\n" +
-                        "Peserta: " + names.joinToString(", ") + "\\n\\n" + answer
+                        "Peserta: " + names.joinToString(", ") + "\\n\\n" +
+                        "RINGKASAN DISKUSI\\n" + debateText + "\\n\\n" +
+                        "KESIMPULAN JARVIS\\n" + answer
                 }
             } catch (e: Exception) {
                 "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
