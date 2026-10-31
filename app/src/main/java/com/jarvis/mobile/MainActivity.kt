@@ -224,8 +224,10 @@ class MainActivity : ComponentActivity() {
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
                 val voices = tts?.voices.orEmpty()
-                val indoVoice = voices.firstOrNull { it.locale.toLanguageTag().equals("id-ID", true) }
-                if (indoVoice != null) tts?.voice = indoVoice else tts?.language = Locale("id", "ID")
+                val englishVoice = voices.firstOrNull {
+                    it.locale.toLanguageTag().equals("en-US", true) && !it.isNetworkConnectionRequired
+                } ?: voices.firstOrNull { it.locale.language.equals("en", true) }
+                if (englishVoice != null) tts?.voice = englishVoice else tts?.language = Locale.US
                 tts?.setSpeechRate(0.86f)
                 tts?.setPitch(0.78f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -435,8 +437,8 @@ class MainActivity : ComponentActivity() {
             speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "id-ID")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
