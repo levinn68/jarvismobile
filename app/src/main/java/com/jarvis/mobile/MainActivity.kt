@@ -950,27 +950,22 @@ private fun JarvisScreen(
     var splashMounted by remember { mutableStateOf(true) }
     var splashIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(90)
+        // Start the reveal on the very first composition frame; no artificial black pause.
         splashIntro = true
-        kotlinx.coroutines.delay(2250)
+        kotlinx.coroutines.delay(1850)
         showSplash = false
-        kotlinx.coroutines.delay(720)
+        kotlinx.coroutines.delay(520)
         splashMounted = false
     }
     val splashReveal by animateFloatAsState(
         targetValue = if (splashIntro) 1f else 0f,
-        animationSpec = tween(1450, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        animationSpec = tween(820, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
         label = "cinematicSplashReveal"
     )
     val splashFade by animateFloatAsState(
         targetValue = if (showSplash) 1f else 0f,
-        animationSpec = tween(680, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        animationSpec = tween(520, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
         label = "cinematicSplashFade"
-    )
-    val splashSweep by transition.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(1750, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart),
-        label = "splashLightSweep"
     )
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1507,31 +1502,21 @@ private fun JarvisScreen(
             if (splashMounted) {
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = splashFade }
                     .background(Color.Black), contentAlignment = Alignment.Center) {
-                    val logoScale = .78f + .22f * splashReveal
-                    Box(Modifier.size(300.dp).scale(logoScale).background(
+                    val logoScale = .94f + .06f * splashReveal
+                    Box(Modifier.size(286.dp).scale(1f + .012f * (breathe - 1f)).background(
                         Brush.radialGradient(
-                            listOf(Color(0x6651E9FF), Color(0x3028DDF8), Color(0x1028DDF8), Color.Transparent),
-                            radius = 430f
+                            listOf(Color(0x5546DDF4), Color(0x2428BFD8), Color(0x0D28BFD8), Color.Transparent),
+                            radius = 390f
                         ), CircleShape))
                     Image(
                         painter = painterResource(id = R.drawable.ic_jarvis),
                         contentDescription = "J.A.R.V.I.S. logo",
-                        modifier = Modifier.size(154.dp)
-                            .scale(logoScale * (0.985f + 0.015f * breathe))
+                        modifier = Modifier.size(148.dp)
+                            .scale(logoScale)
                             .graphicsLayer { alpha = splashReveal }
                     )
-                    // A narrow moving light beam gives the logo a cinematic studio-intro reveal.
-                    Box(
-                        Modifier.align(Alignment.Center)
-                            .offset(x = ((splashSweep - .5f) * 210f).dp)
-                            .width(42.dp).height(190.dp)
-                            .graphicsLayer { rotationZ = 18f; alpha = .18f * splashReveal }
-                            .background(Brush.horizontalGradient(listOf(
-                                Color.Transparent, Color(0xAA9AF6FF), Color.Transparent
-                            )))
-                    )
                     Column(
-                        Modifier.align(Alignment.Center).offset(y = 132.dp)
+                        Modifier.align(Alignment.Center).offset(y = (132f - 9f * splashReveal).dp)
                             .graphicsLayer { alpha = splashReveal },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
