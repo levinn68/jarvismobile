@@ -32,6 +32,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -77,6 +78,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -873,11 +875,22 @@ private fun JarvisScreen(
     var keyDraft by remember { mutableStateOf("") }
     var responseLanguage by remember { mutableStateOf(initialResponseLanguage) }
     val lines = remember { mutableStateListOf<Line>() }
-    var showSplash by remember { mutableStateOf(true) }
+    var showSplash by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(2100)
+        showSplash = true
+        kotlinx.coroutines.delay(2850)
         showSplash = false
     }
+    val splashReveal by animateFloatAsState(
+        targetValue = if (showSplash) 1f else 0f,
+        animationSpec = tween(1450, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "cinematicSplashReveal"
+    )
+    val splashSweep by transition.animateFloat(
+        0f, 1f,
+        infiniteRepeatable(tween(1750, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart),
+        label = "splashLightSweep"
+    )
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -1388,20 +1401,44 @@ private fun JarvisScreen(
             }
             if (showSplash) {
                 Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(250.dp).background(
-                        Brush.radialGradient(listOf(Color(0x4428DDF8), Color(0x1828DDF8), Color.Transparent)),
-                        CircleShape))
+                    val logoScale = .78f + .22f * splashReveal
+                    Box(Modifier.size(300.dp).scale(logoScale).background(
+                        Brush.radialGradient(
+                            listOf(Color(0x6651E9FF), Color(0x3028DDF8), Color(0x1028DDF8), Color.Transparent),
+                            radius = 430f
+                        ), CircleShape))
                     Image(
                         painter = painterResource(id = R.drawable.ic_jarvis),
                         contentDescription = "J.A.R.V.I.S. logo",
-                        modifier = Modifier.size(142.dp).scale(breathe)
+                        modifier = Modifier.size(154.dp)
+                            .scale(logoScale * (0.985f + 0.015f * breathe))
+                            .graphicsLayer { alpha = splashReveal }
                     )
-                    Text("J . A . R . V . I . S .", color = Color(0xFFEAFBFF),
-                        fontSize = 13.sp, letterSpacing = 4.sp,
-                        modifier = Modifier.align(Alignment.Center).offset(y = 112.dp))
-                    Box(Modifier.align(Alignment.Center).offset(y = 148.dp)
-                        .width(150.dp).height(1.dp)
-                        .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan, Color.Transparent))))
+                    // A narrow moving light beam gives the logo a cinematic studio-intro reveal.
+                    Box(
+                        Modifier.align(Alignment.Center)
+                            .offset(x = ((splashSweep - .5f) * 210f).dp)
+                            .width(42.dp).height(190.dp)
+                            .graphicsLayer { rotationZ = 18f; alpha = .18f * splashReveal }
+                            .background(Brush.horizontalGradient(listOf(
+                                Color.Transparent, Color(0xAA9AF6FF), Color.Transparent
+                            )))
+                    )
+                    Column(
+                        Modifier.align(Alignment.Center).offset(y = 132.dp)
+                            .graphicsLayer { alpha = splashReveal },
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("J.A.R.V.I.S.", color = Color(0xFFEAFBFF),
+                            fontSize = 17.sp, letterSpacing = 5.sp, fontWeight = FontWeight.Light)
+                        Spacer(Modifier.height(8.dp))
+                        Box(Modifier.width(164.dp).height(1.dp)
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan, Color.Transparent))))
+                        Spacer(Modifier.height(7.dp))
+                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM",
+                            color = Color(0xFF6CBAC8), fontSize = 7.sp, letterSpacing = 1.6.sp)
+                    }
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 1f - splashReveal)))
                 }
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
