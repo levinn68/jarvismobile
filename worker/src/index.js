@@ -112,10 +112,10 @@ async function previewImagesFromSources(sources) {
 async function commonsImagePreviews(prompt) {
   try {
     const query = prompt
-      .replace(/\\b(cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\\b/gi, " ")
-      .replace(/\\b\\d+(?:[.,]\\d+)?\\s*(?:rb|ribu|jt|juta|k|idr|rp|usd|dollar)?\\b/gi, " ")
-      .replace(/[^\\p{L}\\p{N}\\s-]/gu, " ")
-      .replace(/\\s+/g, " ").trim();
+      .replace(/\b(cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
+      .replace(/\b\d+(?:[.,]\d+)?\s*(?:rb|ribu|jt|juta|k|idr|rp|usd|dollar)?\b/gi, " ")
+      .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+      .replace(/\s+/g, " ").trim();
     if (!query) return [];
     const api = new URL("https://commons.wikimedia.org/w/api.php");
     api.search = new URLSearchParams({
