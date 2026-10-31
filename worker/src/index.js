@@ -114,7 +114,9 @@ async function commonsImagePreviews(prompt) {
     const query = prompt
       .replace(/\b(cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
       .replace(/\b\d+(?:[.,]\d+)?\s*(?:rb|ribu|jt|juta|k|idr|rp|usd|dollar)?\b/gi, " ")
-      .replace(/[^\p{L}\p{N}\s-]/gu, " ")
+      .replace(/\bhp\b/gi, "smartphone")
+      .replace(/\bponsel\b/gi, "smartphone")
+      .replace(/\bhandphone\b/gi, "smartphone")
       .replace(/\s+/g, " ").trim();
     if (!query) return [];
     const api = new URL("https://commons.wikimedia.org/w/api.php");
