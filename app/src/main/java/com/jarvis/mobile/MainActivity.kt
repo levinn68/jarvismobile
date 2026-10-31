@@ -38,6 +38,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -703,8 +704,8 @@ private fun JarvisScreen(
                 }
                 if (page == "VOICE") {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        val size = if (compact) 190.dp else 230.dp
-                        Canvas(Modifier.size(size + 74.dp).scale(breathe).rotate(spin * .35f)) {
+                        val size = if (compact) 170.dp else 205.dp
+                        Canvas(Modifier.size(size + 74.dp).scale(breathe).rotate(spin * .35f).clickable { onStartListening() }) {
                             val cx = this.size.width / 2f
                             val cy = this.size.height / 2f
                             val r = this.size.minDimension * .43f
@@ -761,14 +762,14 @@ private fun JarvisScreen(
                         Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
                             Spacer(Modifier.height(8.dp))
-                            Text("CLAP ONCE / TWICE  ·  OR SAY “JARVIS, OPEN”", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("TAP THE CORE  ·  OR SAY “JARVIS”", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
                         }
                     }
                     Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).border(1.dp, Color(0x445DEBFF), RoundedCornerShape(12.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("VOICE ASSISTANT", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(8.dp))
-                        Text(if (busy) "Neural core engaged · analysing" else "Awaiting activation phrase", color = Color(0xFFE2F5F8), fontSize = 14.sp)
-                        Text("JARVIS speaks only after activation.", color = TextMuted, fontSize = 10.sp)
+                        Text(if (busy) "PROCESSING REQUEST" else "VOICE INTERFACE STANDBY", color = Color(0xFFE2F5F8), fontSize = 14.sp)
+                        Text("Tap the reactor or say JARVIS to begin.", color = TextMuted, fontSize = 10.sp)
                     }
                     Spacer(Modifier.height(20.dp))
                 } else {
@@ -806,7 +807,7 @@ private fun JarvisScreen(
                         items(lines.size) { i ->
                             val line=lines[i]
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.fillMaxWidth(.88f).background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
+                                Column(Modifier.fillMaxWidth(if (line.user) .74f else .80f).background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(13.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
@@ -847,13 +848,6 @@ private fun JarvisScreen(
                                     Text(file.name, color=Color(0xFFD7F3F8), fontSize=9.sp, maxLines=1, modifier=Modifier.widthIn(max=115.dp))
                                     IconButton(onClick={ pendingAttachments.remove(file) }, modifier=Modifier.size(22.dp)) { Icon(Icons.Default.Close, "Hapus lampiran", tint=TextMuted, modifier=Modifier.size(12.dp)) }
                                 }
-                            }
-                        }
-                    }
-                    if (lines.isEmpty() && pendingAttachments.isEmpty()) {
-                        Row(Modifier.fillMaxWidth().padding(top=3.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                            listOf("Cari informasi", "Bandingkan produk", "Jelaskan foto").forEach { suggestion ->
-                                androidx.compose.material3.AssistChip(onClick={ command = when(suggestion) { "Cari informasi" -> "Carikan informasi terbaru tentang "; "Bandingkan produk" -> "Bandingkan "; else -> "Jelaskan " } ; inputFocus.requestFocus() }, label={ Text(suggestion, fontSize=9.sp) }, colors=AssistChipDefaults.assistChipColors(containerColor=Color(0xFF0B2632), labelColor=Color(0xFFBDEFFA)), border=BorderStroke(1.dp, Color(0x4452DFF2)))
                             }
                         }
                     }
