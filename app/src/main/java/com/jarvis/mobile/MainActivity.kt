@@ -757,6 +757,7 @@ private fun JarvisScreen(
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
     var settings by remember { mutableStateOf(false) }
+    var voiceArmed by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
     val revealScope = rememberCoroutineScope()
@@ -830,13 +831,25 @@ private fun JarvisScreen(
             if (wake.containsMatchIn(heard)) {
                 val request = heard.replaceFirst(wake, "").trim()
                 if (request.isBlank() || request.equals("open", true)) {
-                    statusText = "JARVIS ACTIVATED"
-                    onSpeak("Yes. I am listening. How may I assist?")
-                } else send(request, true)
+                    // Wake phrase arms the next utterance as the actual command.
+                    // Previously this branch only spoke "Yes, I'm listening" and
+                    // then discarded the following command because it lacked "Jarvis".
+                    voiceArmed = true
+                    statusText = "JARVIS ACTIVATED · LISTENING FOR COMMAND"
+                    onSpeak("I'm listening. Give me a command.")
+                } else {
+                    voiceArmed = false
+                    send(request, true)
+                }
+            } else if (voiceArmed) {
+                voiceArmed = false
+                send(heard, true)
             } else {
-                statusText = "WAKE WORD REQUIRED"
+                statusText = "SAY JARVIS TO ACTIVATE"
                 onStartListening()
             }
+        } else if (page != "VOICE" || !voiceListening) {
+            voiceArmed = false
         }
     }
     LaunchedEffect(page, voiceListening) {
