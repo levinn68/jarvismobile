@@ -58,11 +58,7 @@ function planFor(level) {
     return { agents: ["gemini", "deepseek"], reviewers: ["groq"], maxRounds: 2 };
   }
   return {
-    agents: [
-      "gemini", "deepseek", "openai", "groq", "openrouter",
-      "gemini", "deepseek", "openai", "groq", "openrouter",
-      "gemini", "deepseek", "openai", "groq", "openrouter",
-    ],
+    agents: ["gemini", "deepseek", "openai", "groq", "openrouter"],
     reviewers: ["deepseek", "openai"],
     maxRounds: 3,
   };
