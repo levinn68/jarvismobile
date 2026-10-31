@@ -268,6 +268,41 @@ export default {
       ]));
       return json({ ok: true, service: "jarvis-api", configured });
     }
+    if (request.method === "POST" && url.pathname === "/v1/tts") {
+      try {
+        if (!env.FISH_API_KEY) return json({ ok: false, error: "FISH_API_KEY is not configured on the Worker." }, 503);
+        const body = await request.json();
+        const text = String(body.text || "").trim();
+        if (!text) return json({ ok: false, error: "text is required" }, 400);
+        if (text.length > 5000) return json({ ok: false, error: "text is too long (max 5000 characters)" }, 413);
+        const fishResponse = await fetch("https://api.fish.audio/v1/tts", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${env.FISH_API_KEY}`,
+            "Content-Type": "application/json",
+            "model": env.FISH_MODEL || "s2.1-pro-free",
+          },
+          body: JSON.stringify({
+            text,
+            reference_id: env.FISH_VOICE_ID || "612b878b113047d9a770c069c8b4fdfe",
+            format: "mp3",
+            mp3_bitrate: 128,
+            normalize: true,
+            latency: "balanced",
+          }),
+        });
+        if (!fishResponse.ok) {
+          const detail = (await fishResponse.text()).slice(0, 500);
+          return json({ ok: false, error: `Fish Audio HTTP ${fishResponse.status}`, detail }, fishResponse.status);
+        }
+        return new Response(fishResponse.body, {
+          status: 200,
+          headers: { ...CORS, "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
+        });
+      } catch (error) {
+        return json({ ok: false, error: "Fish Audio TTS failed", detail: String(error.message || error).slice(0, 300) }, 502);
+      }
+    }
     if (request.method === "POST" && url.pathname === "/v1/chat") {
       try {
         const body = await request.json();
