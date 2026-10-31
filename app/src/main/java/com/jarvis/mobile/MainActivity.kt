@@ -727,6 +727,7 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
     val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
     val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
     val clean = markdown.replace(Regex("(?m)^#{1,6}\\s*"), "")
+        .replace(Regex("<(https?://[^>]+)>"), "$1")
     val annotated = buildAnnotatedString {
         var cursor = 0
         val matches = (linkPattern.findAll(clean).map { it to "link" } +
@@ -752,21 +753,42 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 }
 
 @Composable
-private fun RemoteMessageImage(url: String, alt: String) {
+private fun RemoteMessageImage(url: String, alt: String, imageHeight: androidx.compose.ui.unit.Dp = 188.dp) {
+    var failed by remember(url) { mutableStateOf(false) }
     val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
                 val connection = URL(url).openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 9000
-                connection.readTimeout = 12000
-                connection.setRequestProperty("User-Agent", "JARVIS-Android")
-                try { connection.inputStream.use { BitmapFactory.decodeStream(it) } }
-                finally { connection.disconnect() }
-            }.getOrNull()
+                connection.instanceFollowRedirects = true
+                connection.connectTimeout = 12000
+                connection.readTimeout = 16000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36")
+                connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+                try {
+                    connection.connect()
+                    if (connection.responseCode !in 200..299) throw java.io.IOException("Image request failed")
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                        ?: throw java.io.IOException("Unsupported image format")
+                } finally { connection.disconnect() }
+            }.onFailure { failed = true }.getOrNull()
         }
     }
-    if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = alt.ifBlank { "Visual result" },
-        modifier = Modifier.fillMaxWidth().height(188.dp), contentScale = ContentScale.Crop)
+    if (bitmap != null) {
+        Image(bitmap!!.asImageBitmap(), contentDescription = alt.ifBlank { "Visual result" },
+            modifier = Modifier.fillMaxWidth().height(imageHeight), contentScale = ContentScale.Crop)
+    } else {
+        Box(
+            Modifier.fillMaxWidth().height(imageHeight)
+                .background(Color(0xFF0B202B), RoundedCornerShape(8.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Icon(Icons.Default.ImageNotSupported, null, tint = Color(0xFF5A8C99), modifier = Modifier.size(22.dp))
+                Text(if (failed) "GAMBAR TIDAK DAPAT DIMUAT" else "MEMUAT GAMBAR…",
+                    color = Color(0xFF6F9EAA), fontSize = 7.sp, letterSpacing = .7.sp)
+            }
+        }
+    }
 }
 
 @Composable
@@ -861,16 +883,19 @@ private fun VoiceVisualResults(markdown: String) {
         ) {
             images.forEach { image ->
                 Column(
-                    Modifier.width(154.dp)
-                        .background(Color(0xFF081923), RoundedCornerShape(12.dp))
-                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(12.dp))
-                        .padding(6.dp)
+                    Modifier.width(172.dp)
+                        .background(Color(0xFF071923), RoundedCornerShape(13.dp))
+                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(13.dp))
+                        .padding(7.dp)
                 ) {
-                    RemoteMessageImage(image.url, image.alt)
+                    RemoteMessageImage(image.url, image.alt, 112.dp)
                     if (image.alt.isNotBlank()) {
-                        Text(image.alt, color = Color(0xFFD8F2F7), fontSize = 9.sp,
-                            maxLines = 2, modifier = Modifier.padding(top = 5.dp))
+                        Text(image.alt.replace(Regex("\\s+"), " ").trim(),
+                            color = Color(0xFFE1F6FA), fontSize = 10.sp, lineHeight = 14.sp,
+                            maxLines = 2, modifier = Modifier.padding(top = 7.dp))
                     }
+                    Spacer(Modifier.height(5.dp))
+                    Text("VISUAL RESULT", color = Cyan, fontSize = 7.sp, letterSpacing = 1.sp)
                 }
             }
         }
