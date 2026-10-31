@@ -972,6 +972,11 @@ private fun JarvisScreen(
         animationSpec = tween(520, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
         label = "cinematicSplashFade"
     )
+    val splashTextReveal by animateFloatAsState(
+        targetValue = if (splashTextIntro) 1f else 0f,
+        animationSpec = tween(620, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
+        label = "splashWordmarkReveal"
+    )
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -1510,7 +1515,7 @@ private fun JarvisScreen(
                     )
                     Column(
                         Modifier.align(Alignment.Center).offset(y = 59.dp)
-                            .graphicsLayer { alpha = ((splashTextIntro).let { if (it) 1f else 0f }) },
+                            .graphicsLayer { alpha = splashTextReveal },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text("J.A.R.V.I.S.", color = Color(0xFFEAFBFF),
