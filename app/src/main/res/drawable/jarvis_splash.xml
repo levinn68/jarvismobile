@@ -1,4 +1,8 @@
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="#02080D" />
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#02080D" />
+        </shape>
+    </item>
     <item android:width="230dp" android:height="230dp" android:gravity="center" android:drawable="@drawable/ic_jarvis" />
 </layer-list>
