@@ -916,7 +916,17 @@ private fun JarvisScreen(
                                         }
                                     }
                                     Spacer(Modifier.height(7.dp))
-                                    RichMessageText(line.text)
+                                    var expandedMessage by remember(line.text) { mutableStateOf(false) }
+                                    val shouldCollapse = !line.user && line.text.length > 900
+                                    val visibleMessage = if (shouldCollapse && !expandedMessage) {
+                                        line.text.take(900).substringBeforeLast(" ") + "…"
+                                    } else line.text
+                                    RichMessageText(visibleMessage)
+                                    if (shouldCollapse) {
+                                        TextButton(onClick = { expandedMessage = !expandedMessage }, contentPadding = PaddingValues(0.dp)) {
+                                            Text(if (expandedMessage) "TUTUP DETAIL" else "LIHAT DETAIL", color = Cyan, fontSize = 9.sp)
+                                        }
+                                    }
                                     line.attachments.forEach { file ->
                                         Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
                                             Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
