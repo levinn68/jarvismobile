@@ -532,14 +532,6 @@ private fun JarvisScreen(
         }
     }
     LaunchedEffect(Unit) { onStartListening() }
-    LaunchedEffect(searchQuery, searchVisible) {
-        if (searchVisible && searchQuery.isNotBlank()) {
-            searchLoading = true
-            kotlinx.coroutines.delay(1400)
-            searchLoading = false
-            statusLabel = "RESULTS READY"
-        }
-    }
     LaunchedEffect(messages.size, searchLoading) {
         if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
     }
