@@ -100,6 +100,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -758,7 +759,7 @@ private fun RemoteMessageImage(url: String, alt: String) {
         }
     }
     if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = alt.ifBlank { "Visual result" },
-        modifier = Modifier.fillMaxWidth().heightIn(max = 230.dp))
+        modifier = Modifier.fillMaxWidth().height(188.dp), contentScale = ContentScale.Crop)
 }
 
 @Composable
@@ -780,20 +781,28 @@ private fun RichMessageText(markdown: String) {
                     }
                 }
                 is MarkdownBlock.Table -> {
-                    val columnCount = block.rows.maxOfOrNull { it.size } ?: 0
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        Column(Modifier.border(1.dp, Color(0x5549B8CB), RoundedCornerShape(7.dp))) {
-                            block.rows.forEachIndexed { rowIndex, row ->
-                                Row(Modifier.height(IntrinsicSize.Min)) {
-                                    repeat(columnCount) { columnIndex ->
-                                        val longest = block.rows.maxOfOrNull { it.getOrNull(columnIndex)?.length ?: 0 } ?: 8
-                                        val cellWidth = (longest * 7 + 22).coerceIn(88, 180).dp
-                                        Box(Modifier.width(cellWidth).heightIn(min = 36.dp)
-                                            .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
-                                            .border(.5.dp, Color(0x5549B8CB)).padding(horizontal = 8.dp, vertical = 6.dp),
-                                            contentAlignment = Alignment.CenterStart) {
-                                            Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
-                                                fontSize = 11.sp, lineHeight = 15.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
+                    val headers = block.rows.firstOrNull().orEmpty()
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        block.rows.drop(1).forEach { row ->
+                            Column(
+                                Modifier.fillMaxWidth()
+                                    .background(Color(0xFF091923), RoundedCornerShape(10.dp))
+                                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 11.dp, vertical = 9.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                row.forEachIndexed { index, value ->
+                                    if (value.isNotBlank()) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                            Text(headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
+                                                color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp,
+                                                fontWeight = FontWeight.Bold)
+                                            Text(value, color = Color(0xFFE2F5F8), fontSize = 12.sp,
+                                                lineHeight = 17.sp)
+                                        }
+                                        if (index != row.lastIndex) {
+                                            Box(Modifier.fillMaxWidth().height(.5.dp)
+                                                .background(Color(0x3349B8CB)))
                                         }
                                     }
                                 }
@@ -821,6 +830,32 @@ private fun SourceLogo(url: String) {
         Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
             if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "Open source", modifier = Modifier.size(18.dp))
             else Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(17.dp))
+        }
+    }
+}
+
+@Composable
+private fun VoiceVisualResults(markdown: String) {
+    val images = remember(markdown) {
+        parseMarkdownBlocks(markdown).filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
+    }
+    if (images.isEmpty()) {
+        Text("Hasil sudah siap. Buka mode Chat untuk melihat rincian.",
+            color = TextMuted, fontSize = 10.sp, letterSpacing = .3.sp)
+    } else {
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            images.forEach { image ->
+                Column(Modifier.fillMaxWidth()
+                    .background(Color(0xFF081923), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(12.dp))
+                    .padding(7.dp)) {
+                    RemoteMessageImage(image.url, image.alt)
+                    if (image.alt.isNotBlank()) {
+                        Text(image.alt, color = Color(0xFFD8F2F7), fontSize = 10.sp,
+                            modifier = Modifier.padding(top = 5.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -897,14 +932,25 @@ private fun JarvisScreen(
     val lines = remember { mutableStateListOf<Line>() }
     val transition = rememberInfiniteTransition(label = "reactor")
     var showSplash by remember { mutableStateOf(true) }
+    var splashMounted by remember { mutableStateOf(true) }
+    var splashIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(2850)
+        kotlinx.coroutines.delay(90)
+        splashIntro = true
+        kotlinx.coroutines.delay(2250)
         showSplash = false
+        kotlinx.coroutines.delay(720)
+        splashMounted = false
     }
     val splashReveal by animateFloatAsState(
-        targetValue = if (showSplash) 1f else 0f,
+        targetValue = if (splashIntro) 1f else 0f,
         animationSpec = tween(1450, easing = androidx.compose.animation.core.FastOutSlowInEasing),
         label = "cinematicSplashReveal"
+    )
+    val splashFade by animateFloatAsState(
+        targetValue = if (showSplash) 1f else 0f,
+        animationSpec = tween(680, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "cinematicSplashFade"
     )
     val splashSweep by transition.animateFloat(
         0f, 1f,
@@ -977,7 +1023,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 responseLine.revealed.value = true
             }
-            if (voice) onSpeak(spokenSummary(answer))
+            if (voice) onSpeak(voiceCompletionMessage(answer, responseLanguage))
         }
     }
 
@@ -1194,8 +1240,10 @@ private fun JarvisScreen(
                                         Text(if (line.user) "YOU / VOICE" else "J.A.R.V.I.S. / RESPONSE",
                                             color = if (line.user) TextMuted else Cyan, fontSize = 8.sp, letterSpacing = 1.4.sp)
                                         Spacer(Modifier.height(4.dp))
-                                        if (line.revealed.value) RichMessageText(line.displayText.value)
-                                        else Text(processStage, color = TextMuted, fontSize = 10.sp)
+                                        if (line.revealed.value) {
+                                            if (line.user) Text(line.text, color = Color(0xFFD9EDF2), fontSize = 11.sp)
+                                            else VoiceVisualResults(line.displayText.value)
+                                        } else Text(processStage, color = TextMuted, fontSize = 10.sp)
                                     }
                                 }
                             }
@@ -1431,8 +1479,9 @@ private fun JarvisScreen(
                     }
                 if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
-            if (showSplash) {
-                Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            if (splashMounted) {
+                Box(Modifier.fillMaxSize().graphicsLayer { alpha = splashFade }
+                    .background(Color.Black), contentAlignment = Alignment.Center) {
                     val logoScale = .78f + .22f * splashReveal
                     Box(Modifier.size(300.dp).scale(logoScale).background(
                         Brush.radialGradient(
