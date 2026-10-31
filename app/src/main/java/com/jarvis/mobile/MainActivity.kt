@@ -173,35 +173,9 @@ class MainActivity : ComponentActivity() {
                 val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok", false)) {
-                    val diagnosticArray = json.optJSONArray("diagnostics")
-                    val diagnosticText = if (diagnosticArray != null) {
-                        (0 until diagnosticArray.length()).map { index ->
-                            val item = diagnosticArray.optJSONObject(index) ?: JSONObject()
-                            val provider = item.optString("provider", "AI").uppercase(Locale.ROOT)
-                            val detail = item.optString("detail", "Tidak ada detail")
-                            "$provider: $detail"
-                        }.joinToString("\n")
-                    } else ""
-                    json.optString("error").ifBlank { "JARVIS API error ($code)." } +
-                        if (diagnosticText.isNotBlank()) "\n\nDIAGNOSTIK PROVIDER\n$diagnosticText" else ""
+                    json.optString("error").ifBlank { "JARVIS API error ($code)." } + " Periksa provider AI dan koneksi backend."
                 } else {
-                    val participants = json.optJSONArray("participants") ?: JSONArray()
-                    val names = (0 until participants.length()).map { participants.optString(it).uppercase(Locale.ROOT) }
-                    val level = json.optString("level", "general").uppercase(Locale.ROOT)
-                    val rounds = json.optInt("rounds", 1)
-                    val answer = json.optString("answer", "JARVIS tidak menerima jawaban akhir.")
-                    val discussion = json.optJSONArray("discussion") ?: JSONArray()
-                    val debateText = (0 until discussion.length()).map { index ->
-                        val item = discussion.optJSONObject(index) ?: JSONObject()
-                        val agent = item.optString("agent", "AI").uppercase(Locale.ROOT)
-                        val round = item.optInt("round", 1)
-                        val message = item.optString("message", "").replace("\n", " ").take(420)
-                        "PUTARAN $round · $agent\n$message"
-                    }.joinToString("\n\n")
-                    "AI COUNCIL · $level · ${names.size} PROVIDER · $rounds ROUND\n" +
-                        "Peserta: " + names.joinToString(", ") + "\n\n" +
-                        "RINGKASAN DISKUSI\n" + debateText + "\n\n" +
-                        "KESIMPULAN JARVIS\n" + answer
+                    json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
                 }
             } catch (e: Exception) {
                 "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
@@ -440,7 +414,7 @@ private fun JarvisScreen(
     onInstalledApps: () -> List<String>
 ) {
     data class Line(val user: Boolean, val text: String)
-    var page by remember { mutableStateOf("COMMAND") }
+    var page by remember { mutableStateOf("VOICE") }
     var command by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
@@ -567,11 +541,13 @@ private fun JarvisScreen(
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=8.dp), verticalArrangement=Arrangement.spacedBy(9.dp)) {
                         items(lines.size) { i ->
                             val line=lines[i]
-                            Column(Modifier.fillMaxWidth().background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(10.dp))
-                                .border(1.dp, if(line.user) Color(0x6655CFE8) else Color(0x4449B8CB), RoundedCornerShape(10.dp)).padding(13.dp)) {
-                                Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / FINAL RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.3.sp, fontWeight=FontWeight.Bold)
-                                Spacer(Modifier.height(7.dp))
-                                Text(line.text, color=Color(0xFFE2F5F8), fontSize=14.sp, lineHeight=21.sp)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
+                                Column(Modifier.fillMaxWidth(.88f).background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
+                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(13.dp)) {
+                                    Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / FINAL RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.3.sp, fontWeight=FontWeight.Bold)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text(line.text, color=Color(0xFFE2F5F8), fontSize=14.sp, lineHeight=21.sp)
+                                }
                             }
                         }
                         if(busy) item {
