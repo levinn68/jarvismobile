@@ -43,7 +43,7 @@ const json = (data, status = 200) =>
 function complexityOf(prompt) {
   const q = prompt.toLowerCase();
   const complexTerms = /(analisis mendalam|bandingkan secara detail|arsitektur|debugging|debug|strategi lengkap|riset mendalam|buktikan|evaluasi menyeluruh|multi.?step|kompleks|complex|in.?depth|comprehensive|step by step|source code|kode program)/i;
-  const mediumTerms = /(jelaskan|mengapa|kenapa|bagaimana|perbedaan|bandingkan|analisis|informasi|sejarah|penyebab|dampak|kelebihan|kekurangan|explain|compare|analyze|information)/i;
+  const mediumTerms = /(jelaskan|mengapa|kenapa|bagaimana|perbedaan|bandingkan|analisis|informasi|sejarah|penyebab|dampak|kelebihan|kekurangan|explain|compare|analyze|information|cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah)/i;
   const words = q.trim().split(/\s+/).length;
   if (complexTerms.test(q) || words > 75) return "complex";
   if (mediumTerms.test(q) || words > 22) return "medium";
@@ -79,14 +79,26 @@ async function callGemini(env, prompt, system, keyName) {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.55, maxOutputTokens: 1200 },
+        generationConfig: { temperature: 0.45, maxOutputTokens: 1600 },
+        ...( /(cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah)/i.test(prompt)
+          ? { tools: [{ google_search: {} }] }
+          : {} ),
       }),
     },
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${data.error?.message || "Gemini request failed"}`);
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
+  let text = data.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("").trim();
   if (!text) throw new Error("Gemini returned an empty response");
+  const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  const sources = chunks
+    .map((chunk) => chunk.web)
+    .filter((web) => web?.uri && web?.title)
+    .filter((web, index, all) => all.findIndex((item) => item.uri === web.uri) === index)
+    .slice(0, 6);
+  if (sources.length) {
+    text += "\\n\\nSumber yang bisa dibuka:\\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\\n");
+  }
   return text;
 }
 
