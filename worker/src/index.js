@@ -290,13 +290,14 @@ async function handleChat(body, env) {
   }
   // Keep verified preview images from the grounded search results even if the
   // final synthesis model omits visual Markdown while summarizing.
+  const imagePattern = new RegExp("!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)", "g");
   const imageMarkdown = discussion.flatMap((item) =>
-    [...String(item.message || "").matchAll(/!\[([^\]]*)\]\((https?:\/\/[^ )]+)\)/g)]
-      .map((match) => match[0])
+    [...String(item.message || "").matchAll(imagePattern)].map((match) => match[0])
   );
   const uniqueImages = [...new Set(imageMarkdown)].slice(0, 3);
+  const imageUrlPattern = new RegExp("\\((https?://[^ )]+)\\)");
   for (const image of uniqueImages) {
-    const imageUrl = image.match(/\((https?:\/\/[^ )]+)\)/)?.[1];
+    const imageUrl = image.match(imageUrlPattern)?.[1];
     if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\n\n" + image;
   }
 
