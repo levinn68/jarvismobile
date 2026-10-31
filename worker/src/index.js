@@ -80,7 +80,7 @@ async function callGemini(env, prompt, system, keyName) {
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { temperature: 0.45, maxOutputTokens: 1600 },
-        ...( /(cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah)/i.test(prompt)
+        ...( /(cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah|jelaskan|apa itu|informasi|sejarah|lokasi|berita|terbaru|cuaca|how to|what is|explain|history|latest|news|where is)/i.test(prompt)
           ? { tools: [{ google_search: {} }] }
           : {} ),
       }),
