@@ -148,8 +148,8 @@ class MainActivity : ComponentActivity() {
                     if (voiceMode) startListening() else recognizer?.cancel()
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
-                onSearch = { _ -> voiceStatus.value = "SEARCHING THE WEB" },
-                geminiConfigured = { !geminiKey.isBlank() },
+                onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
+                geminiConfigured = { true },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
                 onOpenApp = { q -> openRequestedApp(q) },
@@ -160,41 +160,39 @@ class MainActivity : ComponentActivity() {
 
 
     private fun askGemini(prompt: String, callback: (String) -> Unit) {
-        val key = geminiKey
-        if (key.isBlank()) {
-            callback("Gemini belum dikonfigurasi. Buka Settings (ikon gear), lalu masukkan Gemini API key baru.")
-            return
-        }
         Thread {
             var connection: HttpURLConnection? = null
-            val answer = try {
-                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + java.net.URLEncoder.encode(key, "UTF-8"))
+            val result = try {
+                val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
                 connection = endpoint.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 30000
+                connection.connectTimeout = 20000
+                connection.readTimeout = 180000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val body = JSONObject().put("contents", JSONArray().put(
-                    JSONObject().put("role", "user").put("parts", JSONArray().put(JSONObject().put("text", prompt)))
-                )).put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", "You are JARVIS, a concise, helpful personal AI assistant. Reply in the same language as the user. Do not claim to perform actions you cannot perform."))))
+                val body = JSONObject().put("message", prompt)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                val text = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
-                if (code !in 200..299) {
-                    val detail = try { JSONObject(text).optJSONObject("error")?.optString("message").orEmpty() } catch (_: Exception) { "" }
-                    "Gemini API error ($code): " + if (detail.isNotBlank()) detail else "Periksa API key, kuota, dan akses model."
+                val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                val json = JSONObject(raw)
+                if (code !in 200..299 || !json.optBoolean("ok", false)) {
+                    json.optString("error").ifBlank { "JARVIS API error ($code). Periksa konfigurasi Worker dan kuota AI." }
                 } else {
-                    val json = JSONObject(text)
-                    json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")
-                        ?.optJSONArray("parts")?.optJSONObject(0)?.optString("text")
-                        ?.takeIf { it.isNotBlank() } ?: "Gemini tidak mengembalikan jawaban. Coba lagi."
+                    val participants = json.optJSONArray("participants") ?: JSONArray()
+                    val names = (0 until participants.length()).map { participants.optString(it).uppercase(Locale.ROOT) }
+                    val level = json.optString("level", "general").uppercase(Locale.ROOT)
+                    val rounds = json.optInt("rounds", 1)
+                    val answer = json.optString("answer", "JARVIS tidak menerima jawaban akhir.")
+                    "AI COUNCIL · $level · ${names.size} PROVIDER · $rounds ROUND\\n" +
+                        "Peserta: " + names.joinToString(", ") + "\\n\\n" + answer
                 }
             } catch (e: Exception) {
-                "Gagal menghubungi Gemini: periksa koneksi internet lalu coba lagi."
-            } finally { connection?.disconnect() }
-            handler.post { callback(answer) }
+                "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
+            } finally {
+                connection?.disconnect()
+            }
+            handler.post { callback(result) }
         }.start()
     }
 
@@ -521,7 +519,7 @@ private fun JarvisScreen(
                 messages.add(ChatLine(false, answer))
                 geminiBusy = false
                 searchLoading = false
-                statusLabel = "GEMINI RESPONSE READY"
+                statusLabel = "AI COUNCIL RESPONSE READY"
                 if (speakResponse) onSpeak(answer)
             }
         }
@@ -685,7 +683,7 @@ private fun JarvisScreen(
                                     Spacer(Modifier.width(10.dp))
                                     Column {
                                         Text("J.A.R.V.I.S. IS THINKING", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                                        Text("Gemini is generating a response…", color = TextMuted, fontSize = 11.sp)
+                                        Text("AI Council is discussing your request…", color = TextMuted, fontSize = 11.sp)
                                     }
                                 }
                                 Spacer(Modifier.height(12.dp))
@@ -711,7 +709,7 @@ private fun JarvisScreen(
                                     }
                                 }
                                 Spacer(Modifier.height(7.dp))
-                                Text("PROCESSING REQUEST · $searchQuery", color = TextMuted, fontSize = 8.sp, maxLines = 2, letterSpacing = 0.6.sp)
+                                Text("AI COUNCIL · $searchQuery", color = TextMuted, fontSize = 8.sp, maxLines = 2, letterSpacing = 0.6.sp)
                             }
                         }
                     }
@@ -754,7 +752,7 @@ private fun JarvisScreen(
                 title = { Text("JARVIS AI SETTINGS", color = Color.White, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(if (geminiConfigured()) "API key tersimpan di penyimpanan privat aplikasi." else "Masukkan Gemini API key baru dari Google AI Studio.", color = TextMuted, fontSize = 12.sp)
+                        Text("AI Council terhubung ke Cloudflare Worker. API key provider disimpan sebagai Secret di backend, bukan di APK.", color = TextMuted, fontSize = 12.sp)
                         OutlinedTextField(
                             value = apiKeyDraft,
                             onValueChange = { apiKeyDraft = it },
@@ -769,7 +767,7 @@ private fun JarvisScreen(
                                 focusedLabelColor = Cyan, unfocusedLabelColor = TextMuted
                             )
                         )
-                        Text("Jangan gunakan key yang sudah dibagikan. Penyimpanan lokal lebih praktis, tetapi key dalam aplikasi tetap bisa diekstrak oleh pengguna teknis.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("Kolom ini hanya digunakan untuk fitur suara Gemini TTS. AI Council tidak menggunakan key ini.", color = TextMuted, fontSize = 10.sp, lineHeight = 15.sp)
                     }
                 },
                 confirmButton = {
