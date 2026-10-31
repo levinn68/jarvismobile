@@ -241,6 +241,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
     private var voiceLoudnessEnhancer: LoudnessEnhancer? = null
+    @Volatile private var queuedSpeechText: String? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
     private var voiceModeEnabled = true
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
@@ -259,11 +260,19 @@ class MainActivity : ComponentActivity() {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) {
-                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 550)
+                        if (!geminiSpeechInProgress) {
+                            val next = queuedSpeechText.also { queuedSpeechText = null }
+                            if (next != null) handler.post { speak(next) }
+                            else handler.postDelayed({ startListening() }, 550)
+                        }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 700)
+                        if (!geminiSpeechInProgress) {
+                            val next = queuedSpeechText.also { queuedSpeechText = null }
+                            if (next != null) handler.post { speak(next) }
+                            else handler.postDelayed({ startListening() }, 700)
+                        }
                     }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
@@ -274,7 +283,10 @@ class MainActivity : ComponentActivity() {
             recognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING · SPEAK NOW" }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "HEARING YOUR VOICE" }
-                override fun onRmsChanged(rmsdB: Float) { if (voiceModeEnabled) clapDetector.onRms(rmsdB) }
+                override fun onRmsChanged(rmsdB: Float) {
+                // Do not treat ordinary speech peaks as a clap wake trigger.
+                // Voice sessions are activated only by the spoken "Jarvis, open" phrase.
+            }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
@@ -375,6 +387,10 @@ class MainActivity : ComponentActivity() {
 
     private fun speak(text: String) {
         if (text.isBlank()) return
+        if (geminiSpeechInProgress) {
+            queuedSpeechText = text
+            return
+        }
         geminiSpeechInProgress = true
         clapDetector.reset()
         tts?.stop()
@@ -429,7 +445,9 @@ class MainActivity : ComponentActivity() {
                                 voiceLoudnessEnhancer?.release()
                                 voiceLoudnessEnhancer = null
                                 geminiSpeechInProgress = false
-                                handler.postDelayed({ startListening() }, 450)
+                                val next = queuedSpeechText.also { queuedSpeechText = null }
+                                if (next != null) handler.post { speak(next) }
+                                else handler.postDelayed({ startListening() }, 450)
                             }
                             setOnErrorListener { player, _, _ ->
                                 player.release()
@@ -438,7 +456,9 @@ class MainActivity : ComponentActivity() {
                                 voiceLoudnessEnhancer = null
                                 geminiSpeechInProgress = false
                                 voiceStatus.value = "FISH AUDIO PLAYBACK ERROR"
-                                handler.postDelayed({ startListening() }, 900)
+                                val next = queuedSpeechText.also { queuedSpeechText = null }
+                                if (next != null) handler.post { speak(next) }
+                                else handler.postDelayed({ startListening() }, 900)
                                 true
                             }
                             prepareAsync()
@@ -876,9 +896,8 @@ private fun JarvisScreen(
     var responseLanguage by remember { mutableStateOf(initialResponseLanguage) }
     val lines = remember { mutableStateListOf<Line>() }
     val transition = rememberInfiniteTransition(label = "reactor")
-    var showSplash by remember { mutableStateOf(false) }
+    var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
-        showSplash = true
         kotlinx.coroutines.delay(2850)
         showSplash = false
     }
@@ -930,12 +949,20 @@ private fun JarvisScreen(
         if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
             lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
-            if (voice) onSpeak(spokenSummary(answer))
+            if (voice) onSpeak(voiceCompletionMessage(answer, responseLanguage))
             return
         }
         busy = true
         statusText = "ANALYSING REQUEST"
+        processStage = "Menyiapkan pencarian"
         onSearch(q)
+        if (voice) {
+            val searchAck = if (responseLanguage == "en")
+                "Certainly, Sir. I'm working on it."
+            else
+                "Baik, Sir. Saya sedang mencarikannya."
+            onSpeak(searchAck)
+        }
         cancelCurrentRequest = onAskGemini(requestText, responseLanguage) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
@@ -972,19 +999,24 @@ private fun JarvisScreen(
                 lines.add(Line(false, "Baik, Sir. Saya berhenti mendengarkan."))
                 voiceListening = false
                 onSpeak("Baik, Sir. Sampai Anda memanggil saya kembali.")
-            } else if (hasWakeWord && (normalizedRequest.isBlank() || normalizedRequest == "open" || normalizedRequest == "aktif")) {
+            } else if (hasWakeWord && (normalizedRequest.isBlank() || normalizedRequest == "open" || normalizedRequest == "aktif" || normalizedRequest == "mulai")) {
                 voiceArmed = true
                 statusText = "CONTINUOUS LISTENING · ACTIVE"
                 lines.add(Line(true, heard))
                 lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
                 onSpeak("J.A.R.V.I.S. aktif, Sir. Saya akan terus mendengarkan sampai Anda mengatakan Jarvis, close.")
             } else if (hasWakeWord) {
-                // "Jarvis, open YouTube" both activates the session and executes the command.
+                // A wake phrase may prefix the first command; remove it and execute only the remainder.
                 voiceArmed = true
                 statusText = "CONTINUOUS LISTENING · ACTIVE"
-                send(request, true)
+                if (normalizedRequest.isNotBlank()) send(request, true)
+                else {
+                    lines.add(Line(true, heard))
+                    lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
+                    onSpeak("J.A.R.V.I.S. aktif, Sir. Saya siap membantu.")
+                }
             } else if (voiceArmed) {
-                // Once activated, process every utterance and keep the session armed.
+                // The wake phrase is not repeated: every subsequent utterance is a normal command.
                 send(heard, true)
                 voiceArmed = true
             } else {
