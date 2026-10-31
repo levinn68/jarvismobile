@@ -433,292 +433,173 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun JarvisScreen(
-    recognizedText: String,
-    status: String,
-    onConsumed: () -> Unit,
-    onSpeak: (String) -> Unit,
-    onStartListening: () -> Unit,
-    onModeChanged: (Boolean) -> Unit,
-    onSearch: (String) -> Unit,
-    geminiConfigured: () -> Boolean,
-    onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (String) -> Unit) -> Unit,
-    onOpenApp: (String) -> Boolean,
+    recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
+    onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
+    geminiConfigured: () -> Boolean, onSaveGeminiKey: (String) -> Unit,
+    onAskGemini: (String, (String) -> Unit) -> Unit, onOpenApp: (String) -> Boolean,
     onInstalledApps: () -> List<String>
 ) {
-    data class ChatLine(val isUser: Boolean, val text: String)
-    var typedCommand by remember { mutableStateOf("") }
-    var voiceMode by remember { mutableStateOf(true) }
-    var searchQuery by remember { mutableStateOf("") }
-    var searchLoading by remember { mutableStateOf(false) }
-    var statusLabel by remember { mutableStateOf("SYSTEM STANDBY") }
-    var settingsOpen by remember { mutableStateOf(false) }
-    var apiKeyDraft by remember { mutableStateOf("") }
-    var geminiBusy by remember { mutableStateOf(false) }
-    val messages = remember {
-        mutableStateListOf(ChatLine(false, "Good day. JARVIS systems are online. Say Jarvis, open when you need me."))
-    }
-    val pulse = rememberInfiniteTransition(label = "jarvisCore")
-    val orbPulse by pulse.animateFloat(0.96f, 1.04f, infiniteRepeatable(tween(1700), RepeatMode.Reverse), label = "orbPulse")
-    val ringRotation by pulse.animateFloat(0f, 360f, infiniteRepeatable(tween(14000), RepeatMode.Restart), label = "ringRotation")
-    val ringReverse by pulse.animateFloat(360f, 0f, infiniteRepeatable(tween(19000), RepeatMode.Restart), label = "ringReverse")
+    data class Line(val user: Boolean, val text: String)
+    var page by remember { mutableStateOf("COMMAND") }
+    var command by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
+    var settings by remember { mutableStateOf(false) }
+    var keyDraft by remember { mutableStateOf("") }
+    val lines = remember { mutableStateListOf<Line>() }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val transition = rememberInfiniteTransition(label = "reactor")
+    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
+    val breathe by transition.animateFloat(.96f, 1.04f, infiniteRepeatable(tween(1500), RepeatMode.Reverse), label = "breathe")
 
-    fun execute(raw: String, speakResponse: Boolean = true) {
+    fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
-        if (q.isBlank()) return
-        typedCommand = ""
-        messages.add(ChatLine(true, q))
-        val normalized = q.lowercase(Locale.ROOT)
-            .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
-            .replace(Regex("\\s+"), " ").trim()
-        val hasOpenVerb = Regex("\\b(buka|bukakan|jalankan|mainkan|main|open|launch|run|start)\\b").containsMatchIn(normalized)
-        val explicitSearch = Regex("\\b(cari|search|google|harga|bandingkan|compare|find|berapa|what|why|how|where|siapa|kapan|kenapa|mengapa|apa)\\b").containsMatchIn(normalized)
-        val standaloneAppLike = normalized.split(" ").size <= 3 && !explicitSearch &&
-            !Regex("\\b(halo|hai|hey|hi|pagi|siang|malam|tes|test)\\b").containsMatchIn(normalized)
-        val wantsAppList = Regex("\\b(daftar|list|lihat|tampilkan)\\b").containsMatchIn(normalized) &&
-            Regex("\\b(aplikasi|app|apps)\\b").containsMatchIn(normalized)
-        if (wantsAppList) {
-            val apps = onInstalledApps()
-            val response = if (apps.isEmpty()) "I cannot read the installed app list on this device." else
-                "Applications detected (" + apps.size + "):\n" + apps.take(70).joinToString(", ") +
-                    if (apps.size > 70) "\nAnd " + (apps.size - 70) + " more." else ""
-            messages.add(ChatLine(false, response)); statusLabel = "DEVICE SCAN COMPLETE"
-            if (speakResponse) onSpeak(response)
+        if (q.isEmpty() || busy) return
+        command = ""
+        lines.add(Line(true, q))
+        val norm = q.lowercase(Locale.ROOT)
+        val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
+        val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
+        val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent
+        if ((openIntent || simpleApp) && onOpenApp(q)) {
+            val answer = "Baik. Perintah dijalankan."
+            lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
+            if (voice) onSpeak(answer)
             return
         }
-        val opened = (hasOpenVerb || standaloneAppLike) && onOpenApp(q)
-        if (opened) {
-            val appName = normalized.replace(Regex("^(tolong |please |buka(kan)? |jalankan |mainkan |main |open |launch |run |start |aplikasi |app |the )+"), "").trim()
-            val response = "Certainly. Opening " + appName + "."
-            messages.add(ChatLine(false, response)); searchLoading = false; statusLabel = "COMMAND EXECUTED"
-            if (speakResponse) onSpeak(response)
-        } else if (hasOpenVerb) {
-            val apps = onInstalledApps()
-            val lastWord = normalized.substringAfterLast(" ").trim()
-            val suggestion = apps.filter { lastWord.isNotBlank() && it.contains(lastWord, true) }.take(8)
-            val response = if (suggestion.isNotEmpty()) "Closest matches: " + suggestion.joinToString(", ") + "." else
-                "That application was not found among the installed apps."
-            messages.add(ChatLine(false, response)); statusLabel = "APP NOT FOUND"
-            if (speakResponse) onSpeak(response)
-        } else {
-            searchQuery = q; searchLoading = true; statusLabel = "ANALYSING REQUEST"
-            onSearch(q); geminiBusy = true
-            onAskGemini(q) { answer ->
-                messages.add(ChatLine(false, answer))
-                geminiBusy = false; searchLoading = false; statusLabel = "RESPONSE READY"
-                if (speakResponse) onSpeak(answer)
-            }
+        if (openIntent) {
+            val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
+            lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
+            if (voice) onSpeak(answer)
+            return
+        }
+        busy = true
+        statusText = "ANALYSING REQUEST"
+        onSearch(q)
+        onAskGemini(q) { response ->
+            val answer = response.substringAfter("KESIMPULAN JARVIS", response)
+                .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
+            lines.add(Line(false, answer))
+            busy = false
+            statusText = "RESPONSE READY"
+            if (voice) onSpeak(answer)
         }
     }
 
-    LaunchedEffect(recognizedText) {
-        if (recognizedText.isNotBlank() && voiceMode) {
+    LaunchedEffect(recognizedText, page) {
+        if (page == "VOICE" && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
+            onConsumed()
             val wake = Regex("(?i)^jarvis[,.! ]*")
             if (wake.containsMatchIn(heard)) {
-                val command = heard.replaceFirst(wake, "").trim()
-                onConsumed()
-                if (command.isBlank() || command.equals("open", true)) {
-                    statusLabel = "JARVIS ACTIVATED"
+                val request = heard.replaceFirst(wake, "").trim()
+                if (request.isBlank() || request.equals("open", true)) {
+                    statusText = "JARVIS ACTIVATED"
                     onSpeak("Yes. I am listening. How may I assist?")
-                } else execute(command, true)
+                } else send(request, true)
             } else {
-                statusLabel = "AWAITING WAKE WORD"
-                onConsumed()
+                statusText = "WAKE WORD REQUIRED"
                 onStartListening()
             }
         }
     }
-    LaunchedEffect(Unit) { onStartListening() }
-    LaunchedEffect(messages.size, searchLoading) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(page) {
+        val voiceOn = page == "VOICE"
+        onModeChanged(voiceOn)
+        if (voiceOn) onStartListening()
     }
+    LaunchedEffect(lines.size) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))
-        ) {
+        BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
-            Column(
-                Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = if (compact) 8.dp else 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 21.sp,
-                            fontWeight = FontWeight.Light, letterSpacing = 4.sp)
-                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM", color = Color(0xFF5E9BA9),
-                            fontSize = 7.sp, letterSpacing = 1.25.sp)
+                        Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 22.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp)
+                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM", color = Color(0xFF5E9BA9), fontSize = 7.sp, letterSpacing = 1.2.sp)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(6.dp).background(if (geminiBusy) Color(0xFFFFB74D) else Color(0xFF53E6C1), CircleShape))
-                            Spacer(Modifier.width(6.dp))
-                            Text(if (geminiBusy) "PROCESSING" else "SYSTEM ONLINE", color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
-                        }
-                        Text("CORE 01  /  " + if (voiceMode) "VOICE" else "TEXT", color = TextMuted, fontSize = 7.sp)
+                        Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
+                        Text("CORE 01 / " + page, color = TextMuted, fontSize = 7.sp)
                     }
-                    IconButton(onClick = { apiKeyDraft = ""; settingsOpen = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Cyan)
+                    IconButton(onClick = { keyDraft = ""; settings = true }) { Icon(Icons.Default.Settings, null, tint = Cyan) }
+                }
+                Spacer(Modifier.height(9.dp))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
+                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Color(0xFF071923), RoundedCornerShape(30.dp)).border(1.dp, Color(0x4454DDF4), RoundedCornerShape(30.dp)).padding(4.dp)) {
+                    listOf("COMMAND", "VOICE").forEach { tab ->
+                        Button(onClick = { page = tab }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(25.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = if (page == tab) Color(0xFF124253) else Color.Transparent, contentColor = if (page == tab) Color(0xFFBDF7FF) else TextMuted),
+                            elevation = ButtonDefaults.buttonElevation(0.dp)) {
+                            Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 10.sp, letterSpacing = 1.3.sp)
+                        }
                     }
                 }
-                Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
-                Box(Modifier.fillMaxWidth().height(1.dp).background(
-                    Brush.horizontalGradient(listOf(Color.Transparent, Color(0x9954DDF4), Color(0x2254DDF4), Color.Transparent))
-                ))
-                Box(
-                    Modifier.fillMaxWidth().weight(if (compact) 0.42f else 0.48f).padding(vertical = 4.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val coreSize = if (compact) 174.dp else 218.dp
-                    Box(Modifier.size(coreSize + 62.dp).rotate(ringRotation)
-                        .border(1.dp, Color(0x334DEBFF), CircleShape).padding(12.dp)
-                        .border(1.dp, Color(0x224DEBFF), CircleShape))
-                    Box(Modifier.size(coreSize + 30.dp).rotate(ringReverse)
-                        .border(1.dp, Color(0x6652DFF2), CircleShape).padding(8.dp)
-                        .border(1.dp, Color(0x224DEBFF), CircleShape))
-                    Box(Modifier.size(coreSize).scale(orbPulse)
-                        .background(Brush.radialGradient(listOf(Color(0x3349E8FF), Color(0x1022B8D5), Color.Transparent)), CircleShape)
-                        .border(1.dp, Color(0x885DEBFF), CircleShape), contentAlignment = Alignment.Center) {
-                        Box(Modifier.size(coreSize * 0.72f).border(1.dp, Color(0x665DEBFF), CircleShape)
-                            .background(Brush.radialGradient(listOf(Color(0x2039D9F0), Color(0x080D6D8A), Color.Transparent)), CircleShape),
-                            contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(coreSize * 0.48f).border(1.dp, Color(0xAA70EFFF), CircleShape)
-                                .background(Brush.radialGradient(listOf(Color(0xFF17485A), Color(0xFF071923), Color(0xFF02080D))), CircleShape),
-                                contentAlignment = Alignment.Center) {
-                                Text("J", color = Color(0xFFD8FAFF), fontSize = if (compact) 43.sp else 54.sp,
-                                    fontWeight = FontWeight.ExtraLight, letterSpacing = 2.sp)
+                if (page == "VOICE") {
+                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        val size = if (compact) 190.dp else 230.dp
+                        Box(Modifier.size(size+65.dp).rotate(spin).border(1.dp, Color(0x335DEBFF), CircleShape).padding(12.dp).border(1.dp, Color(0x445DEBFF), CircleShape))
+                        Box(Modifier.size(size+28.dp).rotate(-spin*.6f).border(1.dp, Color(0x6652DFF2), CircleShape))
+                        Box(Modifier.size(size).scale(breathe).background(Brush.radialGradient(listOf(Color(0x5549E8FF), Color(0x1822B8D5), Color.Transparent)), CircleShape).border(1.dp, Color(0x885DEBFF), CircleShape), contentAlignment = Alignment.Center) {
+                            Box(Modifier.size(size*.53f).background(Brush.radialGradient(listOf(Color(0xFF17485A), Color(0xFF071923), Color(0xFF02080D))), CircleShape).border(1.dp, Color(0xAA70EFFF), CircleShape), contentAlignment = Alignment.Center) {
+                                Text("J", color = Color(0xFFD8FAFF), fontSize = 58.sp, fontWeight = FontWeight.ExtraLight)
                             }
                         }
+                        Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(if (busy) "JARVIS IS THINKING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
+                            Spacer(Modifier.height(8.dp))
+                            Text("SAY  “JARVIS, OPEN”  TO ACTIVATE", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
+                        }
                     }
-                    Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            when {
-                                geminiBusy -> "PROCESSING REQUEST"
-                                status.contains("SPEAK", true) -> "VOICE OUTPUT"
-                                status.contains("LISTEN", true) || status.contains("HEARING", true) -> "AUDIO INPUT"
-                                else -> statusLabel
-                            }, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(if (voiceMode) "SAY  JARVIS, OPEN  TO ACTIVATE" else "TEXT INTERFACE ACTIVE",
-                            color = Color(0xFF638C9A), fontSize = 7.sp, letterSpacing = 1.1.sp)
+                    Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).border(1.dp, Color(0x445DEBFF), RoundedCornerShape(12.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("VOICE ASSISTANT", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text(if (busy) "Processing your request…" else "Listening for the wake phrase", color = Color(0xFFE2F5F8), fontSize = 14.sp)
+                        Text("JARVIS speaks only after activation.", color = TextMuted, fontSize = 10.sp)
                     }
-                }
-                Row(Modifier.fillMaxWidth().background(Color(0xFF07151E), RoundedCornerShape(8.dp))
-                    .border(1.dp, Color(0x224DEBFF), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Column { Text("NEURAL LINK", color = TextMuted, fontSize = 7.sp); Text("STABLE", color = Color(0xFF68E6CA), fontSize = 9.sp) }
-                    Column { Text("AI COUNCIL", color = TextMuted, fontSize = 7.sp); Text(if (geminiBusy) "ACTIVE" else "STANDBY", color = Cyan, fontSize = 9.sp) }
-                    Column { Text("AUDIO CORE", color = TextMuted, fontSize = 7.sp); Text(if (voiceMode) "ARMED" else "MUTED", color = Cyan, fontSize = 9.sp) }
-                    Column(horizontalAlignment = Alignment.End) { Text("SECURE LINK", color = TextMuted, fontSize = 7.sp); Text("CONNECTED", color = Color(0xFF68E6CA), fontSize = 9.sp) }
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("COMMUNICATION LOG", color = Color(0xFF8EDDED), fontSize = 8.sp, letterSpacing = 1.8.sp,
-                        modifier = Modifier.weight(1f))
-                    Text(messages.size.toString() + " ENTRIES", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
-                }
-                Spacer(Modifier.height(5.dp))
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(if (compact) 0.48f else 0.52f),
-                    state = listState, contentPadding = PaddingValues(bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(messages.size) { index ->
-                        val message = messages[index]
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start) {
-                            Column(Modifier.fillMaxWidth(if (message.isUser) 0.86f else 0.96f)
-                                .background(if (message.isUser) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(10.dp))
-                                .border(1.dp, if (message.isUser) Color(0x6655CFE8) else Color(0x4449B8CB), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 12.dp, vertical = 10.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.size(5.dp).background(if (message.isUser) Color(0xFF8BB4C1) else Cyan, CircleShape))
-                                    Spacer(Modifier.width(7.dp))
-                                    Text(if (message.isUser) "YOU  /  INPUT" else "J.A.R.V.I.S.  /  RESPONSE",
-                                        color = if (message.isUser) Color(0xFF8BB4C1) else Cyan,
-                                        fontSize = 7.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(20.dp))
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                        Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
+                    }
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=8.dp), verticalArrangement=Arrangement.spacedBy(9.dp)) {
+                        items(lines.size) { i ->
+                            val line=lines[i]
+                            Column(Modifier.fillMaxWidth().background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(10.dp))
+                                .border(1.dp, if(line.user) Color(0x6655CFE8) else Color(0x4449B8CB), RoundedCornerShape(10.dp)).padding(13.dp)) {
+                                Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / FINAL RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.3.sp, fontWeight=FontWeight.Bold)
+                                Spacer(Modifier.height(7.dp))
+                                Text(line.text, color=Color(0xFFE2F5F8), fontSize=14.sp, lineHeight=21.sp)
+                            }
+                        }
+                        if(busy) item {
+                            Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(10.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(10.dp)).padding(14.dp)) {
+                                Row(verticalAlignment=Alignment.CenterVertically) {
+                                    CircularProgressIndicator(Modifier.size(18.dp), color=Cyan, strokeWidth=2.dp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Text("J.A.R.V.I.S. IS THINKING", color=Cyan, fontSize=9.sp, letterSpacing=1.4.sp)
                                 }
-                                Spacer(Modifier.height(6.dp))
-                                Text(message.text, color = Color(0xFFE2F5F8), fontSize = 13.sp, lineHeight = 19.sp)
+                                Spacer(Modifier.height(9.dp))
+                                Text("Understanding request  ·  Consulting AI Council  ·  Preparing response", color=Color(0xFFB5DCE4), fontSize=10.sp)
+                                Spacer(Modifier.height(9.dp))
+                                LinearProgressIndicator(Modifier.fillMaxWidth(), color=Cyan, trackColor=Color(0xFF19313C))
                             }
                         }
                     }
-                    if (geminiBusy) {
-                        item {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Box(Modifier.size(8.dp).background(Cyan, CircleShape))
-                                Spacer(Modifier.width(8.dp))
-                                Text("JARVIS IS ANALYSING  /  " + searchQuery, color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
-                            }
-                        }
+                    Row(Modifier.fillMaxWidth().padding(vertical=8.dp).background(Color(0xFF081923), RoundedCornerShape(28.dp)).border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp)).padding(start=15.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
+                        BasicTextField(value=command,onValueChange={command=it},modifier=Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(command.isEmpty()) Text("Enter a command…",color=TextMuted,fontSize=13.sp); inner() })
+                        IconButton(onClick={send(command)},enabled=!busy) { Icon(Icons.Default.Send,"Send command",tint=if(busy) TextMuted else Cyan) }
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (!voiceMode) {
-                        Row(Modifier.weight(1f).background(Color(0xFF081923), RoundedCornerShape(24.dp))
-                            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(24.dp))
-                            .padding(start = 15.dp, end = 5.dp, top = 4.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically) {
-                            BasicTextField(value = typedCommand, onValueChange = { typedCommand = it },
-                                modifier = Modifier.weight(1f).padding(vertical = 10.dp),
-                                singleLine = true, textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 13.sp),
-                                decorationBox = { inner -> if (typedCommand.isEmpty()) Text("Transmit command…", color = TextMuted, fontSize = 12.sp); inner() })
-                            IconButton(onClick = { execute(typedCommand, false) }) {
-                                Icon(Icons.Default.Send, contentDescription = "Send", tint = Cyan)
-                            }
-                        }
-                    } else {
-                        Column(Modifier.weight(1f)) {
-                            Text("VOICE RECOGNITION", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.2.sp)
-                            Text("Wake phrase protected", color = Color(0xFF8CDDEB), fontSize = 10.sp)
-                        }
-                    }
-                    Button(onClick = {
-                        voiceMode = !voiceMode
-                        onModeChanged(voiceMode)
-                        statusLabel = if (voiceMode) "VOICE SYSTEM ARMED" else "TEXT INTERFACE ACTIVE"
-                    }, shape = CircleShape, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0B3443), contentColor = Cyan),
-                        border = BorderStroke(1.dp, Color(0x8854DDF4))) {
-                        Icon(if (voiceMode) Icons.Default.Mic else Icons.Default.SettingsVoice, contentDescription = "Toggle mode",
-                            modifier = Modifier.size(17.dp))
-                        Spacer(Modifier.width(5.dp)); Text("VOICE", fontSize = 9.sp, letterSpacing = 1.sp)
-                    }
-                }
-                Text("J.A.R.V.I.S.  /  PERSONAL INTELLIGENCE SYSTEM", color = Color(0xFF355C68),
-                    fontSize = 6.sp, letterSpacing = 1.3.sp, modifier = Modifier.padding(top = 4.dp, bottom = 2.dp))
+                Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
-            if (settingsOpen) {
-                AlertDialog(
-                    onDismissRequest = { settingsOpen = false }, containerColor = Color(0xFF0A1922),
-                    title = { Text("JARVIS SYSTEM SETTINGS", color = Color.White, fontWeight = FontWeight.Light) },
-                    text = {
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Text("AI Council terhubung melalui Cloudflare Worker. Provider API keys disimpan di backend.", color = TextMuted, fontSize = 12.sp)
-                            OutlinedTextField(value = apiKeyDraft, onValueChange = { apiKeyDraft = it },
-                                modifier = Modifier.fillMaxWidth(), label = { Text("Gemini API key") },
-                                placeholder = { Text("Paste key baru di sini") }, singleLine = true,
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White, focusedBorderColor = Cyan,
-                                    unfocusedBorderColor = Color(0xFF365165), focusedLabelColor = Cyan,
-                                    unfocusedLabelColor = TextMuted))
-                            Text("Key ini hanya untuk fitur suara Gemini TTS.", color = TextMuted, fontSize = 10.sp)
-                        }
-                    },
-                    confirmButton = {
-                        TextButton(onClick = {
-                            if (apiKeyDraft.trim().isNotBlank()) onSaveGeminiKey(apiKeyDraft.trim())
-                            settingsOpen = false; apiKeyDraft = ""
-                        }) { Text("SAVE", color = Cyan) }
-                    },
-                    dismissButton = { TextButton(onClick = { settingsOpen = false }) { Text("CANCEL", color = TextMuted) } }
-                )
-            }
+            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
+                title={Text("JARVIS SYSTEM SETTINGS",color=Color.White)},
+                text={Column { Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp); OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation()) }},
+                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
+                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
 }
