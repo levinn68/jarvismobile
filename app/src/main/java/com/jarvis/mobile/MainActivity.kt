@@ -189,6 +189,7 @@ class MainActivity : ComponentActivity() {
     private fun speak(text: String) {
         val key = geminiKey
         if (key.isBlank() || text.isBlank()) {
+            voiceStatus.value = "GEMINI VOICE KEY REQUIRED"
             speakWithAndroid(text)
             return
         }
@@ -197,45 +198,57 @@ class MainActivity : ComponentActivity() {
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=" + java.net.URLEncoder.encode(key, "UTF-8"))
+                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/interactions")
                 connection = endpoint.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 60000
+                connection.connectTimeout = 20000
+                connection.readTimeout = 90000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val textPart = JSONObject().put("text", "Read the following response aloud exactly as written. Do not add or omit words. Text: " + text)
-                val contentParts = JSONArray().put(textPart)
-                val contents = JSONArray().put(JSONObject().put("parts", contentParts))
-                val persona = JSONObject().put("text", "Speak the supplied text exactly in natural Bahasa Indonesia. Voice persona: mature male AI assistant, low and resonant register, calm, precise, composed, intelligent, subtly authoritative, measured pace, clean Indonesian diction, restrained cinematic delivery. Never imitate a specific actor or copyrighted character voice.")
-                val systemInstruction = JSONObject().put("parts", JSONArray().put(persona))
-                val prebuiltVoice = JSONObject().put("voiceName", geminiVoice)
-                val voiceConfig = JSONObject().put("prebuiltVoiceConfig", prebuiltVoice)
-                val speechConfig = JSONObject().put("voiceConfig", voiceConfig)
-                val generationConfig = JSONObject()
-                    .put("responseModalities", JSONArray().put("AUDIO"))
-                    .put("speechConfig", speechConfig)
+                connection.setRequestProperty("x-goog-api-key", key)
+
+                val spokenText = JSONObject()
+                    .put("type", "text")
+                    .put("text", text)
+                    .put("annotations", JSONArray().put(
+                        JSONObject()
+                            .put("type", "speech_metadata")
+                            .put("style", "A mature, composed male personal AI assistant. Deep, resonant baritone; refined subtle British vocal character while speaking fluent natural Indonesian; precise consonants, measured deliberate pacing, calm authority, warm low register, understated cinematic delivery. Sound like a real professional voice actor, never robotic, never exaggerated.")
+                    ))
+                val inputContent = JSONObject()
+                    .put("type", "user_input")
+                    .put("content", JSONArray().put(spokenText))
+                val speechConfig = JSONObject()
+                    .put("speakers", JSONArray().put(JSONObject().put("voice", "Gacrux")))
                 val body = JSONObject()
-                    .put("contents", contents)
-                    .put("systemInstruction", systemInstruction)
-                    .put("generationConfig", generationConfig)
+                    .put("model", "gemini-3.8-flash-tts")
+                    .put("input", JSONArray().put(inputContent))
+                    .put("response_format", JSONObject().put("type", "audio"))
+                    .put("generation_config", JSONObject().put("speech_config", speechConfig))
+
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                 val response = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
-                if (code !in 200..299) throw IllegalStateException("Gemini TTS HTTP " + code)
+                if (code !in 200..299) throw IllegalStateException("Gemini TTS HTTP $code: $response")
                 val json = JSONObject(response)
-                val parts = json.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts")
+                val steps = json.optJSONArray("steps")
                 var audioData = ""
-                if (parts != null) {
-                    for (i in 0 until parts.length()) {
-                        val data = parts.optJSONObject(i)?.optJSONObject("inlineData")?.optString("data").orEmpty()
-                        if (data.isNotBlank()) { audioData = data; break }
+                if (steps != null) {
+                    for (i in 0 until steps.length()) {
+                        val content = steps.optJSONObject(i)?.optJSONArray("content") ?: continue
+                        for (j in 0 until content.length()) {
+                            val item = content.optJSONObject(j) ?: continue
+                            if (item.optString("type") == "audio") {
+                                audioData = item.optString("data")
+                                if (audioData.isNotBlank()) break
+                            }
+                        }
+                        if (audioData.isNotBlank()) break
                     }
                 }
                 if (audioData.isBlank()) throw IllegalStateException("Gemini TTS returned no audio")
-                val pcm = Base64.decode(audioData, Base64.DEFAULT)
-                val wav = pcmToWav(pcm, 24000, 1, 16)
+                val wav = Base64.decode(audioData, Base64.DEFAULT)
                 val audioFile = File(cacheDir, "jarvis_voice.wav")
                 FileOutputStream(audioFile).use { it.write(wav) }
                 handler.post {
@@ -251,13 +264,14 @@ class MainActivity : ComponentActivity() {
                                 it.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                handler.postDelayed({ startListening() }, 350)
+                                handler.postDelayed({ startListening() }, 450)
                             }
                             setOnErrorListener { player, _, _ ->
                                 player.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                speakWithAndroid(text)
+                                voiceStatus.value = "VOICE PLAYBACK ERROR"
+                                handler.postDelayed({ startListening() }, 900)
                                 true
                             }
                             prepareAsync()
@@ -266,12 +280,13 @@ class MainActivity : ComponentActivity() {
                         speechPlayer?.release()
                         speechPlayer = null
                         geminiSpeechInProgress = false
-                        speakWithAndroid(text)
+                        voiceStatus.value = "VOICE PLAYBACK ERROR"
                     }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 handler.post {
                     geminiSpeechInProgress = false
+                    voiceStatus.value = "GEMINI TTS ERROR · CHECK API KEY"
                     speakWithAndroid(text)
                 }
             } finally {
@@ -281,20 +296,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun speakWithAndroid(text: String) {
-        geminiSpeechInProgress = false
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
-    }
-
-    private fun pcmToWav(pcm: ByteArray, sampleRate: Int, channels: Int, bitsPerSample: Int): ByteArray {
-        val out = java.io.ByteArrayOutputStream(pcm.size + 44)
-        fun writeInt(value: Int) { out.write(byteArrayOf(value.toByte(), (value shr 8).toByte(), (value shr 16).toByte(), (value shr 24).toByte())) }
-        fun writeShort(value: Int) { out.write(byteArrayOf(value.toByte(), (value shr 8).toByte())) }
-        out.write("RIFF".toByteArray(Charsets.US_ASCII)); writeInt(pcm.size + 36)
-        out.write("WAVE".toByteArray(Charsets.US_ASCII)); out.write("fmt ".toByteArray(Charsets.US_ASCII))
-        writeInt(16); writeShort(1); writeShort(channels); writeInt(sampleRate)
-        writeInt(sampleRate * channels * bitsPerSample / 8); writeShort(channels * bitsPerSample / 8); writeShort(bitsPerSample)
-        out.write("data".toByteArray(Charsets.US_ASCII)); writeInt(pcm.size); out.write(pcm)
-        return out.toByteArray()
     }
 
     private fun startListening() {
