@@ -345,15 +345,10 @@ async function handleChat(body, env) {
     if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\n\n" + image;
   }
 
-  // If search grounding did not expose page thumbnails, add genuine, relevant
-  // Wikimedia Commons image results. This keeps visual answers useful even
-  // when provider summaries omit image URLs.
-  if (needsVisualResults(prompt) && !imagePattern.test(String(finalAnswer || ""))) {
-    const visualPreviews = await commonsImagePreviews(prompt);
-    if (visualPreviews.length) {
-      finalAnswer += "\n\n" + visualPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")").join("\n");
-    }
-  }
+  // Do not inject generic Wikimedia thumbnails as product images. They can be
+  // unrelated to the user's query. Only use image URLs verified from grounded
+  // source pages via Open Graph/Twitter metadata above.
+
 
   // Place verified visual results near the top so users see them without
   // scrolling through long explanations or comparison tables.
