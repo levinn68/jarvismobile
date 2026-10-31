@@ -40,13 +40,17 @@ const json = (data, status = 200) =>
     headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" },
   });
 
+function needsVisualResults(prompt) {
+  return /(cari|carikan|rekomendasi|produk|harga|gambar|foto|informasi|jelaskan|apa itu|sejarah|lokasi|wisata|gunung|hewan|binatang|planet|negara|kota|bangunan|arsitektur|laptop|hp|handphone|smartphone|kamera|mobil|motor|latest|search|find|recommend|information|explain|history|where is|what is)/i.test(prompt);
+}
+
 function complexityOf(prompt) {
   const q = prompt.toLowerCase();
   const complexTerms = /(analisis mendalam|bandingkan secara detail|arsitektur|debugging|debug|strategi lengkap|riset mendalam|buktikan|evaluasi menyeluruh|multi.?step|kompleks|complex|in.?depth|comprehensive|step by step|source code|kode program)/i;
-  const mediumTerms = /(jelaskan|mengapa|kenapa|bagaimana|perbedaan|bandingkan|analisis|informasi|sejarah|penyebab|dampak|kelebihan|kekurangan|explain|compare|analyze|information|cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah)/i;
+  const mediumTerms = /(jelaskan|mengapa|kenapa|bagaimana|perbedaan|bandingkan|analisis|informasi|sejarah|penyebab|dampak|kelebihan|kekurangan|explain|compare|analyze|information|cari|carikan|rekomendasi|harga|hp|handphone|smartphone|laptop|tablet|produk|belanja|termurah|gunung|hewan|binatang|planet|negara|kota|wisata|bangunan|arsitektur|kamera|mobil|motor|what is|where is|history|latest|news)/i;
   const words = q.trim().split(/\s+/).length;
   if (complexTerms.test(q) || words > 75) return "complex";
-  if (mediumTerms.test(q) || words > 22) return "medium";
+  if (mediumTerms.test(q) || needsVisualResults(q) || words > 22) return "medium";
   return "simple";
 }
 
@@ -97,12 +101,42 @@ async function fetchPreviewImage(pageUrl) {
 }
 
 async function previewImagesFromSources(sources) {
-  const selected = sources.slice(0, 4);
+  const selected = sources.slice(0, 6);
   const previews = await Promise.all(selected.map(async (source) => ({
     title: String(source.title || "Visual reference").replace(/[\[\]\n]/g, " ").trim().slice(0, 80),
     url: await fetchPreviewImage(source.uri),
   })));
   return previews.filter((item) => item.url).slice(0, 3);
+}
+
+async function commonsImagePreviews(prompt) {
+  try {
+    const query = prompt
+      .replace(/\\b(cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\\b/gi, " ")
+      .replace(/\\b\\d+(?:[.,]\\d+)?\\s*(?:rb|ribu|jt|juta|k|idr|rp|usd|dollar)?\\b/gi, " ")
+      .replace(/[^\\p{L}\\p{N}\\s-]/gu, " ")
+      .replace(/\\s+/g, " ").trim();
+    if (!query) return [];
+    const api = new URL("https://commons.wikimedia.org/w/api.php");
+    api.search = new URLSearchParams({
+      action: "query", generator: "search", gsrsearch: "filetype:bitmap " + query,
+      gsrnamespace: "6", gsrwhat: "text", gsrlimit: "6",
+      prop: "imageinfo", iiprop: "url", iiurlwidth: "720",
+      format: "json", formatversion: "2",
+    }).toString();
+    const response = await fetch(api.toString(), {
+      headers: { "User-Agent": "JARVISMobile/1.0 (visual search assistant)", "Accept": "application/json" },
+      signal: AbortSignal.timeout(6500),
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.query?.pages || []).map((page) => ({
+      title: String(page.title || "Visual reference").replace(/^File:/, "").replace(/\\.[^.]+$/, "").slice(0, 90),
+      url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "",
+    })).filter((item) => /^https?:\\/\\//i.test(item.url)).slice(0, 3);
+  } catch (_) {
+    return [];
+  }
 }
 
 async function callGemini(env, prompt, system, keyName) {
@@ -299,6 +333,16 @@ async function handleChat(body, env) {
   for (const image of uniqueImages) {
     const imageUrl = image.match(imageUrlPattern)?.[1];
     if (imageUrl && !String(finalAnswer || "").includes(imageUrl)) finalAnswer += "\n\n" + image;
+  }
+
+  // If search grounding did not expose page thumbnails, add genuine, relevant
+  // Wikimedia Commons image results. This keeps visual answers useful even
+  // when provider summaries omit image URLs.
+  if (needsVisualResults(prompt) && !imagePattern.test(String(finalAnswer || ""))) {
+    const visualPreviews = await commonsImagePreviews(prompt);
+    if (visualPreviews.length) {
+      finalAnswer += "\n\n" + visualPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")").join("\n");
+    }
   }
 
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
