@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.media.MediaPlayer
+import android.graphics.BitmapFactory
 import android.util.Base64
 import java.io.File
 import java.io.FileOutputStream
@@ -72,11 +73,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
 import java.io.BufferedReader
@@ -512,25 +517,32 @@ private fun RichMessageText(markdown: String) {
 }
 
 @Composable
-private fun SourceStrip(markdown: String) {
+private fun SourceLogo(url: String) {
     val uriHandler = LocalUriHandler.current
-    val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(5).toList()
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val encoded = URLEncoder.encode(url, "UTF-8")
+                URL("https://www.google.com/s2/favicons?domain_url=" + encoded + "&sz=64").openStream().use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+    }
+    Surface(onClick = { runCatching { uriHandler.openUri(url) } }, color = Color(0xFF102A36), shape = CircleShape, border = BorderStroke(1.dp, Color(0x6652DFF2))) {
+        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+            if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "Open source", modifier = Modifier.size(18.dp))
+            else Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(17.dp))
+        }
+    }
+}
+
+@Composable
+private fun SourceStrip(markdown: String) {
+    val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(6).toList()
     if (links.isNotEmpty()) {
         Spacer(Modifier.height(12.dp))
-        Text("REFERENSI", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.5.sp)
+        Text("SOURCES", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(7.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
-            links.forEach { url ->
-                val host = runCatching { Uri.parse(url).host?.removePrefix("www.") ?: "WEB" }.getOrDefault("WEB")
-                Surface(onClick = { runCatching { uriHandler.openUri(url) } }, color = Color(0xFF102A36), shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Color(0x6652DFF2))) {
-                    Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(12.dp))
-                        Spacer(Modifier.width(5.dp))
-                        Text(host, color = Color(0xFFB9EAF2), fontSize = 9.sp, maxLines = 1)
-                    }
-                }
-            }
-        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { links.forEach { SourceLogo(it) } }
     }
 }
 private fun JarvisScreen(
