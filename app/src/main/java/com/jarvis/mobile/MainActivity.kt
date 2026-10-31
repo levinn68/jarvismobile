@@ -1256,7 +1256,7 @@ private fun JarvisScreen(
                         if (latestVisualAnswer.isNotBlank()) {
                             VoiceVisualResults(latestVisualAnswer)
                         }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 7.dp),
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(50.dp).background(Color(0x220D2833), CircleShape)
@@ -1269,7 +1269,7 @@ private fun JarvisScreen(
                                 Text(if (voiceListening) "MIC OFF" else "MIC ON", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(Modifier.size(82.dp).background(Color(0x3320BFD8), CircleShape)
+                                Box(Modifier.size(72.dp).background(Color(0x3320BFD8), CircleShape)
                                     .border(2.dp, Cyan.copy(alpha = .85f), CircleShape)
                                     .clickable {
                                         if (busy) {
@@ -1480,18 +1480,23 @@ private fun JarvisScreen(
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("CHAT", "VOICE").forEach { tab ->
-                            TextButton(onClick = {
-                                page = tab
-                                voiceListening = tab == "VOICE"
-                                voiceArmed = tab == "VOICE"
-                                if (tab == "CHAT") onModeChanged(false)
-                            }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "◉  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
+                    Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp)
+                        .height(36.dp)
+                        .background(Color(0xFF071923), RoundedCornerShape(20.dp))
+                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(20.dp)).padding(2.dp)) {
+                        listOf("VOICE", "CHAT").forEach { tab ->
+                            val selected = if (tab == "VOICE") page == "VOICE" else page == "CHAT"
+                            Box(Modifier.weight(1f).fillMaxHeight()
+                                .background(if (selected) Color(0x3320BFD8) else Color.Transparent, RoundedCornerShape(17.dp))
+                                .clickable {
+                                    page = if (tab == "VOICE") "VOICE" else "CHAT"
+                                    voiceListening = tab == "VOICE"
+                                    voiceArmed = tab == "VOICE"
+                                    if (tab == "CHAT") onModeChanged(false)
+                                }, contentAlignment = Alignment.Center) {
+                                Text(if (tab == "VOICE") "⌘  COMMAND" else "◉  CHAT",
+                                    color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
+                                    letterSpacing = 1.05.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
                         }
                     }
