@@ -26,6 +26,8 @@ Use the lightest process that can reliably answer the question. Do not invoke a 
 
 ## 2. Core reasoning loop
 
+For software work, apply the four Karpathy-inspired disciplines in `jarvis-karpathy-engineering`: explicit assumptions, simplicity first, surgical edits, and goal-driven verification. Treat repeated regressions as evidence that the diagnosis or system-level understanding is incomplete; do not repeat the same patch pattern without new evidence.
+
 For every non-trivial task:
 
 1. **Understand:** identify the actual outcome, constraints, context, and definition of done.
