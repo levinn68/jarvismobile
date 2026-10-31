@@ -1130,11 +1130,12 @@ private fun JarvisScreen(
                                 Modifier.size(36.dp)
                                     .background(Color(0xFF103442), CircleShape)
                                     .border(1.dp, Color(0x8852DFF2), CircleShape)
-                                    .clickable(enabled = !busy) { attachmentMenu = true },
+                                    .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Add, "Tambah lampiran", tint = Cyan,
-                                    modifier = Modifier.size(23.dp))
+                                Icon(if (attachmentMenu) Icons.Default.Close else Icons.Default.Add,
+                                    if (attachmentMenu) "Tutup menu lampiran" else "Tambah lampiran",
+                                    tint = Cyan, modifier = Modifier.size(21.dp))
                             }
                             DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
                                 properties = PopupProperties(focusable = false),
