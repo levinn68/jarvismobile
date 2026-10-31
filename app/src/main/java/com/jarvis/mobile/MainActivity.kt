@@ -55,6 +55,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Language
@@ -292,12 +293,15 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun askGemini(prompt: String, callback: (String) -> Unit) {
+    private fun askGemini(prompt: String, callback: (String) -> Unit): () -> Unit {
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
         Thread {
             var connection: HttpURLConnection? = null
             val result = try {
                 val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
                 connection = endpoint.openConnection() as HttpURLConnection
+                activeConnection.set(connection)
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 20000
                 connection.readTimeout = 180000
@@ -325,8 +329,12 @@ class MainActivity : ComponentActivity() {
             } finally {
                 connection?.disconnect()
             }
-            handler.post { callback(result) }
+            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(result) }
         }.start()
+        return {
+            cancelled.set(true)
+            activeConnection.getAndSet(null)?.disconnect()
+        }
     }
 
     private fun speak(text: String) {
@@ -590,18 +598,23 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
 private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
+    val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
     val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
     val clean = markdown.replace(Regex("(?m)^#{1,6}\\s*"), "")
     val annotated = buildAnnotatedString {
         var cursor = 0
-        val matches = (linkPattern.findAll(clean).map { it to "link" } + boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
+        val matches = (linkPattern.findAll(clean).map { it to "link" } +
+            rawUrlPattern.findAll(clean).map { it to "url" } +
+            boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
         for ((match, kind) in matches) {
             if (match.range.first < cursor) continue
             append(clean.substring(cursor, match.range.first))
-            if (kind == "link") {
+            if (kind == "link" || kind == "url") {
                 val startOffset = length
-                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(match.groupValues[1]) }
-                addStringAnnotation("URL", match.groupValues[2], startOffset, length)
+                val label = if (kind == "link") match.groupValues[1] else match.value
+                val target = if (kind == "link") match.groupValues[2] else match.value
+                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(label) }
+                addStringAnnotation("URL", target, startOffset, length)
             } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
             cursor = match.range.last + 1
         }
@@ -636,11 +649,14 @@ private fun RichMessageText(markdown: String) {
                             block.rows.forEachIndexed { rowIndex, row ->
                                 Row(Modifier.height(IntrinsicSize.Min)) {
                                     repeat(columnCount) { columnIndex ->
-                                        Box(Modifier.width(128.dp).heightIn(min = 48.dp)
+                                        val longest = block.rows.maxOfOrNull { it.getOrNull(columnIndex)?.length ?: 0 } ?: 8
+                                        val cellWidth = (longest * 7 + 22).coerceIn(88, 180).dp
+                                        Box(Modifier.width(cellWidth).heightIn(min = 36.dp)
                                             .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
-                                            .border(.5.dp, Color(0x5549B8CB)).padding(8.dp)) {
+                                            .border(.5.dp, Color(0x5549B8CB)).padding(horizontal = 8.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.CenterStart) {
                                             Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
-                                                fontSize = 11.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
+                                                fontSize = 11.sp, lineHeight = 15.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
                                         }
                                     }
                                 }
@@ -687,7 +703,7 @@ private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
     onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
     geminiConfigured: () -> Boolean, onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (String) -> Unit) -> Unit, onOpenApp: (String) -> Boolean,
+    onAskGemini: (String, (String) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
     onInstalledApps: () -> List<String>
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
@@ -696,7 +712,8 @@ private fun JarvisScreen(
         val text: String,
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
-        val displayText: MutableState<String> = mutableStateOf(if (user) text else "")
+        val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
+        val revealed: MutableState<Boolean> = mutableStateOf(user)
     )
     var page by remember { mutableStateOf("COMMAND") }
     var voiceListening by remember { mutableStateOf(true) }
@@ -732,6 +749,7 @@ private fun JarvisScreen(
     }
     var attachmentMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
     var settings by remember { mutableStateOf(false) }
@@ -782,22 +800,18 @@ private fun JarvisScreen(
         busy = true
         statusText = "ANALYSING REQUEST"
         onSearch(q)
-        onAskGemini(requestText) { response ->
+        cancelCurrentRequest = onAskGemini(requestText) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
             val responseLine = Line(false, answer)
+            responseLine.displayText.value = answer
             lines.add(responseLine)
             busy = false
+            cancelCurrentRequest = null
             statusText = "RESPONSE READY"
             revealScope.launch {
-                val words = Regex("\\S+\\s*").findAll(answer).map { it.value }.toList()
-                val shown = StringBuilder()
-                for (word in words) {
-                    shown.append(word)
-                    responseLine.displayText.value = shown.toString()
-                    kotlinx.coroutines.delay(42)
-                }
-                if (responseLine.displayText.value != answer) responseLine.displayText.value = answer
+                kotlinx.coroutines.delay(24)
+                responseLine.revealed.value = true
             }
             if (voice) onSpeak(answer)
         }
@@ -828,7 +842,7 @@ private fun JarvisScreen(
     LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
     LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
     LaunchedEffect(lines) {
-        snapshotFlow { lines.lastOrNull()?.displayText?.value }.collect {
+        snapshotFlow { lines.lastOrNull()?.revealed?.value }.collect {
             if (followLatest && lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
         }
     }
@@ -1029,9 +1043,17 @@ private fun JarvisScreen(
                                         
                                     }
                                     Spacer(Modifier.height(7.dp))
-                                    RichMessageText(line.displayText.value)
-                                    if (!line.user) {
-                                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    AnimatedVisibility(
+                                        visible = line.revealed.value,
+                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(
+                                            expandFrom = Alignment.Top,
+                                            animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                                        )
+                                    ) {
+                                        Column {
+                                            RichMessageText(line.displayText.value)
+                                            if (!line.user) {
+                                                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                             TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
                                                 Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
                                                 Spacer(Modifier.width(4.dp))
@@ -1048,6 +1070,9 @@ private fun JarvisScreen(
                                                 Spacer(Modifier.width(4.dp))
                                                 Text("Bagikan", color = TextMuted, fontSize = 9.sp)
                                             }
+                                                }
+                                            }
+                                            if (!line.user) SourceStrip(line.text)
                                         }
                                     }
                                     line.attachments.forEach { file ->
@@ -1056,7 +1081,6 @@ private fun JarvisScreen(
                                             Text(file.name, color=TextMuted, fontSize=9.sp, maxLines=1)
                                         }
                                     }
-                                    if (!line.user) SourceStrip(line.text)
                                 }
                             }
                             }
@@ -1116,8 +1140,20 @@ private fun JarvisScreen(
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
                             decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
-                        IconButton(onClick={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } },enabled=!busy) {
-                            Icon(Icons.Default.Send,"Send command",tint=if(busy) TextMuted else Cyan)
+                        if (busy) {
+                            IconButton(onClick = {
+                                cancelCurrentRequest?.invoke()
+                                cancelCurrentRequest = null
+                                busy = false
+                                statusText = "REQUEST STOPPED"
+                                lines.add(Line(false, "Permintaan dihentikan."))
+                            }) {
+                                Icon(Icons.Default.Stop, "Stop response", tint = Color(0xFFFF8A8A))
+                            }
+                        } else {
+                            IconButton(onClick={ keyboard?.hide(); focusManager.clearFocus(); send(command) }) {
+                                Icon(Icons.Default.Send,"Send command",tint=Cyan)
+                            }
                         }
                     }
                 }
