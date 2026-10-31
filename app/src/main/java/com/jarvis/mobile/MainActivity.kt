@@ -177,7 +177,17 @@ class MainActivity : ComponentActivity() {
                 val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok", false)) {
-                    json.optString("error").ifBlank { "JARVIS API error ($code). Periksa konfigurasi Worker dan kuota AI." }
+                    val diagnosticArray = json.optJSONArray("diagnostics")
+                    val diagnosticText = if (diagnosticArray != null) {
+                        (0 until diagnosticArray.length()).map { index ->
+                            val item = diagnosticArray.optJSONObject(index) ?: JSONObject()
+                            val provider = item.optString("provider", "AI").uppercase(Locale.ROOT)
+                            val detail = item.optString("detail", "Tidak ada detail")
+                            "$provider: $detail"
+                        }.joinToString("\\n")
+                    } else ""
+                    json.optString("error").ifBlank { "JARVIS API error ($code)." } +
+                        if (diagnosticText.isNotBlank()) "\\n\\nDIAGNOSTIK PROVIDER\\n$diagnosticText" else ""
                 } else {
                     val participants = json.optJSONArray("participants") ?: JSONArray()
                     val names = (0 until participants.length()).map { participants.optString(it).uppercase(Locale.ROOT) }
@@ -564,7 +574,7 @@ private fun JarvisScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(7.dp).background(if (searchLoading) Color(0xFFFFC857) else Color(0xFF63D6A3), CircleShape))
                     Spacer(Modifier.width(6.dp))
-                    Text(if (geminiBusy) "THINKING" else if (geminiConfigured()) "GEMINI READY" else "SETUP AI", color = Cyan, fontSize = 10.sp, letterSpacing = 1.1.sp)
+                    Text(if (geminiBusy) "THINKING" else if (geminiConfigured()) "CLOUD AI READY" else "SETUP AI", color = Cyan, fontSize = 10.sp, letterSpacing = 1.1.sp)
                 }
                 Spacer(Modifier.width(6.dp))
                 IconButton(onClick = { apiKeyDraft = ""; settingsOpen = true }) {
