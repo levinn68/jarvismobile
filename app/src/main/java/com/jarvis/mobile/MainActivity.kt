@@ -486,7 +486,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-@Composable
 private fun RichMessageText(markdown: String) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
