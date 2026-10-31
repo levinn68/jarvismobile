@@ -1215,11 +1215,11 @@ private fun JarvisScreen(
                             parseMarkdownBlocks(latestVisualAnswer).any { it is MarkdownBlock.Image }
                         }
                         val reactorSize by androidx.compose.animation.core.animateDpAsState(
-                            targetValue = if (hasVoiceImages) (if (compact) 158.dp else 178.dp) else (if (compact) 220.dp else 246.dp),
+                            targetValue = if (hasVoiceImages) (if (compact) 190.dp else 204.dp) else (if (compact) 220.dp else 246.dp),
                             animationSpec = tween(durationMillis = 720), label = "reactor-product-layout"
                         )
                         val reactorLift by androidx.compose.animation.core.animateDpAsState(
-                            targetValue = if (hasVoiceImages) (-16).dp else 0.dp,
+                            targetValue = if (hasVoiceImages) (-9).dp else 0.dp,
                             animationSpec = tween(durationMillis = 720), label = "reactor-product-lift"
                         )
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
