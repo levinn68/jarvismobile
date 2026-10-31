@@ -279,7 +279,9 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
+                    // JarvisScreen owns the single startListening call when its Voice tab becomes active.
+                    // Avoid starting SpeechRecognizer twice from both this callback and LaunchedEffect.
+                    if (!voiceMode) { clapDetector.reset(); recognizer?.cancel() }
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
