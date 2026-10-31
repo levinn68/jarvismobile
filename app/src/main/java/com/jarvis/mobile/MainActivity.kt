@@ -23,6 +23,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
@@ -52,6 +54,8 @@ import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -76,6 +80,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
@@ -560,9 +565,22 @@ private fun JarvisScreen(
     onAskGemini: (String, (String) -> Unit) -> Unit, onOpenApp: (String) -> Boolean,
     onInstalledApps: () -> List<String>
 ) {
-    data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
+    data class Attachment(val uri: Uri, val name: String, val mime: String)
+    data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), val attachments: List<Attachment> = emptyList())
     var page by remember { mutableStateOf("VOICE") }
     var command by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val pendingAttachments = remember { mutableStateListOf<Attachment>() }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val name = runCatching { context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull() ?: "Lampiran"
+            if (pendingAttachments.none { it.uri == uri } && pendingAttachments.size < 5) {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                pendingAttachments.add(Attachment(uri, name, mime))
+            }
+        }
+    }
     var busy by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
@@ -579,9 +597,13 @@ private fun JarvisScreen(
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
-        if (q.isEmpty() || busy) return
+        val files = pendingAttachments.toList()
+        if ((q.isEmpty() && files.isEmpty()) || busy) return
         command = ""
-        lines.add(Line(true, q))
+        pendingAttachments.clear()
+        val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
+        val requestText = q + attachmentNote
+        lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
             val greeting = "I'm online. How may I assist?"
@@ -593,13 +615,13 @@ private fun JarvisScreen(
         val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
         val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
         val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
-        if ((openIntent || simpleApp) && onOpenApp(q)) {
+        if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
             val answer = "Baik. Perintah dijalankan."
             lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
             if (voice) onSpeak(answer)
             return
         }
-        if (openIntent) {
+        if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
             lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
             if (voice) onSpeak(answer)
@@ -608,7 +630,7 @@ private fun JarvisScreen(
         busy = true
         statusText = "ANALYSING REQUEST"
         onSearch(q)
-        onAskGemini(q) { response ->
+        onAskGemini(requestText) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
             lines.add(Line(false, answer))
@@ -789,6 +811,12 @@ private fun JarvisScreen(
                                     }
                                     Spacer(Modifier.height(7.dp))
                                     RichMessageText(line.text)
+                                    line.attachments.forEach { file ->
+                                        Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
+                                            Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
+                                            Text(file.name, color=TextMuted, fontSize=9.sp, maxLines=1)
+                                        }
+                                    }
                                     if (!line.user) SourceStrip(line.text)
                                 }
                             }
@@ -804,10 +832,23 @@ private fun JarvisScreen(
                             }
                         }
                     }
+                    if (pendingAttachments.isNotEmpty()) {
+                        Row(Modifier.fillMaxWidth().padding(top=5.dp), horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                            pendingAttachments.toList().forEach { file ->
+                                Row(Modifier.weight(1f, fill=false).background(Color(0xFF102B38), RoundedCornerShape(16.dp)).padding(start=8.dp, end=2.dp), verticalAlignment=Alignment.CenterVertically) {
+                                    Text(file.name, color=Color(0xFFD7F3F8), fontSize=9.sp, maxLines=1, modifier=Modifier.widthIn(max=115.dp))
+                                    IconButton(onClick={ pendingAttachments.remove(file) }, modifier=Modifier.size(22.dp)) { Icon(Icons.Default.Close, "Hapus lampiran", tint=TextMuted, modifier=Modifier.size(12.dp)) }
+                                }
+                            }
+                        }
+                    }
                     Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=10.dp)
                         .background(Color(0xFF081923), RoundedCornerShape(28.dp))
                         .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
                         .padding(start=16.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
+                        IconButton(onClick={ if (!busy) attachmentPicker.launch(arrayOf("image/*", "video/*", "application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }, enabled=!busy, modifier=Modifier.size(38.dp)) {
+                            Icon(Icons.Default.AttachFile, "Lampirkan foto, video, atau dokumen", tint=Cyan, modifier=Modifier.size(20.dp))
+                        }
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=12.dp),
                             singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
