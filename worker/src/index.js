@@ -383,7 +383,7 @@ async function handleChat(body, env) {
       const result = await askProvider(synthesizer, env, synthesisPrompt, `${systemBase}\nYou are the final JARVIS moderator. Be balanced, decisive when evidence supports it, and transparent about unresolved disagreement.`);
       finalAnswer = result.answer;
     } catch (_) {
-      finalAnswer = successful[0].answer + (discussion.length > 1 ? "\n\nCatatan: proses sintesis akhir gagal; ini adalah jawaban dari AI pertama yang berhasil." : "");
+      finalAnswer = successful[0].answer;
     }
   }
   // Recover real product/article preview images from links returned by the
@@ -410,7 +410,19 @@ async function handleChat(body, env) {
   const imageMarkdown = discussion.flatMap((item) =>
     [...String(item.message || "").matchAll(imagePattern)].map((match) => match[0])
   );
-  const uniqueImages = [...new Set([...imageMarkdown, ...linkedImageMarkdown])].slice(0, 4);
+  let uniqueImages = [...new Set([...imageMarkdown, ...linkedImageMarkdown])].slice(0, 4);
+  const shoppingRequest = /(produk|belanja|harga|termurah|rekomendasi|marketplace|tokopedia|shopee|lazada|product|shopping|buy|price|cheapest)/i.test(prompt);
+  if (!uniqueImages.length && !shoppingRequest) {
+    const commonsPreviews = await commonsImagePreviews(prompt);
+    uniqueImages = commonsPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")").slice(0, 3);
+  }
+  // Route image bytes through the Worker so Android does not hit marketplace
+  // hotlink/CORS restrictions. The original URL is retained as the proxy target.
+  finalAnswer = String(finalAnswer || "").replace(imagePattern, (whole, alt, imageUrl) => {
+    const proxyUrl = new URL("/v1/image", "https://jarvis-api.alvinorasya1304.workers.dev");
+    proxyUrl.searchParams.set("url", imageUrl);
+    return "![ " + alt + " ](" + proxyUrl.toString() + ")";
+  });
   const imageUrlPattern = new RegExp("\\((https?://[^ )]+)\\)");
   for (const image of uniqueImages) {
     const imageUrl = image.match(imageUrlPattern)?.[1];
@@ -451,12 +463,76 @@ async function handleChat(body, env) {
   });
 }
 
+
+function isSafeExternalImageHost(hostname) {
+  const host = String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal")) return false;
+  if (host.includes(":")) return false; // reject IPv6 literals for the public image proxy
+  const parts = host.split(".");
+  if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part))) {
+    const [a, b] = parts.map(Number);
+    if (parts.some((part) => Number(part) > 255)) return false;
+    if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
+    if (a === 169 && b === 254) return false;
+    if (a === 172 && b >= 16 && b <= 31) return false;
+    if (a === 192 && b === 168) return false;
+  }
+  return true;
+}
+
+async function handleImageProxy(request) {
+  const requestUrl = new URL(request.url);
+  const raw = requestUrl.searchParams.get("url") || "";
+  let target;
+  try { target = new URL(raw); } catch (_) { return json({ error: "Invalid image URL" }, 400); }
+  if (!["https:", "http:"].includes(target.protocol) || !isSafeExternalImageHost(target.hostname)) {
+    return json({ error: "Image host is not allowed" }, 400);
+  }
+  try {
+    const upstream = await fetch(target.toString(), {
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36",
+        "Accept": "image/avif,image/webp,image/apng,image/png,image/jpeg,image/gif,*/*;q=0.8",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+    const finalUrl = new URL(upstream.url || target.toString());
+    if (!upstream.ok || !isSafeExternalImageHost(finalUrl.hostname)) {
+      return json({ error: "Image source rejected the request" }, 502);
+    }
+    const type = upstream.headers.get("content-type") || "";
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/i.test(type)) {
+      return json({ error: "Source did not return a supported image", contentType: type }, 415);
+    }
+    const declaredLength = Number(upstream.headers.get("content-length") || 0);
+    if (declaredLength > 8 * 1024 * 1024) return json({ error: "Image is too large" }, 413);
+    const bytes = await upstream.arrayBuffer();
+    if (!bytes.byteLength || bytes.byteLength > 8 * 1024 * 1024) return json({ error: "Invalid image size" }, 413);
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        ...CORS,
+        "Content-Type": type,
+        "Content-Length": String(bytes.byteLength),
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  } catch (error) {
+    return json({ error: "Unable to retrieve source image", detail: String(error.message || error).slice(0, 180) }, 502);
+  }
+}
+
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
     const url = new URL(request.url);
     if (request.method === "GET" && url.pathname === "/") {
       return json({ service: "JARVIS API", version: "2.0.0", endpoints: ["/health", "/v1/chat"] });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/image") {
+      return await handleImageProxy(request);
     }
     if (request.method === "GET" && url.pathname === "/health") {
       const configured = Object.fromEntries(Object.entries(PROVIDERS).map(([name, provider]) => [
