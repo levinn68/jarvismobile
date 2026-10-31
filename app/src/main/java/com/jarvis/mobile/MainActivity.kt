@@ -43,6 +43,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -505,12 +508,65 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private sealed class MarkdownBlock {
+    data class Paragraph(val text: String) : MarkdownBlock()
+    data class Code(val language: String, val text: String) : MarkdownBlock()
+    data class Table(val rows: List<List<String>>) : MarkdownBlock()
+    data class Bullet(val text: String, val ordered: Boolean) : MarkdownBlock()
+}
+
+private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
+    val lines = markdown.replace("\\\\n", "\n").lines()
+    val blocks = mutableListOf<MarkdownBlock>()
+    var i = 0
+    while (i < lines.size) {
+        val line = lines[i]
+        if (line.isBlank()) { i++; continue }
+        if (line.trimStart().startsWith("```")) {
+            val language = line.trim().removePrefix("```").trim()
+            i++
+            val code = mutableListOf<String>()
+            while (i < lines.size && !lines[i].trimStart().startsWith("```")) { code.add(lines[i]); i++ }
+            if (i < lines.size) i++
+            blocks.add(MarkdownBlock.Code(language, code.joinToString("\n")))
+            continue
+        }
+        if (line.trim().startsWith("|") && i + 1 < lines.size && lines[i + 1].trim().matches(Regex("[| :\\-]+"))) {
+            val rows = mutableListOf<List<String>>()
+            rows.add(line.trim().trim('|').split('|').map { it.trim() })
+            i += 2
+            while (i < lines.size && lines[i].trim().startsWith("|")) {
+                rows.add(lines[i].trim().trim('|').split('|').map { it.trim() })
+                i++
+            }
+            blocks.add(MarkdownBlock.Table(rows))
+            continue
+        }
+        val bullet = Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)(.*)$").matchEntire(line)
+        if (bullet != null) {
+            blocks.add(MarkdownBlock.Bullet(bullet.groupValues[1], Regex("^\\s*\\d").containsMatchIn(line)))
+            i++
+            continue
+        }
+        val paragraph = mutableListOf(line)
+        i++
+        while (i < lines.size && lines[i].isNotBlank() &&
+            !lines[i].trimStart().startsWith("```") &&
+            !(lines[i].trim().startsWith("|") && i + 1 < lines.size && lines[i + 1].trim().matches(Regex("[| :\\-]+"))) &&
+            !Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)").containsMatchIn(lines[i])) {
+            paragraph.add(lines[i]); i++
+        }
+        blocks.add(MarkdownBlock.Paragraph(paragraph.joinToString("\n")))
+    }
+    return blocks
+}
+
 @Composable
-private fun RichMessageText(markdown: String) {
+private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
     val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
-    val clean = markdown.replace("\\\\n", "\n").replace(Regex("(?m)^#{1,3}\\s*"), "")
+    val clean = markdown.replace(Regex("(?m)^#{1,6}\\s*"), "")
     val annotated = buildAnnotatedString {
         var cursor = 0
         val matches = (linkPattern.findAll(clean).map { it to "link" } + boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
@@ -518,17 +574,58 @@ private fun RichMessageText(markdown: String) {
             if (match.range.first < cursor) continue
             append(clean.substring(cursor, match.range.first))
             if (kind == "link") {
-                val start = length
+                val startOffset = length
                 withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(match.groupValues[1]) }
-                addStringAnnotation("URL", match.groupValues[2], start, length)
+                addStringAnnotation("URL", match.groupValues[2], startOffset, length)
             } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
             cursor = match.range.last + 1
         }
         if (cursor < clean.length) append(clean.substring(cursor))
     }
-    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = 14.sp, lineHeight = 22.sp), onClick = { offset ->
+    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = 22.sp), onClick = { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
     })
+}
+
+@Composable
+private fun RichMessageText(markdown: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        parseMarkdownBlocks(markdown).forEach { block ->
+            when (block) {
+                is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text)
+                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Text(if (block.ordered) "1." else "•", color = Cyan, fontSize = 14.sp)
+                    InlineMarkdownText(block.text)
+                }
+                is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF06111A), RoundedCornerShape(9.dp))
+                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(9.dp)).padding(10.dp)) {
+                    if (block.language.isNotBlank()) Text(block.language.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        SelectionContainer { Text(block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp, lineHeight = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+                    }
+                }
+                is MarkdownBlock.Table -> {
+                    val columnCount = block.rows.maxOfOrNull { it.size } ?: 0
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        Column(Modifier.border(1.dp, Color(0x5549B8CB), RoundedCornerShape(7.dp))) {
+                            block.rows.forEachIndexed { rowIndex, row ->
+                                Row {
+                                    repeat(columnCount) { columnIndex ->
+                                        Box(Modifier.widthIn(min = 105.dp).width(105.dp)
+                                            .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
+                                            .border(.5.dp, Color(0x5549B8CB)).padding(8.dp)) {
+                                            Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
+                                                fontSize = 11.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
