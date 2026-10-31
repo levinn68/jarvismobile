@@ -9,9 +9,11 @@
         <package android:name="com.whatsapp" />
         <package android:name="com.android.chrome" />
     </queries>
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <application android:allowBackup="false" android:label="JARVIS Mobile" android:theme="@style/Theme.Jarvis">
+    <application android:allowBackup="false" android:label="JARVIS Mobile" android:theme="@style/Theme.Jarvis" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
