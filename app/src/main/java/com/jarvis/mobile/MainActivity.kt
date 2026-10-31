@@ -819,10 +819,27 @@ private fun JarvisScreen(
                             val r = this.size.minDimension * .43f
                             val cyan = Color(0xFF56DDF4)
                             val faint = Color(0x3356DDF4)
-                            // Diffuse reactor glow and layered energy shell.
-                            drawCircle(Brush.radialGradient(listOf(Color(0x5538D8F4), Color(0x1838D8F4), Color.Transparent), Offset(cx, cy), r * 1.2f), r * 1.2f, Offset(cx, cy))
+                            // Holographic reactor glow and layered transparent rings.
+                            val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
+                            drawCircle(Brush.radialGradient(listOf(Color(0x6644E8FF), Color(0x2238D8F4), Color.Transparent), Offset(cx, cy), r * 1.28f), r * 1.28f, Offset(cx, cy))
                             drawCircle(faint, r, Offset(cx, cy), style = Stroke(1.2f))
-                            drawCircle(cyan.copy(alpha = .32f), r * .91f, Offset(cx, cy), style = Stroke(2.2f))
+                            drawCircle(cyan.copy(alpha = .25f + pulse * .18f), r * (.91f + pulse * .018f), Offset(cx, cy), style = Stroke(2.2f))
+                            drawCircle(cyan.copy(alpha = .16f), r * .78f, Offset(cx, cy), style = Stroke(.8f))
+                            drawCircle(cyan.copy(alpha = .12f), r * .68f, Offset(cx, cy), style = Stroke(.7f))
+                            // Animated scan arcs and orbiting signal points.
+                            for (ring in 0..2) {
+                                val rr = r * (1.10f + ring * .075f + pulse * .025f)
+                                drawArc(cyan.copy(alpha = .24f + pulse * .2f), startAngle = spin * (if (ring % 2 == 0) 1f else -1f) + ring * 95f,
+                                    sweepAngle = 72f + ring * 22f, useCenter = false,
+                                    topLeft = Offset(cx - rr, cy - rr), size = androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.1f))
+                            }
+                            for (node in 0..5) {
+                                val a = (spin * .45f + node * 60f) * Math.PI / 180.0
+                                val rr = r * (1.12f + .035f * kotlin.math.sin(wavePhase + node).toFloat())
+                                val p = Offset(cx + kotlin.math.cos(a).toFloat() * rr, cy + kotlin.math.sin(a).toFloat() * rr)
+                                drawCircle(cyan.copy(alpha = .7f), 2.2f + pulse, p)
+                                drawCircle(cyan.copy(alpha = .18f), 6f + pulse * 2f, p, style = Stroke(1f))
+                            }
                             // Uneven energy perimeter, like the particle shell in the reference.
                             val shell = androidx.compose.ui.graphics.Path()
                             for (i in 0..180) {
@@ -857,8 +874,17 @@ private fun JarvisScreen(
                                 val w = sphere * kotlin.math.abs(kotlin.math.cos(i * Math.PI / 8.0)).toFloat().coerceAtLeast(.08f)
                                 drawOval(cyan.copy(alpha = .24f), Offset(cx - w, cy - sphere), androidx.compose.ui.geometry.Size(w * 2f, sphere * 2f), style = Stroke(1f))
                             }
-                            drawCircle(Brush.radialGradient(listOf(Color(0xCC62E9FF), Color(0x5552DDF4), Color.Transparent), Offset(cx, cy), sphere * .85f), sphere * .85f, Offset(cx, cy))
-                            drawCircle(Color(0xFFB9F7FF).copy(alpha = .8f), 2.5f, Offset(cx, cy))
+                            // Luminous digital core with a moving horizontal scan.
+                            drawCircle(Brush.radialGradient(listOf(Color(0xDD62E9FF), Color(0x6652DDF4), Color.Transparent), Offset(cx, cy), sphere * .95f), sphere * .95f, Offset(cx, cy))
+                            drawLine(cyan.copy(alpha = .38f + pulse * .35f),
+                                Offset(cx - sphere * .82f, cy + kotlin.math.sin(wavePhase) * sphere * .25f),
+                                Offset(cx + sphere * .82f, cy + kotlin.math.sin(wavePhase) * sphere * .25f), 1.2f)
+                            for (dot in 0..8) {
+                                val dx = (dot - 4) * sphere * .15f
+                                val dy = kotlin.math.sin(wavePhase * 1.4f + dot * .8f).toFloat() * sphere * .42f
+                                drawCircle(Color(0xFFB9F7FF).copy(alpha = .35f + pulse * .55f), if (dot == 4) 2.4f else 1.2f, Offset(cx + dx, cy + dy))
+                            }
+                            drawCircle(Color(0xFFB9F7FF).copy(alpha = .9f), 2.5f, Offset(cx, cy))
                         }
                         Row(Modifier.align(Alignment.Center).padding(top = size + 86.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                             repeat(25) { bar ->
