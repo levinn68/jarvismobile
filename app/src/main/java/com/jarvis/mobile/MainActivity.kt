@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
@@ -69,6 +71,81 @@ private val Panel = Color(0xFF0D1726)
 private val Cyan = Color(0xFF64E8FF)
 private val TextMuted = Color(0xFF8FA6BD)
 
+/**
+ * Lightweight clap-pattern detector fed by SpeechRecognizer's live RMS callback.
+ * A single clap fires after the double-clap window; two distinct spikes fire immediately.
+ * Threshold follows the room's quiet baseline to reduce triggers from steady background noise.
+ */
+private class ClapPatternDetector(
+    private val handler: Handler,
+    private val onDetected: (Int) -> Unit
+) {
+    private var baseline = 0f
+    private var previous = 0f
+    private var initialized = false
+    private var firstClapAt = 0L
+    private var lastSpikeAt = 0L
+    private var lastTriggeredAt = 0L
+    private var pendingCount = 0
+    private var pendingSingle: Runnable? = null
+
+    fun onRms(rmsDb: Float) {
+        if (!rmsDb.isFinite()) return
+        val now = SystemClock.elapsedRealtime()
+        val level = rmsDb.coerceIn(0f, 20f)
+        if (!initialized) {
+            baseline = level
+            previous = level
+            initialized = true
+            return
+        }
+
+        val jump = level - previous
+        if (pendingCount == 0 && level < baseline + 4f) {
+            baseline = baseline * 0.96f + level * 0.04f
+        }
+        previous = level
+
+        val threshold = maxOf(7.5f, baseline + 6f)
+        val isSharpTransient = level >= threshold && jump >= 3.5f
+        if (!isSharpTransient || now - lastSpikeAt < 180L || now - lastTriggeredAt < 1100L) return
+        lastSpikeAt = now
+
+        if (pendingCount == 1 && now - firstClapAt in 140L..650L) {
+            pendingSingle?.let(handler::removeCallbacks)
+            pendingSingle = null
+            pendingCount = 0
+            lastTriggeredAt = now
+            onDetected(2)
+            return
+        }
+
+        pendingSingle?.let(handler::removeCallbacks)
+        pendingCount = 1
+        firstClapAt = now
+        val task = Runnable {
+            if (pendingCount == 1) {
+                pendingCount = 0
+                pendingSingle = null
+                lastTriggeredAt = SystemClock.elapsedRealtime()
+                onDetected(1)
+            }
+        }
+        pendingSingle = task
+        handler.postDelayed(task, 650L)
+    }
+
+    fun reset() {
+        pendingSingle?.let(handler::removeCallbacks)
+        pendingSingle = null
+        pendingCount = 0
+        initialized = false
+        previous = 0f
+        baseline = 0f
+        lastSpikeAt = 0L
+    }
+}
+
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
@@ -76,6 +153,19 @@ class MainActivity : ComponentActivity() {
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private var permissionAsked = false
+    @Volatile private var clapActivationInProgress = false
+    private val clapDetector by lazy {
+        ClapPatternDetector(handler) { count ->
+            if (voiceModeEnabled) handler.post {
+                if (voiceModeEnabled && voiceText.value.isBlank()) {
+                    clapActivationInProgress = true
+                    recognizer?.cancel()
+                    voiceStatus.value = if (count == 2) "DOUBLE CLAP · JARVIS ACTIVATED" else "SINGLE CLAP · JARVIS ACTIVATED"
+                    voiceText.value = "JARVIS, OPEN"
+                }
+            }
+        }
+    }
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
@@ -110,11 +200,11 @@ class MainActivity : ComponentActivity() {
             recognizer?.setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING · SPEAK NOW" }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "HEARING YOUR VOICE" }
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) { if (voiceModeEnabled) clapDetector.onRms(rmsdB) }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
-                    if (geminiSpeechInProgress) return
+                    if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "DIDN'T CATCH THAT · TRY AGAIN"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
@@ -143,7 +233,7 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else recognizer?.cancel()
+                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
@@ -302,6 +392,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startListening() {
+        clapActivationInProgress = false
         if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
@@ -575,7 +666,7 @@ private fun JarvisScreen(
                         Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
                             Spacer(Modifier.height(8.dp))
-                            Text("SAY  “JARVIS, OPEN”  TO ACTIVATE", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
+                            Text("CLAP ONCE / TWICE  ·  OR SAY “JARVIS, OPEN”", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
                         }
                     }
                     Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).border(1.dp, Color(0x445DEBFF), RoundedCornerShape(12.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
