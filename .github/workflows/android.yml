@@ -31,7 +31,7 @@ jobs:
           python3 - <<'PY'
           import base64, os, re, sys
           raw = os.environ.get("KEYSTORE_BASE64", "")
-          compact = re.sub(r"\\s+", "", raw)
+          compact = re.sub(r"\s+", "", raw)
           if not compact:
               sys.exit("KEYSTORE_BASE64 is empty. Re-enter the complete Base64 text in GitHub Secrets.")
           try:
