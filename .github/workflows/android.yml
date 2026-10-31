@@ -22,13 +22,30 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Restore permanent release keystore
+      - name: Restore and validate permanent release keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: |
-          test -n "$KEYSTORE_BASE64"
-          echo "$KEYSTORE_BASE64" | base64 --decode > "$JARVIS_KEYSTORE_FILE"
-          test -s "$JARVIS_KEYSTORE_FILE"
+          python3 - <<'PY'
+          import base64, os, re, sys
+          raw = os.environ.get("KEYSTORE_BASE64", "")
+          compact = re.sub(r"\\s+", "", raw)
+          if not compact:
+              sys.exit("KEYSTORE_BASE64 is empty. Re-enter the complete Base64 text in GitHub Secrets.")
+          try:
+              decoded = base64.b64decode(compact, validate=True)
+          except Exception:
+              sys.exit("KEYSTORE_BASE64 is not valid Base64. Copy the complete contents of jarvis-final.txt, without labels or extra text.")
+          if len(decoded) < 1000:
+              sys.exit("Decoded keystore is unexpectedly small. Check that the full Base64 value was pasted.")
+          with open(os.environ["JARVIS_KEYSTORE_FILE"], "wb") as f:
+              f.write(decoded)
+          print(f"Base64 decoded successfully ({len(decoded)} bytes).")
+          PY
+          keytool -list -keystore "$JARVIS_KEYSTORE_FILE" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          echo "Keystore file and alias validated successfully."
       - name: Locate Android SDK
         run: |
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
