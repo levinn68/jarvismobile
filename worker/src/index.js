@@ -86,16 +86,15 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
     });
     if (!response.ok) return null;
     const html = (await response.text()).slice(0, 800000);
-    const tags = html.match(/<meta\\b[^>]*>/gi) || [];
+    const tags = html.match(/<meta\b[^>]*>/gi) || [];
     const readAttr = (tag, name) => {
-      const escaped = name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
-      const match = tag.match(new RegExp("(?:^|\\\\s)" + escaped + "\\\\s*=\\\\s*[\"']([^\"']+)[\"']", "i"));
+      const match = tag.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']+)[\"']", "i"));
       return match?.[1] || "";
     };
     const absolute = (raw) => {
       try {
         const value = new URL(String(raw || "").replace(/&amp;/g, "&").trim(), page).toString();
-        return /^https?:\\/\\//i.test(value) ? value : "";
+        return /^https?:\/\//i.test(value) ? value : "";
       } catch (_) { return ""; }
     };
     const metaCandidates = [];
@@ -107,8 +106,8 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
     }
     if (metaCandidates.length) return metaCandidates[0];
 
-    const imageTags = html.match(/<img\\b[^>]*>/gi) || [];
-    const expected = String(expectedTitle || "").toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter((x) => x.length > 2);
+    const imageTags = html.match(/<img\b[^>]*>/gi) || [];
+    const expected = String(expectedTitle || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x.length > 2);
     const candidates = [];
     for (const tag of imageTags) {
       const alt = readAttr(tag, "alt").toLowerCase();
@@ -116,7 +115,7 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
         readAttr(tag, "data-lazy-src") || readAttr(tag, "data-src") ||
         readAttr(tag, "data-image") || readAttr(tag, "src") ||
         readAttr(tag, "data-srcset") || readAttr(tag, "srcset");
-      const srcset = raw.split(",").map((entry) => entry.trim().split(/\\s+/)[0]).filter(Boolean);
+      const srcset = raw.split(",").map((entry) => entry.trim().split(/\s+/)[0]).filter(Boolean);
       const url = absolute(srcset[0] || raw);
       const width = Number(readAttr(tag, "width") || 0);
       const height = Number(readAttr(tag, "height") || 0);
