@@ -119,23 +119,31 @@ async function commonsImagePreviews(prompt) {
       .replace(/\bhandphone\b/gi, "smartphone")
       .replace(/\s+/g, " ").trim();
     if (!query) return [];
-    const api = new URL("https://commons.wikimedia.org/w/api.php");
-    api.search = new URLSearchParams({
-      action: "query", generator: "search", gsrsearch: "filetype:bitmap " + query,
-      gsrnamespace: "6", gsrwhat: "text", gsrlimit: "6",
-      prop: "imageinfo", iiprop: "url", iiurlwidth: "720",
-      format: "json", formatversion: "2",
-    }).toString();
-    const response = await fetch(api.toString(), {
-      headers: { "User-Agent": "JARVISMobile/1.0 (visual search assistant)", "Accept": "application/json" },
-      signal: AbortSignal.timeout(6500),
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    return (data.query?.pages || []).map((page) => ({
-      title: String(page.title || "Visual reference").replace(/^File:/, "").replace(/\\.[^.]+$/, "").slice(0, 90),
-      url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "",
-    })).filter((item) => item.url.startsWith("https://") || item.url.startsWith("http://")).slice(0, 3);
+    const searchTerms = [...new Set([
+      query,
+      query.split(" ").slice(0, 4).join(" "),
+    ].map((value) => value.trim()).filter(Boolean))];
+    for (const terms of searchTerms) {
+      const api = new URL("https://commons.wikimedia.org/w/api.php");
+      api.search = new URLSearchParams({
+        action: "query", generator: "search", gsrsearch: terms,
+        gsrnamespace: "6", gsrwhat: "text", gsrlimit: "10",
+        prop: "imageinfo", iiprop: "url", iiurlwidth: "900",
+        format: "json", formatversion: "2",
+      }).toString();
+      const response = await fetch(api.toString(), {
+        headers: { "User-Agent": "JARVISMobile/1.0 (visual search assistant)", "Accept": "application/json" },
+        signal: AbortSignal.timeout(7500),
+      });
+      if (!response.ok) continue;
+      const data = await response.json();
+      const images = (data.query?.pages || []).map((page) => ({
+        title: String(page.title || "Visual reference").replace(/^File:/, "").replace(/\\.[^.]+$/, "").slice(0, 90),
+        url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "",
+      })).filter((item) => item.url.startsWith("https://") || item.url.startsWith("http://"));
+      if (images.length) return images.slice(0, 4);
+    }
+    return [];
   } catch (_) {
     return [];
   }
