@@ -720,7 +720,7 @@ private fun JarvisScreen(
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
     var page by remember { mutableStateOf("COMMAND") }
-    var voiceListening by remember { mutableStateOf(true) }
+    var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -862,16 +862,18 @@ private fun JarvisScreen(
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 22.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp)
-                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM", color = Color(0xFF5E9BA9), fontSize = 7.sp, letterSpacing = 1.2.sp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(Modifier.weight(1f).padding(end = 5.dp)) {
+                        Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 23.sp, fontWeight = FontWeight.Light, letterSpacing = 4.2.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM", color = Color(0xFF5E9BA9), fontSize = 8.sp, letterSpacing = 1.35.sp)
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
                         Text("CORE 01 / " + page, color = TextMuted, fontSize = 7.sp)
                     }
-                    IconButton(onClick = { keyDraft = ""; settings = true }) { Icon(Icons.Default.Settings, null, tint = Cyan) }
+                    IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.Settings, null, tint = Cyan, modifier = Modifier.size(23.dp)) }
                 }
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
@@ -881,14 +883,19 @@ private fun JarvisScreen(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 245.dp else 285.dp
-                            Canvas(Modifier.size(reactorSize).scale(breathe).rotate(spin * .12f).clickable { onStartListening() }) {
+                            val reactorSize = if (compact) 260.dp else 310.dp
+                            Canvas(Modifier.size(reactorSize)
+                                .scale(if (voiceListening) breathe else 1f)
+                                .rotate(if (voiceListening) spin * .12f else spin * .025f)
+                                .clickable(enabled = voiceListening) { onStartListening() }) {
                                 val cx = size.width / 2f
                                 val cy = size.height / 2f
                                 val r = size.minDimension * .43f
                                 val cyan = Color(0xFF36DDF5)
                                 val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                drawCircle(Brush.radialGradient(listOf(Color(0x6634D9F3), Color(0x2221AFCB), Color.Transparent), Offset(cx, cy), r * 1.55f), r * 1.55f, Offset(cx, cy))
+                                drawCircle(Brush.radialGradient(listOf(Color(0x6634D9F3), Color(0x2221AFCB), Color.Transparent), Offset(cx, cy), r * 1.62f), r * 1.62f, Offset(cx, cy))
+                                drawCircle(cyan.copy(alpha = .10f + pulse * .05f), r * 1.12f, Offset(cx, cy), style = Stroke(1.1f))
+                                drawCircle(cyan.copy(alpha = .08f), r * 1.22f, Offset(cx, cy), style = Stroke(.7f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3f, 7f))))
                                 // Layered translucent holographic disc, matching the reference interface.
                                 for (ring in 0..7) {
                                     val rr = r * (1f - ring * .105f)
@@ -910,8 +917,11 @@ private fun JarvisScreen(
                                     drawArc(cyan.copy(alpha = .22f + pulse * .18f), spin * (if (i % 2 == 0) 1f else -1f) + i * 70f,
                                         48f + i * 13f, false, Offset(cx - rr, cy - rr), androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.2f))
                                 }
-                                // Textured central wireframe globe and dotted matrix.
+                                // Central wireframe globe, dotted matrix and moving scan beam.
                                 val core = r * .43f
+                                val scanY = cy + kotlin.math.sin(wavePhase.toDouble() * .55).toFloat() * core * .72f
+                                drawLine(Color(0xFF8CF3FF).copy(alpha = .62f), Offset(cx - core * .88f, scanY), Offset(cx + core * .88f, scanY), 1.25f)
+                                drawCircle(Color(0xFF9CF5FF).copy(alpha = .18f), core * .95f, Offset(cx, cy), style = Stroke(.8f))
                                 for (lat in -5..5) {
                                     val yy = lat / 5f
                                     val half = core * kotlin.math.sqrt((1f - yy * yy).coerceAtLeast(.02f))
@@ -948,11 +958,17 @@ private fun JarvisScreen(
                                 }
                                 drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(SimpleDateFormat("h:mm", Locale.getDefault()).format(Date()),
-                                    color = Color(0xFFD8FBFF), fontSize = 27.sp, fontWeight = FontWeight.Light, letterSpacing = 1.sp)
-                                Text(SimpleDateFormat("a", Locale.getDefault()).format(Date()),
-                                    color = Color(0xFF6FCFE0), fontSize = 9.sp, letterSpacing = 2.sp)
+                            Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
+                                Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
+                                    color = Color(0xFF6FCFE0), fontSize = 10.sp, letterSpacing = 1.4.sp)
+                                Text(if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO INPUT STANDBY",
+                                    color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
+                            }
+                            if (!voiceListening) {
+                                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("J", color = Color(0xFF8DEEFF).copy(alpha = .8f), fontSize = 32.sp, fontWeight = FontWeight.ExtraLight)
+                                    Text("STANDBY", color = Color(0xFF8DEEFF), fontSize = 7.sp, letterSpacing = 2.sp)
+                                }
                             }
                             Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
@@ -992,7 +1008,8 @@ private fun JarvisScreen(
                                 Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                         }
-                        Text("TAP THE REACTOR OR SAY “JARVIS”", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
+                        Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
+                            color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
                } else {
@@ -1123,7 +1140,7 @@ private fun JarvisScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Add, "Tambah lampiran", tint = Cyan,
-                                    modifier = Modifier.size(23.dp).rotate(if (attachmentMenu) 45f else 0f))
+                                    modifier = Modifier.size(23.dp))
                             }
                             DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
                                 properties = PopupProperties(focusable = false),
