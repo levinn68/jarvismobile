@@ -366,13 +366,13 @@ async function handleChat(body, env) {
   // agents. This covers providers that return marketplace links but omit image
   // Markdown. Only page metadata is used; never construct or guess image URLs.
   const markdownLinks = [...discussion.flatMap((item) =>
-    [...String(item.message || "").matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^ )]+)\\)/g)]
+    [...String(item.message || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^ )]+)\)/g)]
       .map((match) => ({ title: match[1], uri: match[2] }))
-  ), ...[...String(finalAnswer || "").matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^ )]+)\\)/g)]
+  ), ...[...String(finalAnswer || "").matchAll(/\[([^\]]+)\]\((https?:\/\/[^ )]+)\)/g)]
     .map((match) => ({ title: match[1], uri: match[2] }))];
   const uniqueLinks = markdownLinks
     .filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index)
-    .filter((item) => !/\\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(item.uri))
+    .filter((item) => !/\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(item.uri))
     .slice(0, 8);
   const linkedPreviews = await previewImagesFromSources(uniqueLinks);
   const linkedImageMarkdown = linkedPreviews.map((item) =>
