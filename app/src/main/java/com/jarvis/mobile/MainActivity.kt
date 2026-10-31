@@ -929,7 +929,7 @@ private fun JarvisScreen(
                         Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
                         Text("CORE 01 / " + page, color = TextMuted, fontSize = 7.sp)
                     }
-                    IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.Settings, null, tint = Cyan, modifier = Modifier.size(23.dp)) }
+                    Spacer(Modifier.width(2.dp))
                 }
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
@@ -938,7 +938,7 @@ private fun JarvisScreen(
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().weight(if (lines.isEmpty()) 1f else .82f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 220.dp else 246.dp
                             Canvas(Modifier.size(reactorSize)
                                 .scale(if (voiceListening) breathe else 1f)
@@ -1031,6 +1031,8 @@ private fun JarvisScreen(
                                 }
                                 drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
                             }
+                            Text("J.A.R.V.I.S.", color = Color(0xFFBDFBFF), fontSize = 15.sp, letterSpacing = 2.6.sp,
+                                fontWeight = FontWeight.Light, modifier = Modifier.align(Alignment.Center))
                             Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
                                 Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
                                     color = Color(0xFF6FCFE0), fontSize = 10.sp, letterSpacing = 1.4.sp)
@@ -1049,30 +1051,61 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)
-                            .background(Color(0x5520AFC4), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
+                        if (lines.isNotEmpty()) {
+                            androidx.compose.foundation.lazy.LazyColumn(
+                                Modifier.fillMaxWidth().weight(.62f),
+                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 5.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(lines.takeLast(3)) { line ->
+                                    Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp)) {
+                                        Text(if (line.user) "YOU / VOICE" else "J.A.R.V.I.S. / RESPONSE",
+                                            color = if (line.user) TextMuted else Cyan, fontSize = 8.sp, letterSpacing = 1.4.sp)
+                                        Spacer(Modifier.height(4.dp))
+                                        if (line.revealed.value) RichMessageText(line.displayText.value)
+                                        else Text(processStage, color = TextMuted, fontSize = 10.sp)
+                                    }
+                                }
+                            }
+                        }
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 7.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { voiceListening = !voiceListening }, modifier = Modifier.size(38.dp)) {
-                                    Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
+                                Box(Modifier.size(50.dp).background(Color(0x220D2833), CircleShape)
+                                    .border(1.dp, Color(0x6652DFF2), CircleShape)
+                                    .clickable { voiceListening = !voiceListening }, contentAlignment = Alignment.Center) {
+                                    Icon(if (voiceListening) Icons.Default.MicOff else Icons.Default.Mic,
                                         contentDescription = if (voiceListening) "Matikan mikrofon" else "Aktifkan mikrofon",
-                                        tint = if (voiceListening) Cyan else Color(0xFFFF8A8A), modifier = Modifier.size(20.dp))
+                                        tint = if (voiceListening) Color(0xFFFF8A8A) else Cyan, modifier = Modifier.size(22.dp))
                                 }
-                                Text(if (voiceListening) "MIC ON" else "MIC OFF",
-                                    color = if (voiceListening) Cyan else Color(0xFFFF8A8A), fontSize = 7.sp, letterSpacing = 1.sp)
+                                Text(if (voiceListening) "MIC OFF" else "MIC ON", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { voiceListening = false; page = "CHAT" }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                Box(Modifier.size(82.dp).background(Color(0x3320BFD8), CircleShape)
+                                    .border(2.dp, Cyan.copy(alpha = .85f), CircleShape)
+                                    .clickable {
+                                        if (busy) {
+                                            cancelCurrentRequest?.invoke()
+                                            cancelCurrentRequest = null
+                                            busy = false
+                                            statusText = "REQUEST STOPPED"
+                                            lines.add(Line(false, "Permintaan dihentikan."))
+                                        } else if (!voiceListening) voiceListening = true else onStartListening()
+                                    }, contentAlignment = Alignment.Center) {
+                                    Icon(if (busy) Icons.Default.Stop else Icons.Default.SettingsVoice,
+                                        contentDescription = if (busy) "Stop" else "Listen",
+                                        tint = if (busy) Color(0xFFFF8A8A) else Cyan, modifier = Modifier.size(32.dp))
+                                }
+                                Text(if (busy) "STOP" else if (voiceListening) "LISTENING" else "LISTEN",
+                                    color = Cyan, fontSize = 8.sp, letterSpacing = 1.5.sp)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(50.dp).background(Color(0x220D2833), CircleShape)
+                                    .border(1.dp, Color(0x6652DFF2), CircleShape)
+                                    .clickable { voiceListening = false; page = "CHAT" }, contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Language, contentDescription = "Chat mode", tint = Cyan, modifier = Modifier.size(22.dp))
                                 }
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { if (!voiceListening) voiceListening = true else onStartListening() }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.SettingsVoice, null, tint = Cyan, modifier = Modifier.size(20.dp))
-                                }
-                                Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                         }
                         Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
@@ -1211,8 +1244,11 @@ private fun JarvisScreen(
                                     tint = Cyan, modifier = Modifier.size(21.dp))
                             }
                             DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
-                                properties = PopupProperties(focusable = false),
+                                properties = PopupProperties(focusable = true),
                                 modifier=Modifier.background(Color(0xFF102632))) {
+                                DropdownMenuItem(text={ Text("Pengaturan AI", color=Color.White) },
+                                    onClick={ attachmentMenu=false; keyDraft=""; settings=true },
+                                    leadingIcon={ Icon(Icons.Default.Settings, null, tint=Cyan) })
                                 DropdownMenuItem(text={ Text("File / Dokumen", color=Color.White) },
                                     onClick={ attachmentMenu=false; attachmentPicker.launch(arrayOf("*/*")) },
                                     leadingIcon={ Icon(Icons.Default.AttachFile, null, tint=Cyan) })
@@ -1224,6 +1260,7 @@ private fun JarvisScreen(
                                     leadingIcon={ Icon(Icons.Default.Image, null, tint=Cyan) })
                             }
                         }
+                        Spacer(Modifier.width(9.dp))
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
                             singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
@@ -1231,14 +1268,17 @@ private fun JarvisScreen(
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
                             decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
                         if (busy) {
-                            IconButton(onClick = {
-                                cancelCurrentRequest?.invoke()
-                                cancelCurrentRequest = null
-                                busy = false
-                                statusText = "REQUEST STOPPED"
-                                lines.add(Line(false, "Permintaan dihentikan."))
-                            }) {
-                                Icon(Icons.Default.Stop, "Stop response", tint = Color(0xFFFF8A8A))
+                            Box(Modifier.padding(start = 5.dp).size(40.dp)
+                                .background(Color(0x33250E16), CircleShape)
+                                .border(1.dp, Color(0xCCFF7777), CircleShape)
+                                .clickable {
+                                    cancelCurrentRequest?.invoke()
+                                    cancelCurrentRequest = null
+                                    busy = false
+                                    statusText = "REQUEST STOPPED"
+                                    lines.add(Line(false, "Permintaan dihentikan."))
+                                }, contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Stop, "Stop response", tint = Color(0xFFFF8A8A), modifier = Modifier.size(18.dp))
                             }
                         } else {
                             IconButton(onClick={ keyboard?.hide(); focusManager.clearFocus(); send(command) }) {
