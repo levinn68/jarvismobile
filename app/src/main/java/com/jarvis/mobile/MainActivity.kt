@@ -934,7 +934,7 @@ private fun VoiceVisualResults(markdown: String) {
                                     if (value.isNotBlank()) {
                                         Text(headers.getOrNull(index + 1)?.uppercase(Locale.ROOT).orEmpty(),
                                             color = Cyan, fontSize = 7.sp, letterSpacing = .7.sp)
-                                        Text(value.replace(Regex("\\\\*\\*(.*?)\\\\*\\*"), "$1"),
+                                        Text(value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
                                             color = Color(0xFFD8EDF2), fontSize = 9.sp, maxLines = 2)
                                     }
                                 }
