@@ -1275,11 +1275,39 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        // Voice mode is a visual HUD, not a second chat transcript.
-                        // Show only verified image results; all text and specifications stay in Chat.
+                        // Voice mode is a visual HUD: show the spoken request and visual cards,
+                        // but keep the full transcript and technical details in Chat.
+                        val latestVoiceRequest = lines.lastOrNull { it.user }?.text.orEmpty()
                         val latestVisualAnswer = lines.lastOrNull { !it.user && it.revealed.value }
                             ?.displayText?.value.orEmpty()
-                        if (latestVisualAnswer.isNotBlank()) {
+                        if (latestVoiceRequest.isNotBlank()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp)
+                                    .background(Color(0xAA061923), RoundedCornerShape(22.dp))
+                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(22.dp))
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(9.dp)
+                            ) {
+                                Icon(Icons.Default.Mic, null, tint = Cyan, modifier = Modifier.size(18.dp))
+                                Text(latestVoiceRequest, color = Color(0xFFE0F4F8), fontSize = 10.sp,
+                                    maxLines = 2, modifier = Modifier.weight(1f))
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    repeat(7) { bar ->
+                                        val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .7f))
+                                        Box(Modifier.width(2.dp).height((4 + level * 10).dp)
+                                            .background(Cyan.copy(alpha = .45f + level * .5f), RoundedCornerShape(2.dp)))
+                                    }
+                                }
+                            }
+                        }
+                        if (busy) {
+                            Row(Modifier.fillMaxWidth().padding(start = 9.dp, top = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                Box(Modifier.size(7.dp).border(1.dp, Cyan, CircleShape))
+                                Text("MENAMPILKAN HASIL…", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                            }
+                        } else if (latestVisualAnswer.isNotBlank()) {
                             VoiceVisualResults(latestVisualAnswer)
                         }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
