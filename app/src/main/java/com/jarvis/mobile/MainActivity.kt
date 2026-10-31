@@ -103,6 +103,7 @@ import java.net.URL
 import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
+import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -521,6 +522,13 @@ private sealed class MarkdownBlock {
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     val lines = markdown.replace("\\\\n", "\n").lines()
     val blocks = mutableListOf<MarkdownBlock>()
+    fun isTableSeparator(line: String): Boolean {
+        val cells = line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
+        return cells.isNotEmpty() && cells.all { it.matches(Regex(":?-{3,}:?")) }
+    }
+    fun tableCells(line: String): List<String> =
+        line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
+
     var i = 0
     while (i < lines.size) {
         val line = lines[i]
@@ -534,15 +542,27 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             blocks.add(MarkdownBlock.Code(language, code.joinToString("\n")))
             continue
         }
-        if (line.trim().startsWith("|") && i + 1 < lines.size && lines[i + 1].trim().matches(Regex("[| :\\-]+"))) {
+        if (line.contains("|") && i + 1 < lines.size && isTableSeparator(lines[i + 1])) {
             val rows = mutableListOf<List<String>>()
-            rows.add(line.trim().trim('|').split('|').map { it.trim() })
+            rows.add(tableCells(line))
             i += 2
-            while (i < lines.size && lines[i].trim().startsWith("|")) {
-                rows.add(lines[i].trim().trim('|').split('|').map { it.trim() })
+            while (i < lines.size) {
+                if (lines[i].isBlank()) {
+                    var next = i
+                    while (next < lines.size && lines[next].isBlank()) next++
+                    if (next < lines.size && lines[next].contains("|") && !isTableSeparator(lines[next])) {
+                        i = next
+                        continue
+                    }
+                    i = next
+                    break
+                }
+                if (!lines[i].contains("|")) break
+                rows.add(tableCells(lines[i]))
                 i++
             }
-            blocks.add(MarkdownBlock.Table(rows))
+            val columns = rows.maxOfOrNull { it.size } ?: 0
+            blocks.add(MarkdownBlock.Table(rows.map { row -> row + List((columns - row.size).coerceAtLeast(0)) { "" } }))
             continue
         }
         val bullet = Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)(.*)$").matchEntire(line)
@@ -555,7 +575,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
         i++
         while (i < lines.size && lines[i].isNotBlank() &&
             !lines[i].trimStart().startsWith("```") &&
-            !(lines[i].trim().startsWith("|") && i + 1 < lines.size && lines[i + 1].trim().matches(Regex("[| :\\-]+"))) &&
+            !(lines[i].contains("|") && i + 1 < lines.size && isTableSeparator(lines[i + 1])) &&
             !Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)").containsMatchIn(lines[i])) {
             paragraph.add(lines[i]); i++
         }
@@ -612,9 +632,9 @@ private fun RichMessageText(markdown: String) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                         Column(Modifier.border(1.dp, Color(0x5549B8CB), RoundedCornerShape(7.dp))) {
                             block.rows.forEachIndexed { rowIndex, row ->
-                                Row {
+                                Row(Modifier.height(IntrinsicSize.Min)) {
                                     repeat(columnCount) { columnIndex ->
-                                        Box(Modifier.widthIn(min = 105.dp).width(105.dp)
+                                        Box(Modifier.width(128.dp).heightIn(min = 48.dp)
                                             .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
                                             .border(.5.dp, Color(0x5549B8CB)).padding(8.dp)) {
                                             Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
@@ -669,7 +689,13 @@ private fun JarvisScreen(
     onInstalledApps: () -> List<String>
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
-    data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), val attachments: List<Attachment> = emptyList())
+    data class Line(
+        val user: Boolean,
+        val text: String,
+        val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
+        val attachments: List<Attachment> = emptyList(),
+        val displayText: MutableState<String> = mutableStateOf(if (user) text else "")
+    )
     var page by remember { mutableStateOf("COMMAND") }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
@@ -708,6 +734,7 @@ private fun JarvisScreen(
     var settings by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
+    val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
@@ -755,9 +782,20 @@ private fun JarvisScreen(
         onAskGemini(requestText) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
-            lines.add(Line(false, answer))
+            val responseLine = Line(false, answer)
+            lines.add(responseLine)
             busy = false
             statusText = "RESPONSE READY"
+            revealScope.launch {
+                val words = Regex("\\S+\\s*").findAll(answer).map { it.value }.toList()
+                val shown = StringBuilder()
+                for (word in words) {
+                    shown.append(word)
+                    responseLine.displayText.value = shown.toString()
+                    kotlinx.coroutines.delay(42)
+                }
+                if (responseLine.displayText.value != answer) responseLine.displayText.value = answer
+            }
             if (voice) onSpeak(answer)
         }
     }
@@ -786,6 +824,11 @@ private fun JarvisScreen(
     }
     LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
     LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+    LaunchedEffect(lines) {
+        snapshotFlow { lines.lastOrNull()?.displayText?.value }.collect {
+            if (followLatest && lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
+        }
+    }
     LaunchedEffect(busy) { if (busy) { val stages = listOf("Memahami konteks", "Menyusun strategi pencarian", "Memeriksa informasi", "Merangkum hasil"); var i = 0; while (busy) { processStage = stages[i++ % stages.size]; kotlinx.coroutines.delay(1450) } } else processStage = "Siap membantu" }
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -951,9 +994,6 @@ private fun JarvisScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
                                 Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
                                     .wrapContentWidth(Alignment.Start)
-                                    .animateContentSize(animationSpec = androidx.compose.animation.core.spring(
-                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow))
                                     .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
@@ -966,17 +1006,7 @@ private fun JarvisScreen(
                                         }
                                     }
                                     Spacer(Modifier.height(7.dp))
-                                    var expandedMessage by remember(line.text) { mutableStateOf(false) }
-                                    val shouldCollapse = !line.user && line.text.length > 900
-                                    val visibleMessage = if (shouldCollapse && !expandedMessage) {
-                                        line.text.take(900).substringBeforeLast(" ") + "…"
-                                    } else line.text
-                                    RichMessageText(visibleMessage)
-                                    if (shouldCollapse) {
-                                        TextButton(onClick = { expandedMessage = !expandedMessage }, contentPadding = PaddingValues(0.dp)) {
-                                            Text(if (expandedMessage) "TUTUP DETAIL" else "LIHAT DETAIL", color = Cyan, fontSize = 9.sp)
-                                        }
-                                    }
+                                    RichMessageText(line.displayText.value)
                                     line.attachments.forEach { file ->
                                         Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
                                             Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
