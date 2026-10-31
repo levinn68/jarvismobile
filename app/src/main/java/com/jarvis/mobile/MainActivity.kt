@@ -58,6 +58,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
@@ -265,7 +269,13 @@ class MainActivity : ComponentActivity() {
                 val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok", false)) {
-                    json.optString("error").ifBlank { "JARVIS API error ($code)." } + " Periksa provider AI dan koneksi backend."
+                    val diagnostics = json.optJSONArray("diagnostics")
+                    val detail = if (diagnostics != null) (0 until diagnostics.length()).mapNotNull { i ->
+                        val item = diagnostics.optJSONObject(i) ?: return@mapNotNull null
+                        item.optString("provider") + ": " + item.optString("detail", item.optString("status"))
+                    }.joinToString("\n") else ""
+                    json.optString("error").ifBlank { "JARVIS API error ($code)." } +
+                        if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
                 } else {
                     json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
                 }
@@ -279,77 +289,40 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun speak(text: String) {
-        val key = geminiKey
-        if (key.isBlank() || text.isBlank()) {
-            voiceStatus.value = "GEMINI VOICE KEY REQUIRED"
-            speakWithAndroid(text)
-            return
-        }
+        if (text.isBlank()) return
         geminiSpeechInProgress = true
+        clapDetector.reset()
         tts?.stop()
         Thread {
             var connection: HttpURLConnection? = null
             try {
-                val endpoint = URL("https://generativelanguage.googleapis.com/v1beta/interactions")
+                val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/tts")
                 connection = endpoint.openConnection() as HttpURLConnection
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 20000
                 connection.readTimeout = 90000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                connection.setRequestProperty("x-goog-api-key", key)
-
-                val spokenText = JSONObject()
-                    .put("type", "text")
-                    .put("text", text)
-                    .put("annotations", JSONArray().put(
-                        JSONObject()
-                            .put("type", "speech_metadata")
-                            .put("style", "A mature, composed male personal AI assistant. Deep, resonant baritone; refined subtle British vocal character while speaking fluent natural Indonesian; precise consonants, measured deliberate pacing, calm authority, warm low register, understated cinematic delivery. Sound like a real professional voice actor, never robotic, never exaggerated.")
-                    ))
-                val inputContent = JSONObject()
-                    .put("type", "user_input")
-                    .put("content", JSONArray().put(spokenText))
-                val speechConfig = JSONObject()
-                    .put("speakers", JSONArray().put(JSONObject().put("voice", "Gacrux")))
-                val body = JSONObject()
-                    .put("model", "gemini-3.8-flash-tts")
-                    .put("input", JSONArray().put(inputContent))
-                    .put("response_format", JSONObject().put("type", "audio"))
-                    .put("generation_config", JSONObject().put("speech_config", speechConfig))
-
+                val body = JSONObject().put("text", text)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
-                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                val response = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
-                if (code !in 200..299) throw IllegalStateException("Gemini TTS HTTP $code: $response")
-                val json = JSONObject(response)
-                val steps = json.optJSONArray("steps")
-                var audioData = ""
-                if (steps != null) {
-                    for (i in 0 until steps.length()) {
-                        val content = steps.optJSONObject(i)?.optJSONArray("content") ?: continue
-                        for (j in 0 until content.length()) {
-                            val item = content.optJSONObject(j) ?: continue
-                            if (item.optString("type") == "audio") {
-                                audioData = item.optString("data")
-                                if (audioData.isNotBlank()) break
-                            }
-                        }
-                        if (audioData.isNotBlank()) break
-                    }
+                if (code !in 200..299) {
+                    val detail = connection.errorStream?.let { stream ->
+                        BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                    }.orEmpty()
+                    throw IllegalStateException("Fish Audio HTTP $code: $detail")
                 }
-                if (audioData.isBlank()) throw IllegalStateException("Gemini TTS returned no audio")
-                val wav = Base64.decode(audioData, Base64.DEFAULT)
-                val audioFile = File(cacheDir, "jarvis_voice.wav")
-                FileOutputStream(audioFile).use { it.write(wav) }
+                val audio = connection.inputStream.use { it.readBytes() }
+                if (audio.isEmpty()) throw IllegalStateException("Fish Audio returned empty audio")
+                val audioFile = File(cacheDir, "jarvis_mcu_voice.mp3")
+                FileOutputStream(audioFile).use { it.write(audio) }
                 handler.post {
                     try {
                         speechPlayer?.release()
                         speechPlayer = MediaPlayer().apply {
                             setDataSource(audioFile.absolutePath)
                             setOnPreparedListener {
-                                voiceStatus.value = "JARVIS SPEAKING"
+                                voiceStatus.value = "JARVIS MCU VOICE · SPEAKING"
                                 it.start()
                             }
                             setOnCompletionListener {
@@ -362,7 +335,7 @@ class MainActivity : ComponentActivity() {
                                 player.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                voiceStatus.value = "VOICE PLAYBACK ERROR"
+                                voiceStatus.value = "FISH AUDIO PLAYBACK ERROR"
                                 handler.postDelayed({ startListening() }, 900)
                                 true
                             }
@@ -378,7 +351,7 @@ class MainActivity : ComponentActivity() {
             } catch (e: Exception) {
                 handler.post {
                     geminiSpeechInProgress = false
-                    voiceStatus.value = "GEMINI TTS ERROR · CHECK API KEY"
+                    voiceStatus.value = "FISH AUDIO ERROR · CHECK SERVER KEY"
                     speakWithAndroid(text)
                 }
             } finally {
@@ -530,7 +503,7 @@ private fun JarvisScreen(
         val norm = q.lowercase(Locale.ROOT)
         val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
         val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
-        val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent
+        val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
         if ((openIntent || simpleApp) && onOpenApp(q)) {
             val answer = "Baik. Perintah dijalankan."
             lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
@@ -580,8 +553,13 @@ private fun JarvisScreen(
     }
     LaunchedEffect(lines.size) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
 
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val inputFocus = remember { FocusRequester() }
+
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
+        BoxWithConstraints(Modifier.fillMaxSize().imePadding().navigationBarsPadding()
+            .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -707,9 +685,19 @@ private fun JarvisScreen(
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(vertical=8.dp).background(Color(0xFF081923), RoundedCornerShape(28.dp)).border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp)).padding(start=15.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
-                        BasicTextField(value=command,onValueChange={command=it},modifier=Modifier.weight(1f).padding(vertical=11.dp),singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=14.sp),decorationBox={ inner -> if(command.isEmpty()) Text("Enter a command…",color=TextMuted,fontSize=13.sp); inner() })
-                        IconButton(onClick={send(command)},enabled=!busy) { Icon(Icons.Default.Send,"Send command",tint=if(busy) TextMuted else Cyan) }
+                    Row(Modifier.fillMaxWidth().padding(vertical=8.dp)
+                        .background(Color(0xFF081923), RoundedCornerShape(28.dp))
+                        .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
+                        .padding(start=16.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
+                        BasicTextField(value=command,onValueChange={command=it},
+                            modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=12.dp),
+                            singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
+                            keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
+                            keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
+                            decorationBox={ inner -> if(command.isEmpty()) Text("Tulis perintah untuk JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
+                        IconButton(onClick={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } },enabled=!busy) {
+                            Icon(Icons.Default.Send,"Send command",tint=if(busy) TextMuted else Cyan)
+                        }
                     }
                 }
                 Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
