@@ -1207,13 +1207,28 @@ private fun JarvisScreen(
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
                 if (page == "VOICE") {
-                    Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(Modifier.fillMaxWidth().weight(1f).animateContentSize(animationSpec = tween(650)), horizontalAlignment = Alignment.CenterHorizontally) {
+                        val latestVoiceRequest = lines.lastOrNull { it.user }?.text.orEmpty()
+                        val latestVisualAnswer = lines.lastOrNull { !it.user && it.revealed.value }
+                            ?.displayText?.value.orEmpty()
+                        val hasVoiceImages = remember(latestVisualAnswer) {
+                            parseMarkdownBlocks(latestVisualAnswer).any { it is MarkdownBlock.Image }
+                        }
+                        val reactorSize by androidx.compose.animation.core.animateDpAsState(
+                            targetValue = if (hasVoiceImages) (if (compact) 158.dp else 178.dp) else (if (compact) 220.dp else 246.dp),
+                            animationSpec = tween(durationMillis = 720), label = "reactor-product-layout"
+                        )
+                        val reactorLift by androidx.compose.animation.core.animateDpAsState(
+                            targetValue = if (hasVoiceImages) (-16).dp else 0.dp,
+                            animationSpec = tween(durationMillis = 720), label = "reactor-product-lift"
+                        )
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
-                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 220.dp else 246.dp
-                            Canvas(Modifier.size(reactorSize)
+                        Box(Modifier.fillMaxWidth().weight(1f).animateContentSize(animationSpec = tween(720)), contentAlignment = Alignment.Center) {
+                            val reactorOffset = reactorLift
+
+                            Canvas(Modifier.size(reactorSize).offset(y = reactorOffset)
                                 .scale(if (voiceListening) breathe else 1f)
                                 .rotate(if (voiceListening) spin * .12f else spin * .025f)
                                 .clickable(enabled = voiceListening) { onStartListening() }) {
@@ -1326,9 +1341,6 @@ private fun JarvisScreen(
                         }
                         // Voice mode is a visual HUD: show the spoken request and visual cards,
                         // but keep the full transcript and technical details in Chat.
-                        val latestVoiceRequest = lines.lastOrNull { it.user }?.text.orEmpty()
-                        val latestVisualAnswer = lines.lastOrNull { !it.user && it.revealed.value }
-                            ?.displayText?.value.orEmpty()
                         if (latestVoiceRequest.isNotBlank()) {
                             Row(
                                 Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 5.dp)
@@ -1356,7 +1368,13 @@ private fun JarvisScreen(
                                 Box(Modifier.size(7.dp).border(1.dp, Cyan, CircleShape))
                                 Text("MENAMPILKAN HASIL…", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
-                        } else if (latestVisualAnswer.isNotBlank()) {
+                        }
+                        AnimatedVisibility(
+                            visible = !busy && hasVoiceImages,
+                            enter = fadeIn(animationSpec = tween(520)) + expandVertically(animationSpec = tween(620)),
+                            exit = androidx.compose.animation.fadeOut(animationSpec = tween(180)) +
+                                androidx.compose.animation.shrinkVertically(animationSpec = tween(260))
+                        ) {
                             VoiceVisualResults(latestVisualAnswer)
                         }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
