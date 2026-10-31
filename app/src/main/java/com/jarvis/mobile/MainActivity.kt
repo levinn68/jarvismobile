@@ -810,41 +810,48 @@ private fun RichMessageText(markdown: String) {
                 }
                 is MarkdownBlock.Table -> {
                     val headers = block.rows.firstOrNull().orEmpty()
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val cardWidth = (maxWidth - 8.dp) / 2
                         block.rows.drop(1).forEachIndexed { rowIndex, row ->
-                            Column(
-                                Modifier.width(248.dp)
-                                    .background(Color(0xFF091923), RoundedCornerShape(12.dp))
-                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 12.dp, vertical = 11.dp),
-                                verticalArrangement = Arrangement.spacedBy(9.dp)
-                            ) {
-                                Text(
-                                    row.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
-                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp
-                                )
-                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x6652DFF2)))
-                                row.drop(1).forEachIndexed { offset, value ->
-                                    val index = offset + 1
-                                    if (value.isNotBlank()) Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                        Text(
-                                            headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
-                                            color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
-                                            color = Color(0xFFDCEFF3), fontSize = 11.sp, lineHeight = 16.sp
-                                        )
+                            if (rowIndex % 2 == 0) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    (rowIndex until minOf(rowIndex + 2, block.rows.size - 1)).forEach { itemIndex ->
+                                        val item = block.rows[itemIndex + 1]
+                                        Column(
+                                            Modifier.width(cardWidth)
+                                                .background(Color(0xFF091923), RoundedCornerShape(12.dp))
+                                                .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 9.dp, vertical = 9.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                item.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
+                                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 15.sp
+                                            )
+                                            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x6652DFF2)))
+                                            item.drop(1).forEachIndexed { offset, value ->
+                                                val index = offset + 1
+                                                if (value.isNotBlank()) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                    Text(
+                                                        headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
+                                                        color = Cyan, fontSize = 7.sp, letterSpacing = .8.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
+                                                        color = Color(0xFFDCEFF3), fontSize = 10.sp, lineHeight = 14.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (rowIndex == block.rows.size - 2 && block.rows.size % 2 == 1) {
+                                        Spacer(Modifier.width(cardWidth))
                                     }
                                 }
-                                Text(
-                                    "GESER UNTUK MEMBANDINGKAN  ·  ${rowIndex + 1}/${block.rows.size - 1}",
-                                    color = TextMuted, fontSize = 7.sp, letterSpacing = .6.sp
-                                )
                             }
                         }
                     }
