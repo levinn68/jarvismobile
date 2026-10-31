@@ -586,7 +586,7 @@ private fun JarvisScreen(
                             .background(Brush.radialGradient(listOf(Color(0x2039D9F0), Color(0x080D6D8A), Color.Transparent)), CircleShape),
                             contentAlignment = Alignment.Center) {
                             Box(Modifier.size(coreSize * 0.48f).border(1.dp, Color(0xAA70EFFF), CircleShape)
-                                .background(Brush.radialGradient(listOf(Color(0xFF17485A), Color(0xFF071923), Color(0xFF02080D)), CircleShape), CircleShape),
+                                .background(Brush.radialGradient(listOf(Color(0xFF17485A), Color(0xFF071923), Color(0xFF02080D))), CircleShape),
                                 contentAlignment = Alignment.Center) {
                                 Text("J", color = Color(0xFFD8FAFF), fontSize = if (compact) 43.sp else 54.sp,
                                     fontWeight = FontWeight.ExtraLight, letterSpacing = 2.sp)
