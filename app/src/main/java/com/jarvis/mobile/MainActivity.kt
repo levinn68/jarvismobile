@@ -1014,7 +1014,22 @@ private fun JarvisScreen(
         command = ""
         pendingAttachments.clear()
         val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
-        val requestText = q + attachmentNote
+        // Send recent turns with every request so short follow-ups ("200 ribu",
+        // "yang kedua", "itu") retain their conversational referent.
+        val priorConversation = lines.takeLast(12).joinToString("\n") { line ->
+            (if (line.user) "PENGGUNA" else "J.A.R.V.I.S.") + ": " +
+                line.text.replace(Regex("!\\[[^\\]]*\\]\\(https?://[^ )]+\\)"), "[gambar sebelumnya]").take(1100)
+        }.takeLast(7000)
+        val requestText = buildString {
+            if (priorConversation.isNotBlank()) {
+                append("RIWAYAT PERCAKAPAN TERBARU (gunakan untuk memahami konteks dan kata ganti):\n")
+                append(priorConversation)
+                append("\n\n")
+            }
+            append("PESAN TERBARU PENGGUNA:\n")
+            append(q.ifBlank { "Tolong periksa lampiran ini." })
+            append(attachmentNote)
+        }
         if (q.isNotBlank()) lastPrompt = q
         lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
         val norm = q.lowercase(Locale.ROOT)
