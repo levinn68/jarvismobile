@@ -57,6 +57,8 @@ Do not invent review scores, specifications, benchmarks, or community consensus.
 
 ## 4. Coding and software engineering
 
+For coding tasks, also apply `jarvis-karpathy-engineering`: think before coding, simplify aggressively without harming clarity, make surgical changes, define observable success criteria, and verify against regressions. Load the specialized skill rather than duplicating its full checklist here.
+
 Activate for code creation, modification, review, debugging, architecture, API integration, or deployment.
 
 ### Understand before editing
