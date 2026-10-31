@@ -406,99 +406,17 @@ class MainActivity : ComponentActivity() {
 
     private fun speak(text: String) {
         if (text.isBlank()) return
-        if (geminiSpeechInProgress) {
-            queuedSpeechText = text
-            return
-        }
-        geminiSpeechInProgress = true
+        // Use Android's local speech engine for spoken replies so voice feedback
+        // does not depend on a remote TTS request or network latency.
         clapDetector.reset()
-        tts?.stop()
-        Thread {
-            var connection: HttpURLConnection? = null
-            try {
-                val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/tts")
-                connection = endpoint.openConnection() as HttpURLConnection
-                connection.requestMethod = "POST"
-                connection.connectTimeout = 8000
-                connection.readTimeout = 18000
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val body = JSONObject().put("text", text)
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                val code = connection.responseCode
-                if (code !in 200..299) {
-                    val detail = connection.errorStream?.let { stream ->
-                        BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
-                    }.orEmpty()
-                    throw IllegalStateException("Fish Audio HTTP $code: $detail")
-                }
-                val audio = connection.inputStream.use { it.readBytes() }
-                if (audio.isEmpty()) throw IllegalStateException("Fish Audio returned empty audio")
-                val audioFile = File(cacheDir, "jarvis_mcu_voice.mp3")
-                FileOutputStream(audioFile).use { it.write(audio) }
-                handler.post {
-                    try {
-                        voiceLoudnessEnhancer?.release()
-                        voiceLoudnessEnhancer = null
-                        speechPlayer?.release()
-                        speechPlayer = MediaPlayer().apply {
-                            setAudioAttributes(AudioAttributes.Builder()
-                                .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                                .build())
-                            setDataSource(audioFile.absolutePath)
-                            setOnPreparedListener {
-                                setVolume(1.0f, 1.0f)
-                                voiceLoudnessEnhancer = runCatching {
-                                    LoudnessEnhancer(it.audioSessionId).apply {
-                                        setTargetGain(450)
-                                        enabled = true
-                                    }
-                                }.getOrNull()
-                                voiceStatus.value = "JARVIS MCU VOICE · SPEAKING"
-                                it.start()
-                            }
-                            setOnCompletionListener {
-                                it.release()
-                                speechPlayer = null
-                                voiceLoudnessEnhancer?.release()
-                                voiceLoudnessEnhancer = null
-                                geminiSpeechInProgress = false
-                                val next = queuedSpeechText.also { queuedSpeechText = null }
-                                if (next != null) handler.post { speak(next) }
-                                else handler.postDelayed({ startListening() }, 450)
-                            }
-                            setOnErrorListener { player, _, _ ->
-                                player.release()
-                                speechPlayer = null
-                                voiceLoudnessEnhancer?.release()
-                                voiceLoudnessEnhancer = null
-                                geminiSpeechInProgress = false
-                                voiceStatus.value = "FISH AUDIO PLAYBACK ERROR"
-                                val next = queuedSpeechText.also { queuedSpeechText = null }
-                                if (next != null) handler.post { speak(next) }
-                                else handler.postDelayed({ startListening() }, 900)
-                                true
-                            }
-                            prepareAsync()
-                        }
-                    } catch (_: Exception) {
-                        speechPlayer?.release()
-                        speechPlayer = null
-                        geminiSpeechInProgress = false
-                        voiceStatus.value = "VOICE PLAYBACK ERROR"
-                    }
-                }
-            } catch (e: Exception) {
-                handler.post {
-                    geminiSpeechInProgress = false
-                    voiceStatus.value = "FISH AUDIO ERROR · CHECK SERVER KEY"
-                    speakWithAndroid(text)
-                }
-            } finally {
-                connection?.disconnect()
-            }
-        }.start()
+        runCatching { speechPlayer?.stop() }
+        speechPlayer?.release()
+        speechPlayer = null
+        voiceLoudnessEnhancer?.release()
+        voiceLoudnessEnhancer = null
+        geminiSpeechInProgress = false
+        queuedSpeechText = null
+        speakWithAndroid(text)
     }
 
     private fun isLikelyEnglish(text: String): Boolean {
@@ -564,7 +482,8 @@ class MainActivity : ComponentActivity() {
             speech.startListening(intent)
         } catch (_: Exception) {
             voiceStatus.value = "VOICE CORE RESTARTING"
-            handler.postDelayed({ startListening() }, 1200)
+            runCatching { speech.cancel() }
+            handler.postDelayed({ startListening() }, 700)
         }
     }
 
