@@ -1,16 +1,3 @@
-private fun spokenSummary(text: String): String {
-    val clean = text
-        .replace(Regex("!\\[[^\\]]*\\]\\(https?://[^ )]+\\)"), "")
-        .replace(Regex("\\[([^\\]]+)\\]\\(https?://[^ )]+\\)"), "$1")
-        .replace(Regex("https?://\\S+"), "")
-        .replace(Regex("(?m)^\\s*[-*•#>]+\\s*"), "")
-        .replace(Regex("\\s+"), " ")
-        .trim()
-    if (clean.length <= 190) return clean
-    val firstSentence = clean.split(Regex("(?<=[.!?])\\s+")).firstOrNull().orEmpty()
-    return if (firstSentence.length in 35..190) firstSentence else clean.take(187).trimEnd() + "..."
-}
-
 package com.jarvis.mobile
 
 import android.Manifest
@@ -122,6 +109,19 @@ import org.json.JSONArray
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
+
+private fun spokenSummary(text: String): String {
+    val clean = text
+        .replace(Regex("!\\[[^\\]]*\\]\\(https?://[^ )]+\\)"), "")
+        .replace(Regex("\\[([^\\]]+)\\]\\(https?://[^ )]+\\)"), "$1")
+        .replace(Regex("https?://\\S+"), "")
+        .replace(Regex("(?m)^\\s*[-*•#>]+\\s*"), "")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (clean.length <= 190) return clean
+    val firstSentence = clean.split(Regex("(?<=[.!?])\\s+")).firstOrNull().orEmpty()
+    return if (firstSentence.length in 35..190) firstSentence else clean.take(187).trimEnd() + "..."
+}
 
 private val Background = Color(0xFF050912)
 private val Panel = Color(0xFF0D1726)
