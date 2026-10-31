@@ -649,7 +649,7 @@ private fun JarvisScreen(
     val inputFocus = remember { FocusRequester() }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
-        BoxWithConstraints(Modifier.fillMaxSize().imePadding().navigationBarsPadding()
+        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
@@ -795,16 +795,12 @@ private fun JarvisScreen(
                         }
                         if(busy) item {
                             val pulse by rememberInfiniteTransition(label="thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label="thinkingAlpha")
-                            Column(Modifier.fillMaxWidth(.86f).background(Color(0xFF091B27), RoundedCornerShape(topStart=4.dp, topEnd=16.dp, bottomEnd=16.dp, bottomStart=16.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(topStart=4.dp, topEnd=16.dp, bottomEnd=16.dp, bottomStart=16.dp)).padding(horizontal=15.dp, vertical=13.dp)) {
-                                Row(verticalAlignment=Alignment.CenterVertically) { Box(Modifier.size(7.dp).background(Cyan.copy(alpha=pulse), CircleShape)); Spacer(Modifier.width(9.dp)); Text("JARVIS SEDANG MEMPROSES", color=Cyan, fontSize=9.sp, letterSpacing=1.25.sp) }
-                                Spacer(Modifier.height(12.dp))
-                                repeat(3) { index ->
-                                    val width = if (index == 2) .48f else if (index == 1) .82f else 1f
-                                    Box(Modifier.fillMaxWidth(width).height(7.dp).background(Brush.horizontalGradient(listOf(Color(0xFF183746), Color(0xFF285365).copy(alpha=pulse), Color(0xFF183746))), RoundedCornerShape(8.dp)))
-                                    if (index != 2) Spacer(Modifier.height(8.dp))
-                                }
-                                Spacer(Modifier.height(10.dp))
-                                Text("Sedang menyiapkan jawaban…", color=TextMuted, fontSize=10.sp)
+                            Row(Modifier.fillMaxWidth(.62f).background(Color(0xFF091B27), RoundedCornerShape(18.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(18.dp)).padding(horizontal=11.dp, vertical=9.dp), verticalAlignment=Alignment.CenterVertically) {
+                                Box(Modifier.size(6.dp).background(Cyan.copy(alpha=pulse), CircleShape))
+                                Spacer(Modifier.width(8.dp))
+                                Text("JARVIS sedang berpikir…", color=TextMuted, fontSize=10.sp)
+                                Spacer(Modifier.width(7.dp))
+                                repeat(3) { index -> Box(Modifier.size(4.dp).background(Cyan.copy(alpha=if (index == 1) pulse else .45f), CircleShape)) }
                             }
                         }
                     }
