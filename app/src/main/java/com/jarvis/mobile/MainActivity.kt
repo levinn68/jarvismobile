@@ -51,6 +51,7 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,12 +75,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -556,7 +560,7 @@ private fun JarvisScreen(
     onAskGemini: (String, (String) -> Unit) -> Unit, onOpenApp: (String) -> Boolean,
     onInstalledApps: () -> List<String>
 ) {
-    data class Line(val user: Boolean, val text: String)
+    data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()))
     var page by remember { mutableStateOf("VOICE") }
     var command by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -566,6 +570,8 @@ private fun JarvisScreen(
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val clipboard = LocalClipboardManager.current
+    var followLatest by remember { mutableStateOf(true) }
     val transition = rememberInfiniteTransition(label = "reactor")
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
     val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
@@ -634,7 +640,8 @@ private fun JarvisScreen(
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
-    LaunchedEffect(lines.size, busy) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+    LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
+    LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
     LaunchedEffect(busy) { if (busy) { val stages = listOf("Memahami konteks", "Menyusun strategi pencarian", "Memeriksa informasi", "Merangkum hasil"); var i = 0; while (busy) { processStage = stages[i++ % stages.size]; kotlinx.coroutines.delay(1450) } } else processStage = "Siap membantu" }
 
     val keyboard = LocalSoftwareKeyboardController.current
@@ -775,7 +782,11 @@ private fun JarvisScreen(
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
                                 Column(Modifier.fillMaxWidth(.88f).background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(13.dp)) {
-                                    Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / FINAL RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.3.sp, fontWeight=FontWeight.Bold)
+                                    Row(verticalAlignment=Alignment.CenterVertically) {
+                                        Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
+                                        Text(line.time, color=TextMuted, fontSize=8.sp)
+                                        if (!line.user) IconButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.ContentCopy, contentDescription="Copy response", tint=TextMuted, modifier=Modifier.size(13.dp)) }
+                                    }
                                     Spacer(Modifier.height(7.dp))
                                     RichMessageText(line.text)
                                     if (!line.user) SourceStrip(line.text)
@@ -783,25 +794,17 @@ private fun JarvisScreen(
                             }
                         }
                         if(busy) item {
-                            AnimatedVisibility(visible=true, enter=fadeIn(tween(350))+slideInVertically(initialOffsetY={ it / 5 }, animationSpec=tween(400))) {
-                                val loadingTransition = rememberInfiniteTransition(label="chatLoading")
-                                val pulse by loadingTransition.animateFloat(.72f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse), label="loadingPulse")
-                                val orbit by loadingTransition.animateFloat(0f, 360f, infiniteRepeatable(tween(1800), RepeatMode.Restart), label="loadingOrbit")
-                                Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF0A202C), Color(0xFF0B1725))), RoundedCornerShape(16.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(16.dp)).padding(14.dp)) {
-                                    Row(verticalAlignment=Alignment.CenterVertically) {
-                                        Box(Modifier.size(38.dp), contentAlignment=Alignment.Center) {
-                                            Canvas(Modifier.fillMaxSize().rotate(orbit)) { drawCircle(Cyan.copy(alpha=.25f), style=Stroke(1.2.dp.toPx())); drawCircle(Cyan.copy(alpha=pulse), radius=3.2.dp.toPx(), center=Offset(size.width*.5f,size.height*.08f)) }
-                                            Text("J", color=Cyan.copy(alpha=pulse), fontSize=17.sp, fontWeight=FontWeight.Light)
-                                        }
-                                        Spacer(Modifier.width(11.dp))
-                                        Column(Modifier.weight(1f)) { Text("J.A.R.V.I.S. / WORKING", color=Cyan, fontSize=9.sp, letterSpacing=1.4.sp); Spacer(Modifier.height(3.dp)); Text(processStage, color=Color(0xFFD6F4F8), fontSize=12.sp) }
-                                        Text("LIVE", color=Color(0xFF8AEAFF), fontSize=8.sp, letterSpacing=1.sp)
-                                    }
-                                    Spacer(Modifier.height(12.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(5.dp), verticalAlignment=Alignment.CenterVertically) { repeat(24) { index -> val level = kotlin.math.abs(kotlin.math.sin(wavePhase + index * .42f)); Box(Modifier.weight(1f).height((3 + level * 13).dp).background(Cyan.copy(alpha=.25f + level*.55f), RoundedCornerShape(4.dp))) } }
-                                    Spacer(Modifier.height(8.dp))
-                                    Text("Menganalisis · memverifikasi · menyusun jawaban", color=TextMuted, fontSize=9.sp)
+                            val pulse by rememberInfiniteTransition(label="thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label="thinkingAlpha")
+                            Column(Modifier.fillMaxWidth(.86f).background(Color(0xFF091B27), RoundedCornerShape(topStart=4.dp, topEnd=16.dp, bottomEnd=16.dp, bottomStart=16.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(topStart=4.dp, topEnd=16.dp, bottomEnd=16.dp, bottomStart=16.dp)).padding(horizontal=15.dp, vertical=13.dp)) {
+                                Row(verticalAlignment=Alignment.CenterVertically) { Box(Modifier.size(7.dp).background(Cyan.copy(alpha=pulse), CircleShape)); Spacer(Modifier.width(9.dp)); Text("JARVIS SEDANG MEMPROSES", color=Cyan, fontSize=9.sp, letterSpacing=1.25.sp) }
+                                Spacer(Modifier.height(12.dp))
+                                repeat(3) { index ->
+                                    val width = if (index == 2) .48f else if (index == 1) .82f else 1f
+                                    Box(Modifier.fillMaxWidth(width).height(7.dp).background(Brush.horizontalGradient(listOf(Color(0xFF183746), Color(0xFF285365).copy(alpha=pulse), Color(0xFF183746))), RoundedCornerShape(8.dp)))
+                                    if (index != 2) Spacer(Modifier.height(8.dp))
                                 }
+                                Spacer(Modifier.height(10.dp))
+                                Text("Sedang menyiapkan jawaban…", color=TextMuted, fontSize=10.sp)
                             }
                         }
                     }
