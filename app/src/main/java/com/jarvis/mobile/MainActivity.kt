@@ -143,6 +143,7 @@ private val Background = Color(0xFF050912)
 private val Panel = Color(0xFF0D1726)
 private val Cyan = Color(0xFF64E8FF)
 private val TextMuted = Color(0xFF8FA6BD)
+private fun coreOffset(radius: Float): Float = radius * .43f
 
 /**
  * Lightweight clap-pattern detector fed by SpeechRecognizer's live RMS callback.
@@ -300,11 +301,15 @@ class MainActivity : ComponentActivity() {
                     if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) handler.postDelayed({ startListening() }, 900)
                 }
                 override fun onResults(results: Bundle?) {
-                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val wakeCandidate = candidates.firstOrNull {
+                        Regex("(?i)^\\s*(jarvis|jervis)[\\s,]+(open|buka)\\b").containsMatchIn(it)
+                    }
+                    val text = wakeCandidate ?: candidates.firstOrNull().orEmpty()
                     if (text.isNotBlank()) {
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                    } else handler.postDelayed({ startListening() }, 600)
+                    } else handler.postDelayed({ startListening() }, 500)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
@@ -521,7 +526,6 @@ class MainActivity : ComponentActivity() {
         }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
-            speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 // Android 14+ recognition services can detect either language.
@@ -1129,7 +1133,7 @@ private fun JarvisScreen(
 
             // A strict two-word wake phrase is required before any command is accepted.
             // Speech outside an armed session is discarded silently.
-            val wakeMatch = Regex("(?i)^\\s*jarvis[\\s,]+open\\b[\\s,!.?]*").find(heard)
+            val wakeMatch = Regex("(?i)^\\s*(jarvis|jervis)[\\s,]+(open|buka)\\b[\\s,!.?]*").find(heard)
             if (!voiceArmed) {
                 if (wakeMatch != null) {
                     voiceArmed = true
@@ -1191,7 +1195,7 @@ private fun JarvisScreen(
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             val containerMaxWidth = maxWidth
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f).padding(end = 5.dp)) {
@@ -1243,7 +1247,25 @@ private fun JarvisScreen(
                                 val r = size.minDimension * .43f
                                 val cyan = Color(0xFF36DDF5)
                                 val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                drawCircle(Brush.radialGradient(listOf(Color(0x7746E8FF), Color(0x3321BFD8), Color(0x1021AFCB), Color.Transparent), Offset(cx, cy), r * 1.62f), r * 1.62f, Offset(cx, cy))
+                                drawCircle(Brush.radialGradient(
+                                    listOf(Color(0x9958F0FF), Color(0x6640DDF5), Color(0x3321BFD8), Color(0x1421AFCB), Color.Transparent),
+                                    Offset(cx, cy), r * 1.72f
+                                ), r * 1.72f, Offset(cx, cy))
+                                // Brighter plasma volume beneath the wireframe so the reactor reads as a luminous hologram.
+                                drawCircle(
+                                    Brush.radialGradient(
+                                        listOf(Color(0x6659EFFF), Color(0x3342DDF5), Color(0x1821BFD8), Color.Transparent),
+                                        Offset(cx - coreOffset(r) * .12f, cy - coreOffset(r) * .10f), r * .88f
+                                    ),
+                                    r * .88f, Offset(cx, cy)
+                                )
+                                for (glow in 0..3) {
+                                    drawCircle(
+                                        Color(0xFF63EFFF).copy(alpha = (.075f - glow * .014f) * (.75f + pulse * .35f)),
+                                        r * (.46f + glow * .13f), Offset(cx, cy),
+                                        style = Stroke(2.2f + glow * .8f)
+                                    )
+                                }
                                 // Bright outer energy rings and radial calibration marks.
                                 for (ring in 0..4) {
                                     val radius = r * (1.00f + ring * .055f)
@@ -1411,11 +1433,11 @@ private fun JarvisScreen(
                                 Box(Modifier.size(50.dp).background(Color(0x220D2833), CircleShape)
                                     .border(1.dp, Color(0x6652DFF2), CircleShape)
                                     .clickable { voiceListening = !voiceListening }, contentAlignment = Alignment.Center) {
-                                    Icon(if (voiceListening) Icons.Default.MicOff else Icons.Default.Mic,
+                                    Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
                                         contentDescription = if (voiceListening) "Matikan mikrofon" else "Aktifkan mikrofon",
-                                        tint = if (voiceListening) Color(0xFFFF8A8A) else Cyan, modifier = Modifier.size(22.dp))
+                                        tint = if (voiceListening) Cyan else Color(0xFFFF8A8A), modifier = Modifier.size(22.dp))
                                 }
-                                Text(if (voiceListening) "MIC OFF" else "MIC ON", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                                Text(if (voiceListening) "MIC ON" else "MIC OFF", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(72.dp).background(Color(0x3320BFD8), CircleShape)
@@ -1647,7 +1669,7 @@ private fun JarvisScreen(
                                     voiceListening = tab == "VOICE"
                                     voiceArmed = false
                                 }, contentAlignment = Alignment.Center) {
-                                Text(if (tab == "VOICE") "⌘  COMMAND" else "◉  CHAT",
+                                Text(if (tab == "VOICE") "◉  VOICE MODE" else "◉  CHAT",
                                     color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
                                     letterSpacing = 1.05.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
