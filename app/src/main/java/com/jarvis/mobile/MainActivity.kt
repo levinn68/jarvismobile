@@ -223,6 +223,7 @@ private class ClapPatternDetector(
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
+    private var recognitionActive = false
     private val handler = Handler(Looper.getMainLooper())
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
@@ -293,33 +294,37 @@ class MainActivity : ComponentActivity() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             recognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING · SPEAK NOW" }
+                override fun onReadyForSpeech(params: Bundle?) {
+                    recognitionActive = true
+                    voiceStatus.value = "LISTENING · SPEAK NOW"
+                }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "HEARING YOUR VOICE" }
-                override fun onRmsChanged(rmsdB: Float) {
-                // Do not treat ordinary speech peaks as a clap wake trigger.
-                // Voice sessions are activated only by the spoken "Jarvis, open" phrase.
-            }
+                override fun onRmsChanged(rmsdB: Float) {}
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
-                    if (geminiSpeechInProgress || clapActivationInProgress) return
+                    recognitionActive = false
+                    if (!voiceModeEnabled || geminiSpeechInProgress) return
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "DIDN'T CATCH THAT · TRY AGAIN"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "RESTARTING MICROPHONE"
                         else -> "RECONNECTING VOICE CORE"
                     }
-                    if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) handler.postDelayed({ startListening() }, 900)
+                    if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        handler.postDelayed({ startListening() }, if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1200 else 650)
+                    }
                 }
                 override fun onResults(results: Bundle?) {
-                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                    val wakeCandidate = candidates.firstOrNull {
-                        Regex("(?i)^\\s*(jarvis|jervis|jerwis)[\\s,]+(open|buka|buk[a]?kan)\\b").containsMatchIn(it)
-                    }
-                    val text = wakeCandidate ?: candidates.firstOrNull().orEmpty()
-                    if (text.isNotBlank()) {
+                    recognitionActive = false
+                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        ?.firstOrNull().orEmpty().trim()
+                    if (text.isNotBlank() && voiceModeEnabled) {
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                    } else handler.postDelayed({ startListening() }, 500)
+                    } else if (voiceModeEnabled) {
+                        handler.postDelayed({ startListening() }, 450)
+                    }
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
@@ -340,8 +345,12 @@ class MainActivity : ComponentActivity() {
                     voiceModeEnabled = voiceMode
                     // JarvisScreen owns the single startListening call when its Voice tab becomes active.
                     // Avoid starting SpeechRecognizer twice from both this callback and LaunchedEffect.
-                    if (!voiceMode) { clapDetector.reset(); recognizer?.cancel() }
-                    voiceStatus.value = if (voiceMode) "WAITING FOR JARVIS OPEN" else "CHAT MODE · READY TO TYPE"
+                    if (!voiceMode) {
+                        clapDetector.reset()
+                        recognitionActive = false
+                        recognizer?.cancel()
+                    }
+                    voiceStatus.value = if (voiceMode) "VOICE MODE · READY" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 geminiConfigured = { true },
@@ -454,7 +463,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startListening() {
         clapActivationInProgress = false
-        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress) return
+        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress || recognitionActive) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
                 permissionAsked = true
@@ -479,11 +488,13 @@ class MainActivity : ComponentActivity() {
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 900L)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
             }
+            recognitionActive = true
             speech.startListening(intent)
         } catch (_: Exception) {
+            recognitionActive = false
             voiceStatus.value = "VOICE CORE RESTARTING"
             runCatching { speech.cancel() }
-            handler.postDelayed({ startListening() }, 700)
+            handler.postDelayed({ startListening() }, 900)
         }
     }
 
@@ -494,7 +505,10 @@ class MainActivity : ComponentActivity() {
                 // Permission is silent: never greet or speak before the wake phrase.
                 voiceStatus.value = "WAITING FOR JARVIS OPEN"
                 if (voiceModeEnabled) handler.postDelayed({ startListening() }, 250)
-            } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
+            } else {
+                permissionAsked = false
+                voiceStatus.value = "MICROPHONE PERMISSION DENIED · ENABLE IT IN APP SETTINGS"
+            }
         }
     }
 
@@ -554,11 +568,15 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
     }
 
-    override fun onPause() { recognizer?.cancel(); super.onPause() }
+    override fun onPause() {
+        recognitionActive = false
+        recognizer?.cancel()
+        super.onPause()
+    }
     override fun onResume() {
         super.onResume()
         // Only resume the microphone when the user is actually in Voice mode.
-        if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 180)
+        if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 350)
     }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
@@ -1138,39 +1156,27 @@ private fun JarvisScreen(
                 .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
                 .replace(Regex("\\s+"), " ").trim()
 
-            // A strict two-word wake phrase is required before any command is accepted.
-            // Speech outside an armed session is discarded silently.
+            // Voice mode accepts commands immediately while the microphone toggle is ON.
+            // "Jarvis, open" remains an optional prefix, not a mandatory wake gate.
             val wakeMatch = Regex("(?i)^\\s*(jarvis|jervis|jerwis)[\\s,]+(open|buka|buk[a]?kan)\\b[\\s,!.?]*").find(heard)
-            if (!voiceArmed) {
-                if (wakeMatch != null) {
-                    voiceArmed = true
-                    statusText = "JARVIS ACTIVE · AWAITING COMMAND"
-                    val firstCommand = heard.substring(wakeMatch.range.last + 1).trim()
-                    if (firstCommand.isNotBlank()) {
-                        send(firstCommand, true)
-                    } else {
-                        // No spoken acknowledgement here; immediately reopen recognition.
-                        kotlinx.coroutines.delay(180)
-                        onStartListening()
-                    }
-                } else {
-                    statusText = "SAY “JARVIS, OPEN” TO ACTIVATE"
-                    // SpeechRecognizer completes one utterance at a time; reopen it
-                    // after silently rejecting speech that did not contain the wake phrase.
-                    kotlinx.coroutines.delay(180)
-                    onStartListening()
-                }
-            } else if (normalizedHeard in setOf(
+            val commandText = if (wakeMatch != null) heard.substring(wakeMatch.range.last + 1).trim() else heard
+            if (normalizedHeard in setOf(
                     "jarvis close", "close", "stop listening", "sleep", "matikan",
                     "berhenti mendengarkan", "stop listening jarvis"
                 )) {
                 voiceArmed = false
-                statusText = "JARVIS STANDBY"
+                voiceListening = false
+                statusText = "MICROPHONE OFF"
                 lines.add(Line(true, heard))
-                lines.add(Line(false, "Voice session ended."))
-                onSpeak("Voice session ended, Sir.")
+                lines.add(Line(false, "Voice listening has been paused."))
+            } else if (commandText.isBlank()) {
+                voiceArmed = true
+                statusText = "LISTENING FOR COMMANDS"
+                kotlinx.coroutines.delay(220)
+                onStartListening()
             } else {
-                send(heard, true)
+                voiceArmed = true
+                send(commandText, true)
             }
         } else if (page != "VOICE" || !voiceListening) {
             voiceArmed = false
@@ -1178,9 +1184,9 @@ private fun JarvisScreen(
     }
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
-        // Entering Voice starts in locked standby; it does not arm commands automatically.
-        voiceArmed = false
-        statusText = if (voiceOn) "SAY “JARVIS, OPEN” TO ACTIVATE" else "SYSTEM STANDBY"
+        // Voice listens immediately while its microphone toggle is enabled.
+        voiceArmed = voiceOn
+        statusText = if (voiceOn) "LISTENING FOR COMMANDS" else "SYSTEM STANDBY"
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
@@ -1487,8 +1493,8 @@ private fun JarvisScreen(
                         Text(
                             when {
                                 !voiceListening -> "MICROPHONE OFF"
-                                voiceArmed -> "J.A.R.V.I.S. ACTIVE · LISTENING FOR COMMANDS"
-                                else -> "SAY “JARVIS, OPEN” TO ACTIVATE"
+                                busy -> "PROCESSING · MICROPHONE WILL RESUME"
+                                else -> "MICROPHONE ACTIVE · SPEAK A COMMAND"
                             },
                             color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
