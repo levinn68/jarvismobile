@@ -1,0 +1,37 @@
+name: Deploy JARVIS Cloudflare Worker
+on:
+  push:
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Wrangler
+        run: npm install --global wrangler@4
+      - name: Configure Fish Audio voice secret
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$FISH_API_KEY"
+          printf '%s' "$FISH_API_KEY" | wrangler secret put FISH_API_KEY --name jarvis-api --account-id "$CLOUDFLARE_ACCOUNT_ID"
+      - name: Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          wrangler deploy worker/src/index.js --name jarvis-api --account-id "$CLOUDFLARE_ACCOUNT_ID" --compatibility-date 2026-10-31 --var FISH_VOICE_ID:612b878b113047d9a770c069c8b4fdfe --var FISH_MODEL:s2.1-pro-free
