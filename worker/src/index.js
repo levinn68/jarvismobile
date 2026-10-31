@@ -362,13 +362,30 @@ async function handleChat(body, env) {
       finalAnswer = successful[0].answer + (discussion.length > 1 ? "\n\nCatatan: proses sintesis akhir gagal; ini adalah jawaban dari AI pertama yang berhasil." : "");
     }
   }
+  // Recover real product/article preview images from links returned by the
+  // agents. This covers providers that return marketplace links but omit image
+  // Markdown. Only page metadata is used; never construct or guess image URLs.
+  const markdownLinks = [...discussion.flatMap((item) =>
+    [...String(item.message || "").matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^ )]+)\\)/g)]
+      .map((match) => ({ title: match[1], uri: match[2] }))
+  ), ...[...String(finalAnswer || "").matchAll(/\\[([^\\]]+)\\]\\((https?:\\/\\/[^ )]+)\\)/g)]
+    .map((match) => ({ title: match[1], uri: match[2] }))];
+  const uniqueLinks = markdownLinks
+    .filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index)
+    .filter((item) => !/\\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(item.uri))
+    .slice(0, 8);
+  const linkedPreviews = await previewImagesFromSources(uniqueLinks);
+  const linkedImageMarkdown = linkedPreviews.map((item) =>
+    "![ " + item.title + " ](" + item.url + ")"
+  );
+
   // Keep verified preview images from the grounded search results even if the
   // final synthesis model omits visual Markdown while summarizing.
   const imagePattern = new RegExp("!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)", "g");
   const imageMarkdown = discussion.flatMap((item) =>
     [...String(item.message || "").matchAll(imagePattern)].map((match) => match[0])
   );
-  const uniqueImages = [...new Set(imageMarkdown)].slice(0, 3);
+  const uniqueImages = [...new Set([...imageMarkdown, ...linkedImageMarkdown])].slice(0, 4);
   const imageUrlPattern = new RegExp("\\((https?://[^ )]+)\\)");
   for (const image of uniqueImages) {
     const imageUrl = image.match(imageUrlPattern)?.[1];
