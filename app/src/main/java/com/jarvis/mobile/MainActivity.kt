@@ -783,7 +783,7 @@ private fun RemoteMessageImage(url: String, alt: String, imageHeight: androidx.c
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Icon(Icons.Default.ImageNotSupported, null, tint = Color(0xFF5A8C99), modifier = Modifier.size(22.dp))
+                Icon(Icons.Default.Image, null, tint = Color(0xFF5A8C99), modifier = Modifier.size(22.dp))
                 Text(if (failed) "GAMBAR TIDAK DAPAT DIMUAT" else "MEMUAT GAMBAR…",
                     color = Color(0xFF6F9EAA), fontSize = 7.sp, letterSpacing = .7.sp)
             }
@@ -793,20 +793,66 @@ private fun RemoteMessageImage(url: String, alt: String, imageHeight: androidx.c
 
 @Composable
 private fun RichMessageText(markdown: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        parseMarkdownBlocks(markdown).forEach { block ->
+    val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
+    val images = blocks.filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(6)
+    val contentBlocks = blocks.filterNot { it is MarkdownBlock.Image }
+
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        // Put verified visual material first. Product specifications and the
+        // rest of the answer follow beneath the image gallery.
+        if (images.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
+                images.forEach { image ->
+                    Column(
+                        Modifier.width(220.dp)
+                            .background(Color(0xFF071923), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                            .padding(7.dp)
+                    ) {
+                        RemoteMessageImage(image.url, image.alt, 148.dp)
+                        if (image.alt.isNotBlank()) {
+                            Text(
+                                image.alt.replace(Regex("\\s+"), " ").trim(),
+                                color = Color(0xFFE1F6FA), fontSize = 10.sp,
+                                lineHeight = 14.sp, maxLines = 2,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        contentBlocks.forEach { block ->
             when (block) {
-                is MarkdownBlock.Image -> RemoteMessageImage(block.url, block.alt)
+                is MarkdownBlock.Image -> Unit
                 is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text)
-                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                is MarkdownBlock.Bullet -> Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
                     Text(if (block.ordered) "1." else "•", color = Cyan, fontSize = 14.sp)
                     InlineMarkdownText(block.text)
                 }
-                is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF06111A), RoundedCornerShape(9.dp))
-                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(9.dp)).padding(10.dp)) {
-                    if (block.language.isNotBlank()) Text(block.language.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
+                is MarkdownBlock.Code -> Column(
+                    Modifier.fillMaxWidth()
+                        .background(Color(0xFF06111A), RoundedCornerShape(9.dp))
+                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(9.dp))
+                        .padding(10.dp)
+                ) {
+                    if (block.language.isNotBlank()) Text(
+                        block.language.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp
+                    )
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        SelectionContainer { Text(block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp, lineHeight = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+                        SelectionContainer {
+                            Text(
+                                block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp,
+                                lineHeight = 18.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                            )
+                        }
                     }
                 }
                 is MarkdownBlock.Table -> {
@@ -823,26 +869,29 @@ private fun RichMessageText(markdown: String) {
                                     .padding(horizontal = 12.dp, vertical = 11.dp),
                                 verticalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
-                                Text(row.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
-                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                    lineHeight = 18.sp)
-                                Box(Modifier.fillMaxWidth().height(1.dp)
-                                    .background(Color(0x6652DFF2)))
+                                Text(
+                                    row.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
+                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp
+                                )
+                                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x6652DFF2)))
                                 row.drop(1).forEachIndexed { offset, value ->
                                     val index = offset + 1
-                                    if (value.isNotBlank()) {
-                                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                            Text(headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
-                                                color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp,
-                                                fontWeight = FontWeight.Bold)
-                                            Text(value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
-                                                color = Color(0xFFDCEFF3), fontSize = 11.sp,
-                                                lineHeight = 16.sp)
-                                        }
+                                    if (value.isNotBlank()) Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                        Text(
+                                            headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
+                                            color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
+                                            color = Color(0xFFDCEFF3), fontSize = 11.sp, lineHeight = 16.sp
+                                        )
                                     }
                                 }
-                                Text("GESER UNTUK MEMBANDINGKAN  ·  ${rowIndex + 1}/${block.rows.size - 1}",
-                                    color = TextMuted, fontSize = 7.sp, letterSpacing = .6.sp)
+                                Text(
+                                    "GESER UNTUK MEMBANDINGKAN  ·  ${rowIndex + 1}/${block.rows.size - 1}",
+                                    color = TextMuted, fontSize = 7.sp, letterSpacing = .6.sp
+                                )
                             }
                         }
                     }
