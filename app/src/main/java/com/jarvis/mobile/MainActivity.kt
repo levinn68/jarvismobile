@@ -654,7 +654,7 @@ private fun JarvisScreen(
                         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
                     ) {
                         Column(
-                            Modifier.widthIn(max = 310.dp)
+                            Modifier.widthIn(max = 340.dp)
                                 .background(
                                     if (message.isUser) Color(0xFF10384C) else Color(0xCC0C1828),
                                     RoundedCornerShape(
