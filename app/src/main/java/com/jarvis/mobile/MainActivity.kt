@@ -1458,7 +1458,9 @@ private fun JarvisScreen(
                         Spacer(Modifier.width(9.dp))
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
-                            singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(
+                            singleLine=false, minLines=1, maxLines=4,
+                            cursorBrush = Brush.linearGradient(listOf(Cyan, Cyan)),
+                            textStyle=androidx.compose.ui.text.TextStyle(
                                 color=Color.White, fontSize=15.sp,
                                 textDecoration = TextDecoration.None
                             ),
