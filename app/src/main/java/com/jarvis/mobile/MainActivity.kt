@@ -501,6 +501,13 @@ private fun JarvisScreen(
         command = ""
         lines.add(Line(true, q))
         val norm = q.lowercase(Locale.ROOT)
+        if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
+            val greeting = "I'm online. How may I assist?"
+            lines.add(Line(false, greeting))
+            statusText = "JARVIS ONLINE"
+            if (voice) onSpeak(greeting)
+            return
+        }
         val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
         val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
         val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
@@ -659,7 +666,33 @@ private fun JarvisScreen(
                         Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
                     }
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=8.dp), verticalArrangement=Arrangement.spacedBy(9.dp)) {
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                        if (lines.isEmpty()) item {
+                            Column(Modifier.fillMaxWidth().padding(top=34.dp, bottom=22.dp),
+                                horizontalAlignment=Alignment.CenterHorizontally) {
+                                Box(Modifier.size(104.dp).background(Color(0xFF0B2430), CircleShape)
+                                    .border(1.dp, Color(0x6652DFF2), CircleShape), contentAlignment=Alignment.Center) {
+                                    Text("J", color=Cyan, fontSize=48.sp, fontWeight=FontWeight.Light)
+                                }
+                                Spacer(Modifier.height(18.dp))
+                                Text("GOOD DAY. I'M JARVIS.", color=Color(0xFFBDEFFA), fontSize=13.sp,
+                                    letterSpacing=2.sp, fontWeight=FontWeight.Medium)
+                                Spacer(Modifier.height(8.dp))
+                                Text("Your personal intelligence system is ready.",
+                                    color=TextMuted, fontSize=12.sp, textAlign=TextAlign.Center)
+                                Spacer(Modifier.height(18.dp))
+                                Column(Modifier.fillMaxWidth().background(Color(0x99081721), RoundedCornerShape(14.dp))
+                                    .border(1.dp, Color(0x4449B8CB), RoundedCornerShape(14.dp)).padding(15.dp)) {
+                                    Text("TRY A COMMAND", color=Cyan, fontSize=8.sp, letterSpacing=1.8.sp)
+                                    Spacer(Modifier.height(10.dp))
+                                    Text("“Carikan rekomendasi HP terbaik.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text("“Bandingkan dua pilihan laptop.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
+                                    Spacer(Modifier.height(7.dp))
+                                    Text("“Buka YouTube.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
+                                }
+                            }
+                        }
                         items(lines.size) { i ->
                             val line=lines[i]
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
