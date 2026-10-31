@@ -914,9 +914,17 @@ private fun JarvisScreen(
                         }
                         items(lines.size) { i ->
                             val line=lines[i]
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(animationSpec = tween(220)) +
+                                    slideInVertically(initialOffsetY = { it / 7 }, animationSpec = tween(260))
+                            ) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
                                 Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
                                     .wrapContentWidth(Alignment.Start)
+                                    .animateContentSize(animationSpec = androidx.compose.animation.core.spring(
+                                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow))
                                     .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
@@ -948,6 +956,7 @@ private fun JarvisScreen(
                                     }
                                     if (!line.user) SourceStrip(line.text)
                                 }
+                            }
                             }
                         }
                         if(busy) item {
