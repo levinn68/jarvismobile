@@ -1144,6 +1144,10 @@ private fun JarvisScreen(
                     }
                 } else {
                     statusText = "SAY “JARVIS, OPEN” TO ACTIVATE"
+                    // SpeechRecognizer completes one utterance at a time; reopen it
+                    // after silently rejecting speech that did not contain the wake phrase.
+                    kotlinx.coroutines.delay(180)
+                    onStartListening()
                 }
             } else if (normalizedHeard in setOf(
                     "jarvis close", "close", "stop listening", "sleep", "matikan",
