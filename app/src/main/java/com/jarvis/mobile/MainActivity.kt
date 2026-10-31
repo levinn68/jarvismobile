@@ -548,6 +548,7 @@ private fun SourceStrip(markdown: String) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { links.forEach { SourceLogo(it) } }
     }
 }
+@Composable
 private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
     onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
