@@ -590,49 +590,6 @@ private fun JarvisScreen(
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
     var settings by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
-    var updateStatus by remember { mutableStateOf("Belum diperiksa") }
-    var updateUrl by remember { mutableStateOf<String?>(null) }
-    var checkingUpdate by remember { mutableStateOf(false) }
-    val currentVersionCode = 5
-
-    fun checkForUpdates() {
-        if (checkingUpdate) return
-        checkingUpdate = true
-        updateStatus = "Memeriksa versi terbaru..."
-        updateUrl = null
-        Thread {
-            var conn: HttpURLConnection? = null
-            val result = runCatching {
-                conn = URL("https://api.github.com/repos/levinn68/jarvismobile/releases/tags/android-latest?ts=" + System.currentTimeMillis()).openConnection() as HttpURLConnection
-                conn!!.connectTimeout = 15000
-                conn!!.readTimeout = 20000
-                conn!!.setRequestProperty("Accept", "application/vnd.github+json")
-                conn!!.setRequestProperty("User-Agent", "JARVIS-Android")
-                val status = conn!!.responseCode
-                if (status !in 200..299) error("Belum ada rilis terbaru atau server tidak tersedia.")
-                val json = JSONObject(conn!!.inputStream.bufferedReader().use { it.readText() })
-                val assets = json.optJSONArray("assets") ?: JSONArray()
-                var apk: String? = null
-                for (i in 0 until assets.length()) {
-                    val asset = assets.optJSONObject(i) ?: continue
-                    if (asset.optString("name") == "jarvis.apk") apk = asset.optString("browser_download_url")
-                }
-                val tagCode = Regex("build\\s*(\\d+)", RegexOption.IGNORE_CASE).find(json.optString("name"))?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: Regex("v(\\d+)").find(json.optString("tag_name"))?.groupValues?.getOrNull(1)?.toIntOrNull()
-                    ?: 0
-                if (apk.isNullOrBlank()) error("File update belum tersedia.")
-                if (tagCode > currentVersionCode) Pair("Pembaruan tersedia: versi $tagCode", apk)
-                else Pair("JARVIS sudah menggunakan versi terbaru.", null)
-            }.getOrElse { Pair(it.message ?: "Gagal memeriksa pembaruan.", null) }
-            conn?.disconnect()
-            Handler(Looper.getMainLooper()).post {
-                updateStatus = result.first
-                updateUrl = result.second
-                checkingUpdate = false
-            }
-        }.start()
-    }
-
     val lines = remember { mutableStateListOf<Line>() }
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -920,20 +877,7 @@ private fun JarvisScreen(
                     Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
                     OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
                     Spacer(Modifier.height(14.dp))
-                    Text("SOFTWARE UPDATE",color=Cyan,fontSize=10.sp,letterSpacing=1.2.sp)
-                    Spacer(Modifier.height(5.dp))
-                    Text("Versi terpasang: 0.5.0",color=TextMuted,fontSize=11.sp)
-                    Text(updateStatus,color=Color(0xFFD7F3F8),fontSize=11.sp)
-                    Spacer(Modifier.height(6.dp))
-                    Button(onClick={checkForUpdates()},enabled=!checkingUpdate,colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF124253))) {
-                        Text(if(checkingUpdate) "CHECKING..." else "CHECK FOR UPDATES",color=Color.White,fontSize=10.sp)
-                    }
-                    if(updateUrl != null) {
-                        Spacer(Modifier.height(4.dp))
-                        TextButton(onClick={runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(updateUrl))) }}) {
-                            Text("DOWNLOAD UPDATE",color=Cyan)
-                        }
-                    }
+
                 }},
                 confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
                 dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
