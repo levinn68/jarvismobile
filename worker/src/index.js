@@ -166,10 +166,18 @@ async function handleChat(body, env) {
     runAgent(provider, env, prompt, `${systemBase}\\nRole: ${roleFor(provider)}\\nGive your own independent analysis. State key assumptions and uncertainty.`, events)
   ));
   const successful = firstWave.filter((item) => item.ok);
+  const providerDiagnostics = firstWave.map((item) => ({
+    provider: item.provider,
+    status: item.ok ? "ok" : "failed",
+    detail: item.ok ? undefined : item.error,
+  }));
   if (!successful.length) {
     return json({
-      error: "Semua provider AI gagal merespons. Periksa Secret Cloudflare dan kuota provider.",
+      ok: false,
+      error: "Semua provider AI gagal merespons.",
+      hint: "Lihat diagnostics untuk mengetahui apakah penyebabnya autentikasi, kuota, model, atau koneksi.",
       level,
+      diagnostics: providerDiagnostics,
       events,
       discussion: [],
     }, 502);
@@ -217,6 +225,7 @@ async function handleChat(body, env) {
     aiCount: new Set(discussion.map((d) => d.agent)).size,
     rounds: plan.maxRounds,
     participants: [...new Set(discussion.map((d) => d.agent))],
+    diagnostics: providerDiagnostics,
     events,
     discussion,
     answer: finalAnswer,
