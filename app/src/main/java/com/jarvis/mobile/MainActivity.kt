@@ -639,7 +639,22 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             !Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)").containsMatchIn(lines[i])) {
             paragraph.add(lines[i]); i++
         }
-        blocks.add(MarkdownBlock.Paragraph(paragraph.joinToString("\n")))
+        val paragraphText = paragraph.joinToString("\n")
+        val inlineImages = Regex("!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)")
+        val imageMatches = inlineImages.findAll(paragraphText).toList()
+        if (imageMatches.isEmpty()) {
+            blocks.add(MarkdownBlock.Paragraph(paragraphText))
+        } else {
+            var cursor = 0
+            imageMatches.forEach { match ->
+                val before = paragraphText.substring(cursor, match.range.first).trim()
+                if (before.isNotBlank()) blocks.add(MarkdownBlock.Paragraph(before))
+                blocks.add(MarkdownBlock.Image(match.groupValues[1], match.groupValues[2]))
+                cursor = match.range.last + 1
+            }
+            val after = paragraphText.substring(cursor).trim()
+            if (after.isNotBlank()) blocks.add(MarkdownBlock.Paragraph(after))
+        }
     }
     return blocks
 }
