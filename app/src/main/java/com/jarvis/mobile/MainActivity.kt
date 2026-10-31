@@ -28,6 +28,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,6 +51,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -516,12 +518,52 @@ private fun JarvisScreen(
                 if (page == "VOICE") {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         val size = if (compact) 190.dp else 230.dp
-                        Box(Modifier.size(size+65.dp).rotate(spin).border(1.dp, Color(0x335DEBFF), CircleShape).padding(12.dp).border(1.dp, Color(0x445DEBFF), CircleShape))
-                        Box(Modifier.size(size+28.dp).rotate(-spin*.6f).border(1.dp, Color(0x6652DFF2), CircleShape))
-                        Box(Modifier.size(size).scale(breathe).background(Brush.radialGradient(listOf(Color(0x5549E8FF), Color(0x1822B8D5), Color.Transparent)), CircleShape).border(1.dp, Color(0x885DEBFF), CircleShape), contentAlignment = Alignment.Center) {
-                            Box(Modifier.size(size*.53f).background(Brush.radialGradient(listOf(Color(0xFF17485A), Color(0xFF071923), Color(0xFF02080D))), CircleShape).border(1.dp, Color(0xAA70EFFF), CircleShape), contentAlignment = Alignment.Center) {
-                                Text("J", color = Color(0xFFD8FAFF), fontSize = 58.sp, fontWeight = FontWeight.ExtraLight)
+                        Canvas(Modifier.size(size + 74.dp).scale(breathe).rotate(spin * .35f)) {
+                            val cx = this.size.width / 2f
+                            val cy = this.size.height / 2f
+                            val r = this.size.minDimension * .43f
+                            val cyan = Color(0xFF56DDF4)
+                            val faint = Color(0x3356DDF4)
+                            // Diffuse reactor glow and layered energy shell.
+                            drawCircle(Brush.radialGradient(listOf(Color(0x5538D8F4), Color(0x1838D8F4), Color.Transparent), Offset(cx, cy), r * 1.2f), r * 1.2f, Offset(cx, cy))
+                            drawCircle(faint, r, Offset(cx, cy), style = Stroke(1.2f))
+                            drawCircle(cyan.copy(alpha = .32f), r * .91f, Offset(cx, cy), style = Stroke(2.2f))
+                            // Uneven energy perimeter, like the particle shell in the reference.
+                            val shell = androidx.compose.ui.graphics.Path()
+                            for (i in 0..180) {
+                                val a = Math.PI * 2.0 * i / 180.0
+                                val wobble = 1f + .018f * kotlin.math.sin(i * .71f) + .012f * kotlin.math.cos(i * .23f)
+                                val rr = r * wobble
+                                val x = cx + kotlin.math.cos(a).toFloat() * rr
+                                val y = cy + kotlin.math.sin(a).toFloat() * rr
+                                if (i == 0) shell.moveTo(x, y) else shell.lineTo(x, y)
                             }
+                            shell.close()
+                            drawPath(shell, cyan.copy(alpha = .42f), style = Stroke(1.6f))
+                            // Instrument-like radial calibration marks.
+                            for (i in 0 until 72) {
+                                val a = Math.PI * 2.0 * i / 72.0 + spin * Math.PI / 180.0
+                                val major = i % 6 == 0
+                                val r1 = r * if (major) .94f else .97f
+                                val r2 = r * if (major) 1.04f else 1.005f
+                                drawLine(cyan.copy(alpha = if (major) .8f else .28f),
+                                    Offset(cx + kotlin.math.cos(a).toFloat() * r1, cy + kotlin.math.sin(a).toFloat() * r1),
+                                    Offset(cx + kotlin.math.cos(a).toFloat() * r2, cy + kotlin.math.sin(a).toFloat() * r2),
+                                    if (major) 2f else 1f)
+                            }
+                            // Spherical wireframe core: latitude and longitude contours.
+                            val sphere = r * .48f
+                            for (i in -3..3) {
+                                val y = i / 3f
+                                val h = sphere * kotlin.math.sqrt((1f - y * y).coerceAtLeast(.02f))
+                                drawOval(cyan.copy(alpha = .32f), Offset(cx - h, cy + y * sphere - sphere * .13f), androidx.compose.ui.geometry.Size(h * 2f, sphere * .26f), style = Stroke(1f))
+                            }
+                            for (i in 0..8) {
+                                val w = sphere * kotlin.math.abs(kotlin.math.cos(i * Math.PI / 8.0)).toFloat().coerceAtLeast(.08f)
+                                drawOval(cyan.copy(alpha = .24f), Offset(cx - w, cy - sphere), androidx.compose.ui.geometry.Size(w * 2f, sphere * 2f), style = Stroke(1f))
+                            }
+                            drawCircle(Brush.radialGradient(listOf(Color(0xCC62E9FF), Color(0x5552DDF4), Color.Transparent), Offset(cx, cy), sphere * .85f), sphere * .85f, Offset(cx, cy))
+                            drawCircle(Color(0xFFB9F7FF).copy(alpha = .8f), 2.5f, Offset(cx, cy))
                         }
                         Row(Modifier.align(Alignment.Center).padding(top = size + 86.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                             repeat(25) { bar ->
