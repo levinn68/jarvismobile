@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.media.MediaPlayer
+import android.media.AudioAttributes
+import android.media.audiofx.LoudnessEnhancer
 import android.graphics.BitmapFactory
 import android.util.Base64
 import java.io.File
@@ -91,6 +93,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.runtime.produceState
@@ -109,6 +112,16 @@ import org.json.JSONArray
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
+
+private fun voiceCompletionMessage(text: String, language: String): String {
+    val hasVisualContent = text.contains("![") || text.contains("|") ||
+        text.length > 220 || Regex("(?m)^\\s*[-*•]\\s+").containsMatchIn(text)
+    if (!hasVisualContent) return spokenSummary(text).take(150)
+    return if (language == "en")
+        "I've found the results, Sir. Please check your screen."
+    else
+        "Hasilnya sudah saya tampilkan, Sir. Silakan lihat layar."
+}
 
 private fun spokenSummary(text: String): String {
     val clean = text
@@ -225,6 +238,7 @@ class MainActivity : ComponentActivity() {
     }
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
+    private var voiceLoudnessEnhancer: LoudnessEnhancer? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
     private var voiceModeEnabled = true
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
@@ -387,22 +401,39 @@ class MainActivity : ComponentActivity() {
                 FileOutputStream(audioFile).use { it.write(audio) }
                 handler.post {
                     try {
+                        voiceLoudnessEnhancer?.release()
+                        voiceLoudnessEnhancer = null
                         speechPlayer?.release()
                         speechPlayer = MediaPlayer().apply {
+                            setAudioAttributes(AudioAttributes.Builder()
+                                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                .build())
                             setDataSource(audioFile.absolutePath)
                             setOnPreparedListener {
+                                setVolume(1.0f, 1.0f)
+                                voiceLoudnessEnhancer = runCatching {
+                                    LoudnessEnhancer(it.audioSessionId).apply {
+                                        setTargetGain(450)
+                                        enabled = true
+                                    }
+                                }.getOrNull()
                                 voiceStatus.value = "JARVIS MCU VOICE · SPEAKING"
                                 it.start()
                             }
                             setOnCompletionListener {
                                 it.release()
                                 speechPlayer = null
+                                voiceLoudnessEnhancer?.release()
+                                voiceLoudnessEnhancer = null
                                 geminiSpeechInProgress = false
                                 handler.postDelayed({ startListening() }, 450)
                             }
                             setOnErrorListener { player, _, _ ->
                                 player.release()
                                 speechPlayer = null
+                                voiceLoudnessEnhancer?.release()
+                                voiceLoudnessEnhancer = null
                                 geminiSpeechInProgress = false
                                 voiceStatus.value = "FISH AUDIO PLAYBACK ERROR"
                                 handler.postDelayed({ startListening() }, 900)
@@ -842,6 +873,11 @@ private fun JarvisScreen(
     var keyDraft by remember { mutableStateOf("") }
     var responseLanguage by remember { mutableStateOf(initialResponseLanguage) }
     val lines = remember { mutableStateListOf<Line>() }
+    var showSplash by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(2100)
+        showSplash = false
+    }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -875,7 +911,7 @@ private fun JarvisScreen(
         if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
             val answer = "Baik, aplikasi dibuka."
             lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
-            if (voice) onSpeak(spokenSummary(answer))
+            if (voice) onSpeak(voiceCompletionMessage(answer, responseLanguage))
             return
         }
         if (files.isEmpty() && openIntent) {
@@ -1349,6 +1385,24 @@ private fun JarvisScreen(
                         }
                     }
                 if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
+            }
+            if (showSplash) {
+                Box(Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                    Box(Modifier.size(250.dp).background(
+                        Brush.radialGradient(listOf(Color(0x4428DDF8), Color(0x1828DDF8), Color.Transparent)),
+                        CircleShape))
+                    Image(
+                        painter = painterResource(id = R.drawable.ic_jarvis),
+                        contentDescription = "J.A.R.V.I.S. logo",
+                        modifier = Modifier.size(142.dp).scale(breathe)
+                    )
+                    Text("J . A . R . V . I . S .", color = Color(0xFFEAFBFF),
+                        fontSize = 13.sp, letterSpacing = 4.sp,
+                        modifier = Modifier.align(Alignment.Center).offset(y = 112.dp))
+                    Box(Modifier.align(Alignment.Center).offset(y = 148.dp)
+                        .width(150.dp).height(1.dp)
+                        .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan, Color.Transparent))))
+                }
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
                 title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
