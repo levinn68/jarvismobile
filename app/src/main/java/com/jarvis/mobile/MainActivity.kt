@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
     private var permissionAsked = false
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
-    private var greetingSpoken = false
+    private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
     private var voiceModeEnabled = true
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
     private val geminiKey get() = prefs.getString("gemini_api_key", "").orEmpty()
@@ -86,14 +86,10 @@ class MainActivity : ComponentActivity() {
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
                 val voices = tts?.voices.orEmpty()
-                val englishVoices = voices.filter { it.locale.language == "en" }
-                val maleVoice = englishVoices.firstOrNull {
-                    val n = it.name.lowercase(Locale.ROOT)
-                    n.contains("male") || n.contains("iom") || n.contains("rjs") || n.contains("davis")
-                } ?: englishVoices.sortedByDescending { it.quality }.firstOrNull()
-                if (maleVoice != null) tts?.voice = maleVoice else tts?.language = Locale.US
-                tts?.setSpeechRate(0.88f)
-                tts?.setPitch(0.82f)
+                val indoVoice = voices.firstOrNull { it.locale.toLanguageTag().equals("id-ID", true) }
+                if (indoVoice != null) tts?.voice = indoVoice else tts?.language = Locale("id", "ID")
+                tts?.setSpeechRate(0.86f)
+                tts?.setPitch(0.78f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) {
@@ -237,9 +233,9 @@ class MainActivity : ComponentActivity() {
                 val textPart = JSONObject().put("text", "Read the following response aloud exactly as written. Do not add or omit words. Text: " + text)
                 val contentParts = JSONArray().put(textPart)
                 val contents = JSONArray().put(JSONObject().put("parts", contentParts))
-                val persona = JSONObject().put("text", "Voice persona: a sophisticated male AI assistant inspired by a cinematic British butler. Calm, composed, intelligent, subtly authoritative, measured pace, clear British English pronunciation when speaking English, warm low-register delivery. Never imitate a specific actor or copyrighted character voice. Preserve the language of the supplied text.")
+                val persona = JSONObject().put("text", "Speak the supplied text exactly in natural Bahasa Indonesia. Voice persona: mature male AI assistant, low and resonant register, calm, precise, composed, intelligent, subtly authoritative, measured pace, clean Indonesian diction, restrained cinematic delivery. Never imitate a specific actor or copyrighted character voice.")
                 val systemInstruction = JSONObject().put("parts", JSONArray().put(persona))
-                val prebuiltVoice = JSONObject().put("voiceName", "Alnilam")
+                val prebuiltVoice = JSONObject().put("voiceName", geminiVoice)
                 val voiceConfig = JSONObject().put("prebuiltVoiceConfig", prebuiltVoice)
                 val speechConfig = JSONObject().put("voiceConfig", voiceConfig)
                 val generationConfig = JSONObject()
@@ -335,11 +331,6 @@ class MainActivity : ComponentActivity() {
                 ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 700)
                 voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
             }
-            return
-        }
-        if (!greetingSpoken) {
-            greetingSpoken = true
-            speak("Good day. JARVIS is online. I am listening.")
             return
         }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
