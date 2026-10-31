@@ -1190,6 +1190,7 @@ private fun JarvisScreen(
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
+            val containerMaxWidth = maxWidth
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1214,7 +1215,7 @@ private fun JarvisScreen(
                         val hasVoiceImages = remember(latestVisualAnswer) {
                             parseMarkdownBlocks(latestVisualAnswer).any { it is MarkdownBlock.Image }
                         }
-                        val hudDiameter = minOf(maxWidth * .88f, if (compact) 318.dp else 340.dp)
+                        val hudDiameter = minOf(containerMaxWidth * .88f, if (compact) 318.dp else 340.dp)
                         val reactorSize by androidx.compose.animation.core.animateDpAsState(
                             targetValue = if (hasVoiceImages) (if (compact) 214.dp else 232.dp) else hudDiameter,
                             animationSpec = androidx.compose.animation.core.spring(
