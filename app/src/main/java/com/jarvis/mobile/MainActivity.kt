@@ -875,6 +875,7 @@ private fun JarvisScreen(
     var keyDraft by remember { mutableStateOf("") }
     var responseLanguage by remember { mutableStateOf(initialResponseLanguage) }
     val lines = remember { mutableStateListOf<Line>() }
+    val transition = rememberInfiniteTransition(label = "reactor")
     var showSplash by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         showSplash = true
@@ -895,7 +896,6 @@ private fun JarvisScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
-    val transition = rememberInfiniteTransition(label = "reactor")
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
     val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
