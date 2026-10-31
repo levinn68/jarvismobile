@@ -35,7 +35,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
@@ -916,8 +916,11 @@ private fun JarvisScreen(
                             val line=lines[i]
                             AnimatedVisibility(
                                 visible = true,
-                                enter = fadeIn(animationSpec = tween(220)) +
-                                    slideInVertically(initialOffsetY = { it / 7 }, animationSpec = tween(260))
+                                enter = fadeIn(animationSpec = tween(180)) +
+                                    expandVertically(
+                                        expandFrom = Alignment.Top,
+                                        animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                                    )
                             ) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
                                 Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
