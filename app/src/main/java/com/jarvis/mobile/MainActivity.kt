@@ -53,6 +53,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Settings
@@ -697,6 +698,7 @@ private fun JarvisScreen(
         val displayText: MutableState<String> = mutableStateOf(if (user) text else "")
     )
     var page by remember { mutableStateOf("COMMAND") }
+    var voiceListening by remember { mutableStateOf(true) }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -800,8 +802,8 @@ private fun JarvisScreen(
         }
     }
 
-    LaunchedEffect(recognizedText, page) {
-        if (page == "VOICE" && recognizedText.isNotBlank()) {
+    LaunchedEffect(recognizedText, page, voiceListening) {
+        if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
             val wake = Regex("(?i)^jarvis[,.! ]*")
@@ -817,8 +819,8 @@ private fun JarvisScreen(
             }
         }
     }
-    LaunchedEffect(page) {
-        val voiceOn = page == "VOICE"
+    LaunchedEffect(page, voiceListening) {
+        val voiceOn = page == "VOICE" && voiceListening
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
@@ -949,10 +951,13 @@ private fun JarvisScreen(
                             .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { onStartListening() }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.SettingsVoice, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                IconButton(onClick = { voiceListening = !voiceListening }, modifier = Modifier.size(38.dp)) {
+                                    Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
+                                        contentDescription = if (voiceListening) "Matikan mikrofon" else "Aktifkan mikrofon",
+                                        tint = if (voiceListening) Cyan else Color(0xFFFF8A8A), modifier = Modifier.size(20.dp))
                                 }
-                                Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                                Text(if (voiceListening) "MIC ON" else "MIC OFF",
+                                    color = if (voiceListening) Cyan else Color(0xFFFF8A8A), fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 IconButton(onClick = { page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
@@ -961,12 +966,11 @@ private fun JarvisScreen(
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { onStartListening() }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.Mic, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                IconButton(onClick = { if (!voiceListening) voiceListening = true else onStartListening() }, modifier = Modifier.size(38.dp)) {
+                                    Icon(Icons.Default.SettingsVoice, null, tint = Cyan, modifier = Modifier.size(20.dp))
                                 }
-                                Text("VOICE", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                                Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
-                        }
                         Text("TAP THE REACTOR OR SAY “JARVIS”", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
@@ -1020,14 +1024,29 @@ private fun JarvisScreen(
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
-                                        if (!line.user) {
-                                            IconButton(onClick = { onSpeak(line.text) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.VolumeUp, contentDescription="Bacakan jawaban", tint=TextMuted, modifier=Modifier.size(14.dp)) }
-                                            IconButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.ContentCopy, contentDescription="Copy response", tint=TextMuted, modifier=Modifier.size(13.dp)) }
-                                            IconButton(onClick = { if (!busy && lastPrompt.isNotBlank()) send(lastPrompt) }, enabled=!busy && lastPrompt.isNotBlank(), modifier = Modifier.size(27.dp)) { Icon(Icons.Default.Refresh, contentDescription="Ulangi pertanyaan terakhir", tint=TextMuted, modifier=Modifier.size(14.dp)) }
-                                        }
+                                        
                                     }
                                     Spacer(Modifier.height(7.dp))
                                     RichMessageText(line.displayText.value)
+                                    if (!line.user) {
+                                        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            TextButton(onClick = { onSpeak(line.text) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                                                Icon(Icons.Default.VolumeUp, null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Bacakan", color = TextMuted, fontSize = 9.sp)
+                                            }
+                                            TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                                                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Salin", color = TextMuted, fontSize = 9.sp)
+                                            }
+                                            TextButton(onClick = { if (!busy && lastPrompt.isNotBlank()) send(lastPrompt) }, enabled = !busy && lastPrompt.isNotBlank(), contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                                                Icon(Icons.Default.Refresh, null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Ulangi", color = TextMuted, fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
                                     line.attachments.forEach { file ->
                                         Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
                                             Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
