@@ -73,61 +73,69 @@ function keyOrder(provider, env) {
   return names.filter((name) => typeof env[name] === "string" && env[name].trim());
 }
 
-async function fetchPreviewImage(pageUrl) {
+async function fetchPreviewImage(pageUrl, expectedTitle = "") {
   try {
     const page = new URL(pageUrl);
     if (page.protocol !== "https:" && page.protocol !== "http:") return null;
     const response = await fetch(page.toString(), {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; JARVISBot/1.0)", "Accept": "text/html" },
-      signal: AbortSignal.timeout(5500),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/124.0.0.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(7000),
     });
     if (!response.ok) return null;
-    const html = (await response.text()).slice(0, 500000);
-    const tags = html.match(/<meta\b[^>]*>/gi) || [];
+    const html = (await response.text()).slice(0, 800000);
+    const tags = html.match(/<meta\\b[^>]*>/gi) || [];
     const readAttr = (tag, name) => {
-      const match = tag.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']+)[\"']", "i"));
+      const escaped = name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&");
+      const match = tag.match(new RegExp("(?:^|\\\\s)" + escaped + "\\\\s*=\\\\s*[\"']([^\"']+)[\"']", "i"));
       return match?.[1] || "";
     };
-    // Prefer canonical social/product image metadata.
+    const absolute = (raw) => {
+      try {
+        const value = new URL(String(raw || "").replace(/&amp;/g, "&").trim(), page).toString();
+        return /^https?:\\/\\//i.test(value) ? value : "";
+      } catch (_) { return ""; }
+    };
+    const metaCandidates = [];
     for (const tag of tags) {
-      const property = (readAttr(tag, "property") || readAttr(tag, "name")).toLowerCase();
-      if (property !== "og:image" && property !== "og:image:url" &&
-          property !== "twitter:image" && property !== "twitter:image:src" &&
-          property !== "og:image:secure_url") continue;
-      const raw = readAttr(tag, "content");
-      if (!raw) continue;
-      const imageUrl = new URL(raw, page).toString();
-      if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
+      const property = (readAttr(tag, "property") || readAttr(tag, "name") || readAttr(tag, "itemprop")).toLowerCase();
+      if (!["og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src", "image"].includes(property)) continue;
+      const url = absolute(readAttr(tag, "content"));
+      if (url) metaCandidates.push(url);
     }
-    // Many marketplace product pages expose the actual product photo only in
-    // an <img> element, not in Open Graph metadata. Use a real page image as a
-    // fallback; reject tiny icons, trackers, logos and data URLs.
-    const imageTags = html.match(/<img\b[^>]*>/gi) || [];
-    const candidates = imageTags.map((tag) => {
-      const raw = readAttr(tag, "src") || readAttr(tag, "data-src") ||
-        readAttr(tag, "data-original") || readAttr(tag, "data-lazy-src");
+    if (metaCandidates.length) return metaCandidates[0];
+
+    const imageTags = html.match(/<img\\b[^>]*>/gi) || [];
+    const expected = String(expectedTitle || "").toLowerCase().split(/[^\\p{L}\\p{N}]+/u).filter((x) => x.length > 2);
+    const candidates = [];
+    for (const tag of imageTags) {
       const alt = readAttr(tag, "alt").toLowerCase();
+      const raw = readAttr(tag, "data-zoom-image") || readAttr(tag, "data-original") ||
+        readAttr(tag, "data-lazy-src") || readAttr(tag, "data-src") ||
+        readAttr(tag, "data-image") || readAttr(tag, "src") ||
+        readAttr(tag, "data-srcset") || readAttr(tag, "srcset");
+      const srcset = raw.split(",").map((entry) => entry.trim().split(/\\s+/)[0]).filter(Boolean);
+      const url = absolute(srcset[0] || raw);
       const width = Number(readAttr(tag, "width") || 0);
       const height = Number(readAttr(tag, "height") || 0);
-      return { raw, alt, width, height };
-    }).filter((item) => item.raw && !item.raw.startsWith("data:") &&
-      !/(logo|icon|avatar|sprite|tracking|pixel|banner)/i.test(item.raw + " " + item.alt) &&
-      !(item.width > 0 && item.width < 100) && !(item.height > 0 && item.height < 100));
-    for (const item of candidates) {
-      try {
-        const imageUrl = new URL(item.raw.replace(/&amp;/g, "&"), page).toString();
-        if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
-      } catch (_) {}
+      if (!url || /^(data:|blob:)/i.test(url) ||
+          /(logo|icon|avatar|sprite|tracking|pixel|banner|placeholder|loading)/i.test(url + " " + alt) ||
+          (width > 0 && width < 120) || (height > 0 && height < 120)) continue;
+      const titleScore = expected.reduce((score, word) => score + (alt.includes(word) ? 2 : 0), 0);
+      const sizeScore = Math.min(width || 400, 1200) + Math.min(height || 400, 1200);
+      candidates.push({ url, score: titleScore * 10000 + sizeScore });
     }
-  } catch (_) {}
-  return null;
+    candidates.sort((x, y) => y.score - x.score);
+    return candidates[0]?.url || null;
+  } catch (_) { return null; }
 }
-
 async function previewImagesFromSources(sources) {
   const selected = sources.slice(0, 6);
   const previews = await Promise.all(selected.map(async (source) => ({
     title: String(source.title || "Visual reference").replace(/[\[\]\n]/g, " ").trim().slice(0, 80),
-    url: await fetchPreviewImage(source.uri),
+    url: await fetchPreviewImage(source.uri, source.title),
   })));
   return previews.filter((item) => item.url).slice(0, 3);
 }
