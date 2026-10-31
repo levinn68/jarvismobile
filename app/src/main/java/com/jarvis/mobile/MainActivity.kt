@@ -910,23 +910,37 @@ private fun JarvisScreen(
             val heard = recognizedText.trim()
             onConsumed()
             val wake = Regex("(?i)^jarvis[,.! ]*")
-            if (wake.containsMatchIn(heard)) {
-                val request = heard.replaceFirst(wake, "").trim()
-                if (request.isBlank() || request.equals("open", true)) {
-                    // A bare wake word gets a short acknowledgement. The next
-                    // utterance is always accepted as a command, without another wake word.
-                    voiceArmed = true
-                    statusText = "JARVIS ACTIVATED · READY FOR COMMAND"
-                    onSpeak("Ya, Sir. Saya siap.")
-                } else {
-                    voiceArmed = false
-                    send(request, true)
-                }
-            } else {
-                // Voice mode is conversational: accept a direct Indonesian command
-                // without requiring "Jarvis" at the beginning of every sentence.
+            val hasWakeWord = wake.containsMatchIn(heard)
+            val request = if (hasWakeWord) heard.replaceFirst(wake, "").trim() else heard
+            val normalizedRequest = request.lowercase(Locale.ROOT)
+                .replace(Regex("[,.!?]"), " ").replace(Regex("\\s+"), " ").trim()
+
+            // The listening session stays active until the user explicitly closes it.
+            if (hasWakeWord && normalizedRequest in setOf("close", "stop listening", "sleep", "matikan", "berhenti mendengarkan")) {
                 voiceArmed = false
+                statusText = "JARVIS STANDBY"
+                lines.add(Line(true, heard))
+                lines.add(Line(false, "Baik, Sir. Saya berhenti mendengarkan."))
+                voiceListening = false
+                onSpeak("Baik, Sir. Sampai Anda memanggil saya kembali.")
+            } else if (hasWakeWord && (normalizedRequest.isBlank() || normalizedRequest == "open" || normalizedRequest == "aktif")) {
+                voiceArmed = true
+                statusText = "CONTINUOUS LISTENING · ACTIVE"
+                lines.add(Line(true, heard))
+                lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
+                onSpeak("J.A.R.V.I.S. aktif, Sir. Saya akan terus mendengarkan sampai Anda mengatakan Jarvis, close.")
+            } else if (hasWakeWord) {
+                // "Jarvis, open YouTube" both activates the session and executes the command.
+                voiceArmed = true
+                statusText = "CONTINUOUS LISTENING · ACTIVE"
+                send(request, true)
+            } else if (voiceArmed) {
+                // Once activated, process every utterance and keep the session armed.
                 send(heard, true)
+                voiceArmed = true
+            } else {
+                // Ignore background speech until the explicit wake phrase starts a session.
+                statusText = "STANDBY · SAY JARVIS, OPEN"
             }
         } else if (page != "VOICE" || !voiceListening) {
             voiceArmed = false
