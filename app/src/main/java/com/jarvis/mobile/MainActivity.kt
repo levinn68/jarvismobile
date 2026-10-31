@@ -854,20 +854,22 @@ private fun VoiceVisualResults(markdown: String) {
     val images = remember(markdown) {
         parseMarkdownBlocks(markdown).filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
     }
-    if (images.isEmpty()) {
-        Text("Hasil sudah siap. Buka mode Chat untuk melihat rincian.",
-            color = TextMuted, fontSize = 10.sp, letterSpacing = .3.sp)
-    } else {
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (images.isNotEmpty()) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
             images.forEach { image ->
-                Column(Modifier.fillMaxWidth()
-                    .background(Color(0xFF081923), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(12.dp))
-                    .padding(7.dp)) {
+                Column(
+                    Modifier.width(154.dp)
+                        .background(Color(0xFF081923), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(12.dp))
+                        .padding(6.dp)
+                ) {
                     RemoteMessageImage(image.url, image.alt)
                     if (image.alt.isNotBlank()) {
-                        Text(image.alt, color = Color(0xFFD8F2F7), fontSize = 10.sp,
-                            modifier = Modifier.padding(top = 5.dp))
+                        Text(image.alt, color = Color(0xFFD8F2F7), fontSize = 9.sp,
+                            maxLines = 2, modifier = Modifier.padding(top = 5.dp))
                     }
                 }
             }
@@ -1126,7 +1128,7 @@ private fun JarvisScreen(
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
-                        Box(Modifier.fillMaxWidth().weight(if (lines.isEmpty()) 1f else .82f), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 220.dp else 246.dp
                             Canvas(Modifier.size(reactorSize)
                                 .scale(if (voiceListening) breathe else 1f)
@@ -1239,24 +1241,12 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        if (lines.isNotEmpty()) {
-                            androidx.compose.foundation.lazy.LazyColumn(
-                                Modifier.fillMaxWidth().weight(.62f),
-                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 5.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(lines.takeLast(3)) { line ->
-                                    Column(Modifier.fillMaxWidth().padding(horizontal = 3.dp)) {
-                                        Text(if (line.user) "YOU / VOICE" else "J.A.R.V.I.S. / RESPONSE",
-                                            color = if (line.user) TextMuted else Cyan, fontSize = 8.sp, letterSpacing = 1.4.sp)
-                                        Spacer(Modifier.height(4.dp))
-                                        if (line.revealed.value) {
-                                            if (line.user) Text(line.text, color = Color(0xFFD9EDF2), fontSize = 11.sp)
-                                            else VoiceVisualResults(line.displayText.value)
-                                        } else Text(processStage, color = TextMuted, fontSize = 10.sp)
-                                    }
-                                }
-                            }
+                        // Voice mode is a visual HUD, not a second chat transcript.
+                        // Show only verified image results; all text and specifications stay in Chat.
+                        val latestVisualAnswer = lines.lastOrNull { !it.user && it.revealed.value }
+                            ?.displayText?.value.orEmpty()
+                        if (latestVisualAnswer.isNotBlank()) {
+                            VoiceVisualResults(latestVisualAnswer)
                         }
                         Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 7.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
