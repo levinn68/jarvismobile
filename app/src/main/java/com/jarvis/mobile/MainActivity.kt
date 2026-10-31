@@ -1033,27 +1033,27 @@ private fun JarvisScreen(
     var splashTextIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         // Begin the cinematic reveal on the first frame: no artificial blank delay.
+        // Start the logo and wordmark together; no staged intro delay.
         splashIntro = true
-        kotlinx.coroutines.delay(150)
         splashTextIntro = true
-        kotlinx.coroutines.delay(980)
+        kotlinx.coroutines.delay(1350)
         showSplash = false
-        kotlinx.coroutines.delay(520)
+        kotlinx.coroutines.delay(680)
         splashMounted = false
     }
     val splashReveal by animateFloatAsState(
         targetValue = if (splashIntro) 1f else 0f,
-        animationSpec = tween(820, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
+        animationSpec = tween(1120, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
         label = "cinematicSplashReveal"
     )
     val splashFade by animateFloatAsState(
         targetValue = if (showSplash) 1f else 0f,
-        animationSpec = tween(520, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
+        animationSpec = tween(680, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
         label = "cinematicSplashFade"
     )
     val splashTextReveal by animateFloatAsState(
         targetValue = if (splashTextIntro) 1f else 0f,
-        animationSpec = tween(620, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
+        animationSpec = tween(900, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
         label = "splashWordmarkReveal"
     )
     val revealScope = rememberCoroutineScope()
