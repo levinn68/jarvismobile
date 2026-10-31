@@ -1,4 +1,4 @@
-name: Build JARVIS Mobile APK
+name: Build JARVIS Android Client APK
 on:
   push:
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: jarvismobile-release-v0.5.0
+          name: jarvis-android-release-v0.5.0
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 30
