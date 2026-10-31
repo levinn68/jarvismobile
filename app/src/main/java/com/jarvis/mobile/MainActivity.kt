@@ -670,7 +670,7 @@ private fun JarvisScreen(
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), val attachments: List<Attachment> = emptyList())
-    var page by remember { mutableStateOf("VOICE") }
+    var page by remember { mutableStateOf("COMMAND") }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -972,16 +972,6 @@ private fun JarvisScreen(
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("COMMAND", "VOICE").forEach { tab ->
-                            TextButton(onClick = { page = tab }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
-                            }
-                        }
-                    }
                     if (pendingAttachments.isNotEmpty()) {
                         Row(Modifier.fillMaxWidth().padding(top=5.dp), horizontalArrangement=Arrangement.spacedBy(5.dp)) {
                             pendingAttachments.toList().forEach { file ->
@@ -1024,6 +1014,16 @@ private fun JarvisScreen(
                         }
                     }
                 }
+                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
+                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
+                        listOf("COMMAND", "VOICE").forEach { tab ->
+                            TextButton(onClick = { page = tab }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
+                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
+                            }
+                        }
+                    }
                 if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
