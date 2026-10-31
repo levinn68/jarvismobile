@@ -480,7 +480,7 @@ function isSafeExternalImageHost(hostname) {
   return true;
 }
 
-async async function handleImageProxy(request) {
+async function handleImageProxy(request) {
   const requestUrl = new URL(request.url);
   const raw = requestUrl.searchParams.get("url") || "";
   let target;
