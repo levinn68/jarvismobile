@@ -883,7 +883,7 @@ private fun JarvisScreen(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 260.dp else 310.dp
+                            val reactorSize = if (compact) 220.dp else 246.dp
                             Canvas(Modifier.size(reactorSize)
                                 .scale(if (voiceListening) breathe else 1f)
                                 .rotate(if (voiceListening) spin * .12f else spin * .025f)
@@ -893,13 +893,30 @@ private fun JarvisScreen(
                                 val r = size.minDimension * .43f
                                 val cyan = Color(0xFF36DDF5)
                                 val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                drawCircle(Brush.radialGradient(listOf(Color(0x6634D9F3), Color(0x2221AFCB), Color.Transparent), Offset(cx, cy), r * 1.62f), r * 1.62f, Offset(cx, cy))
-                                drawCircle(cyan.copy(alpha = .10f + pulse * .05f), r * 1.12f, Offset(cx, cy), style = Stroke(1.1f))
-                                drawCircle(cyan.copy(alpha = .08f), r * 1.22f, Offset(cx, cy), style = Stroke(.7f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(3f, 7f))))
+                                drawCircle(Brush.radialGradient(listOf(Color(0x5534D9F3), Color(0x1A21AFCB), Color.Transparent), Offset(cx, cy), r * 1.52f), r * 1.52f, Offset(cx, cy))
+                                // Organic, translucent reactor membrane from the reference video.
+                                for (layer in 0..3) {
+                                    val contour = androidx.compose.ui.graphics.Path()
+                                    for (i in 0..180) {
+                                        val angle = Math.PI * 2.0 * i / 180.0
+                                        val wobble = 1f + .025f * kotlin.math.sin(angle * 7.0 + wavePhase * .22).toFloat() +
+                                            .018f * kotlin.math.cos(angle * 11.0 - wavePhase * .16).toFloat() +
+                                            .009f * kotlin.math.sin(angle * 17.0 + layer).toFloat()
+                                        val radius = r * (.91f + layer * .045f) * wobble
+                                        val point = Offset(cx + kotlin.math.cos(angle).toFloat() * radius,
+                                            cy + kotlin.math.sin(angle).toFloat() * radius)
+                                        if (i == 0) contour.moveTo(point.x, point.y) else contour.lineTo(point.x, point.y)
+                                    }
+                                    contour.close()
+                                    drawPath(contour, cyan.copy(alpha = .13f + pulse * .035f - layer * .018f),
+                                        style = Stroke(if (layer == 0) 1.5f else .75f))
+                                }
+                                drawCircle(cyan.copy(alpha = .07f + pulse * .025f), r * .78f, Offset(cx, cy), style = Stroke(.9f))
+                                drawCircle(cyan.copy(alpha = .09f), r * .58f, Offset(cx, cy), style = Stroke(.8f))
                                 // Layered translucent holographic disc, matching the reference interface.
-                                for (ring in 0..7) {
-                                    val rr = r * (1f - ring * .105f)
-                                    drawCircle(cyan.copy(alpha = .11f + pulse * .035f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 2f else .8f))
+                                for (ring in 0..9) {
+                                    val rr = r * (.72f - ring * .061f)
+                                    drawCircle(cyan.copy(alpha = .075f + pulse * .025f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 1.2f else .55f))
                                 }
                                 // Fine segmented perimeter and scanning arcs.
                                 for (i in 0 until 144) {
