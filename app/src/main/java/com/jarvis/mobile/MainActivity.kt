@@ -302,6 +302,10 @@ class MainActivity : ComponentActivity() {
                 val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
                 connection = endpoint.openConnection() as HttpURLConnection
                 activeConnection.set(connection)
+                if (cancelled.get()) {
+                    connection.disconnect()
+                    return@Thread
+                }
                 connection.requestMethod = "POST"
                 connection.connectTimeout = 20000
                 connection.readTimeout = 180000
@@ -713,7 +717,7 @@ private fun JarvisScreen(
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
-        val revealed: MutableState<Boolean> = mutableStateOf(user)
+        val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
     var page by remember { mutableStateOf("COMMAND") }
     var voiceListening by remember { mutableStateOf(true) }
@@ -805,6 +809,7 @@ private fun JarvisScreen(
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
             val responseLine = Line(false, answer)
             responseLine.displayText.value = answer
+            responseLine.revealed.value = false
             lines.add(responseLine)
             busy = false
             cancelCurrentRequest = null
