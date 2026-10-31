@@ -1040,24 +1040,26 @@ private fun JarvisScreen(
         // Start the logo and wordmark together; no staged intro delay.
         splashIntro = true
         splashTextIntro = true
-        kotlinx.coroutines.delay(1350)
+        // Let the complete logo reveal play before the fade; keep the startup
+        // sequence deliberate rather than flashing past in under two seconds.
+        kotlinx.coroutines.delay(2450)
         showSplash = false
-        kotlinx.coroutines.delay(680)
+        kotlinx.coroutines.delay(950)
         splashMounted = false
     }
     val splashReveal by animateFloatAsState(
         targetValue = if (splashIntro) 1f else 0f,
-        animationSpec = tween(1120, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
+        animationSpec = tween(2050, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
         label = "cinematicSplashReveal"
     )
     val splashFade by animateFloatAsState(
         targetValue = if (showSplash) 1f else 0f,
-        animationSpec = tween(680, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
+        animationSpec = tween(950, easing = androidx.compose.animation.core.CubicBezierEasing(.4f, 0f, .2f, 1f)),
         label = "cinematicSplashFade"
     )
     val splashTextReveal by animateFloatAsState(
         targetValue = if (splashTextIntro) 1f else 0f,
-        animationSpec = tween(900, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
+        animationSpec = tween(1750, easing = androidx.compose.animation.core.CubicBezierEasing(.16f, 1f, .3f, 1f)),
         label = "splashWordmarkReveal"
     )
     val revealScope = rememberCoroutineScope()
@@ -1597,7 +1599,7 @@ private fun JarvisScreen(
                         .padding(start=7.dp,end=5.dp,top=3.dp,bottom=3.dp), verticalAlignment=Alignment.CenterVertically) {
                         Box {
                             Box(
-                                Modifier.size(36.dp)
+                                Modifier.size(30.dp)
                                     .background(Color(0xFF103442), CircleShape)
                                     .border(1.dp, Color(0x8852DFF2), CircleShape)
                                     .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
@@ -1605,7 +1607,7 @@ private fun JarvisScreen(
                             ) {
                                 Icon(if (attachmentMenu) Icons.Default.Close else Icons.Default.Add,
                                     if (attachmentMenu) "Tutup menu lampiran" else "Tambah lampiran",
-                                    tint = Cyan, modifier = Modifier.size(21.dp))
+                                    tint = Cyan, modifier = Modifier.size(17.dp))
                             }
                             DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
                                 properties = PopupProperties(focusable = true),
@@ -1624,7 +1626,7 @@ private fun JarvisScreen(
                                     leadingIcon={ Icon(Icons.Default.Image, null, tint=Cyan) })
                             }
                         }
-                        Spacer(Modifier.width(9.dp))
+                        Spacer(Modifier.width(6.dp))
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
                             singleLine=false, minLines=1, maxLines=4,
