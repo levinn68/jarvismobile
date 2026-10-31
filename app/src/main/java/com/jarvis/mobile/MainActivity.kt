@@ -574,7 +574,7 @@ private sealed class MarkdownBlock {
 }
 
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
-    val lines = markdown.replace("\\\\n", "\n").lines()
+    val lines = markdown.replace("\\n", "\n").lines()
     val blocks = mutableListOf<MarkdownBlock>()
     fun isTableSeparator(line: String): Boolean {
         val cells = line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
