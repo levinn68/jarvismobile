@@ -236,11 +236,8 @@ class MainActivity : ComponentActivity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
-                val voices = tts?.voices.orEmpty()
-                val indonesianVoice = voices.firstOrNull {
-                    it.locale.toLanguageTag().equals("id-ID", true) && !it.isNetworkConnectionRequired
-                } ?: voices.firstOrNull { it.locale.language.equals("id", true) }
-                if (indonesianVoice != null) tts?.voice = indonesianVoice else tts?.language = Locale("id", "ID")
+                // Select Android fallback voice per response language.
+                tts?.language = Locale("id", "ID")
                 tts?.setSpeechRate(0.86f)
                 tts?.setPitch(0.78f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -430,7 +427,25 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
+    private fun isLikelyEnglish(text: String): Boolean {
+        val words = Regex("[\\p{L}']+").findAll(text.lowercase(Locale.ROOT)).map { it.value }.toList()
+        val english = setOf("the", "is", "are", "was", "were", "what", "where", "when", "why", "how",
+            "please", "open", "search", "find", "show", "tell", "your", "you", "i", "we", "can",
+            "could", "would", "should", "hello", "thanks", "thank", "good", "morning", "today",
+            "tomorrow", "price", "best", "compare", "explain", "about")
+        val indonesian = setOf("yang", "dan", "di", "ke", "dari", "ini", "itu", "apa", "siapa",
+            "kapan", "kenapa", "bagaimana", "tolong", "buka", "cari", "carikan", "tampilkan",
+            "jelaskan", "saya", "aku", "kamu", "anda", "untuk", "dengan", "tidak", "bisa",
+            "berapa", "harga", "terbaik", "bandingkan", "terima", "kasih", "selamat", "pagi")
+        return words.count { it in english } > words.count { it in indonesian }
+    }
+
     private fun speakWithAndroid(text: String) {
+        val locale = if (isLikelyEnglish(text)) Locale.US else Locale("id", "ID")
+        val result = tts?.setLanguage(locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            tts?.language = Locale.getDefault()
+        }
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
     }
 
@@ -450,8 +465,13 @@ class MainActivity : ComponentActivity() {
             speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                // Android 14+ recognition services can detect either language.
+                // Indonesian remains the fallback for older recognition services.
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "id-ID")
+                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+                putStringArrayListExtra("android.speech.extra.LANGUAGE_DETECTION_ALLOWED_LANGUAGES",
+                    arrayListOf("id-ID", "en-US"))
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
@@ -468,7 +488,7 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 voiceStatus.value = "MICROPHONE READY"
-                speak("Good day. JARVIS is online. I am listening.")
+                speak("JARVIS sudah online. Saya siap mendengarkan.")
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
     }
