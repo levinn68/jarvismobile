@@ -59,6 +59,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VolumeUp
@@ -682,6 +685,23 @@ private fun JarvisScreen(
             }
         }
     }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach { uri ->
+            if (pendingAttachments.size < 5 && pendingAttachments.none { it.uri == uri }) {
+                pendingAttachments.add(Attachment(uri, "Foto", context.contentResolver.getType(uri) ?: "image/*"))
+            }
+        }
+    }
+    val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null && pendingAttachments.size < 5) {
+            runCatching {
+                val file = File(context.cacheDir, "jarvis_camera_photo.jpg")
+                FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+                pendingAttachments.add(Attachment(Uri.fromFile(file), "Foto kamera", "image/jpeg"))
+            }
+        }
+    }
+    var attachmentMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
@@ -790,15 +810,6 @@ private fun JarvisScreen(
                 }
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
-                Row(Modifier.fillMaxWidth().padding(vertical = 12.dp).background(Color(0xFF071923), RoundedCornerShape(30.dp)).border(1.dp, Color(0x4454DDF4), RoundedCornerShape(30.dp)).padding(4.dp)) {
-                    listOf("COMMAND", "VOICE").forEach { tab ->
-                        Button(onClick = { page = tab }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(25.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = if (page == tab) Color(0xFF124253) else Color.Transparent, contentColor = if (page == tab) Color(0xFFBDF7FF) else TextMuted),
-                            elevation = ButtonDefaults.buttonElevation(0.dp)) {
-                            Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 10.sp, letterSpacing = 1.3.sp)
-                        }
-                    }
-                }
                 if (page == "VOICE") {
                     Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                         val size = if (compact) 170.dp else 205.dp
@@ -904,8 +915,10 @@ private fun JarvisScreen(
                         items(lines.size) { i ->
                             val line=lines[i]
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.fillMaxWidth(if (line.user) .74f else .80f).background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
-                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(13.dp)) {
+                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
+                                    .wrapContentWidth(Alignment.Start)
+                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
+                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
@@ -939,12 +952,21 @@ private fun JarvisScreen(
                         }
                         if(busy) item {
                             val pulse by rememberInfiniteTransition(label="thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label="thinkingAlpha")
-                            Row(Modifier.fillMaxWidth(.62f).background(Color(0xFF091B27), RoundedCornerShape(18.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(18.dp)).padding(horizontal=11.dp, vertical=9.dp), verticalAlignment=Alignment.CenterVertically) {
+                            Row(Modifier.wrapContentWidth().padding(start = 5.dp, top = 2.dp, bottom = 4.dp),
+                                verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                 Box(Modifier.size(6.dp).background(Cyan.copy(alpha=pulse), CircleShape))
-                                Spacer(Modifier.width(8.dp))
-                                Text("JARVIS sedang berpikir…", color=TextMuted, fontSize=10.sp)
-                                Spacer(Modifier.width(7.dp))
+                                Text(processStage, color=TextMuted, fontSize=10.sp)
                                 repeat(3) { index -> Box(Modifier.size(4.dp).background(Cyan.copy(alpha=if (index == 1) pulse else .45f), CircleShape)) }
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
+                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
+                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
+                        listOf("COMMAND", "VOICE").forEach { tab ->
+                            TextButton(onClick = { page = tab }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
+                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
                         }
                     }
@@ -962,8 +984,22 @@ private fun JarvisScreen(
                         .background(Color(0xFF081923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
                         .padding(start=7.dp,end=5.dp,top=3.dp,bottom=3.dp), verticalAlignment=Alignment.CenterVertically) {
-                        IconButton(onClick={ if (!busy) attachmentPicker.launch(arrayOf("image/*", "video/*", "application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }, enabled=!busy, modifier=Modifier.size(38.dp)) {
-                            Icon(Icons.Default.AttachFile, "Lampirkan foto, video, atau dokumen", tint=Cyan, modifier=Modifier.size(20.dp))
+                        Box {
+                            IconButton(onClick={ attachmentMenu = true }, enabled=!busy, modifier=Modifier.size(38.dp)) {
+                                Icon(Icons.Default.Add, "Tambah lampiran", tint=Cyan, modifier=Modifier.size(24.dp))
+                            }
+                            DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
+                                modifier=Modifier.background(Color(0xFF102632))) {
+                                DropdownMenuItem(text={ Text("File / Dokumen", color=Color.White) },
+                                    onClick={ attachmentMenu=false; attachmentPicker.launch(arrayOf("*/*")) },
+                                    leadingIcon={ Icon(Icons.Default.AttachFile, null, tint=Cyan) })
+                                DropdownMenuItem(text={ Text("Kamera", color=Color.White) },
+                                    onClick={ attachmentMenu=false; cameraPicker.launch(null) },
+                                    leadingIcon={ Icon(Icons.Default.CameraAlt, null, tint=Cyan) })
+                                DropdownMenuItem(text={ Text("Foto dari galeri", color=Color.White) },
+                                    onClick={ attachmentMenu=false; photoPicker.launch("image/*") },
+                                    leadingIcon={ Icon(Icons.Default.Image, null, tint=Cyan) })
+                            }
                         }
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
