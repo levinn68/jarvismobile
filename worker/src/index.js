@@ -97,12 +97,12 @@ async function fetchPreviewImage(pageUrl) {
       const raw = readAttr(tag, "content");
       if (!raw) continue;
       const imageUrl = new URL(raw, page).toString();
-      if (/^https?:\\/\\//i.test(imageUrl)) return imageUrl;
+      if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
     }
     // Many marketplace product pages expose the actual product photo only in
     // an <img> element, not in Open Graph metadata. Use a real page image as a
     // fallback; reject tiny icons, trackers, logos and data URLs.
-    const imageTags = html.match(/<img\\b[^>]*>/gi) || [];
+    const imageTags = html.match(/<img\b[^>]*>/gi) || [];
     const candidates = imageTags.map((tag) => {
       const raw = readAttr(tag, "src") || readAttr(tag, "data-src") ||
         readAttr(tag, "data-original") || readAttr(tag, "data-lazy-src");
@@ -116,7 +116,7 @@ async function fetchPreviewImage(pageUrl) {
     for (const item of candidates) {
       try {
         const imageUrl = new URL(item.raw.replace(/&amp;/g, "&"), page).toString();
-        if (/^https?:\\/\\//i.test(imageUrl)) return imageUrl;
+        if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
       } catch (_) {}
     }
   } catch (_) {}
