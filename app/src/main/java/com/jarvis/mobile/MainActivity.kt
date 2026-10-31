@@ -617,7 +617,7 @@ private fun JarvisScreen(
                     val asset = assets.optJSONObject(i) ?: continue
                     if (asset.optString("name") == "jarvis.apk") apk = asset.optString("browser_download_url")
                 }
-                val tagCode = Regex("v(\\d+)").find(json.optString("name"))?.groupValues?.getOrNull(1)?.toIntOrNull()
+                val tagCode = Regex("build\\s*(\\d+)", RegexOption.IGNORE_CASE).find(json.optString("name"))?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: Regex("v(\\d+)").find(json.optString("tag_name"))?.groupValues?.getOrNull(1)?.toIntOrNull()
                     ?: 0
                 if (apk.isNullOrBlank()) error("File update belum tersedia.")
