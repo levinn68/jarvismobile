@@ -184,10 +184,10 @@ class MainActivity : ComponentActivity() {
                             val provider = item.optString("provider", "AI").uppercase(Locale.ROOT)
                             val detail = item.optString("detail", "Tidak ada detail")
                             "$provider: $detail"
-                        }.joinToString("\\n")
+                        }.joinToString("\n")
                     } else ""
                     json.optString("error").ifBlank { "JARVIS API error ($code)." } +
-                        if (diagnosticText.isNotBlank()) "\\n\\nDIAGNOSTIK PROVIDER\\n$diagnosticText" else ""
+                        if (diagnosticText.isNotBlank()) "\n\nDIAGNOSTIK PROVIDER\n$diagnosticText" else ""
                 } else {
                     val participants = json.optJSONArray("participants") ?: JSONArray()
                     val names = (0 until participants.length()).map { participants.optString(it).uppercase(Locale.ROOT) }
@@ -395,6 +395,24 @@ class MainActivity : ComponentActivity() {
                 if (label.isNotBlank() && pkg.isNotBlank() && activity.isNotBlank()) Triple(label, pkg, activity) else null
             }
         } catch (_: Exception) { emptyList() }
+        val aliases = mapOf(
+            "youtube" to "com.google.android.youtube",
+            "yt" to "com.google.android.youtube",
+            "youtube music" to "com.google.android.apps.youtube.music",
+            "whatsapp" to "com.whatsapp",
+            "chrome" to "com.android.chrome",
+            "roblox" to "com.roblox.client"
+        )
+        val directPackage = aliases[cleaned]
+        val directLaunch = directPackage?.let { packageManager.getLaunchIntentForPackage(it) }
+        if (directLaunch != null) {
+            return try {
+                directLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(directLaunch)
+                voiceStatus.value = "OPENING " + cleaned.uppercase(Locale.ROOT)
+                true
+            } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
+        }
         val found = candidates.firstOrNull { it.first.equals(cleaned, true) }
             ?: candidates.firstOrNull { it.first.startsWith(cleaned, true) }
             ?: candidates.firstOrNull { it.first.contains(cleaned, true) }
@@ -491,9 +509,9 @@ private fun JarvisScreen(
             val response = if (apps.isEmpty()) {
                 "Gue belum bisa membaca daftar aplikasi di perangkat ini. Periksa izin dan coba lagi."
             } else {
-                "Ini aplikasi yang terdeteksi di perangkat lu (${apps.size}):\\n" +
+                "Ini aplikasi yang terdeteksi di perangkat lu (${apps.size}):\n" +
                     apps.take(70).joinToString(", ") +
-                    if (apps.size > 70) "\\nDan ${apps.size - 70} aplikasi lainnya." else ""
+                    if (apps.size > 70) "\nDan ${apps.size - 70} aplikasi lainnya." else ""
             }
             messages.add(ChatLine(false, response))
             statusLabel = "INSTALLED APPS DETECTED"
