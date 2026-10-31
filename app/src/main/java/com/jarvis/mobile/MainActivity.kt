@@ -299,7 +299,9 @@ class MainActivity : ComponentActivity() {
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 geminiConfigured = { true },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
-                onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
+                onAskGemini = { prompt, language, callback -> askGemini(prompt, language, callback) },
+                initialResponseLanguage = prefs.getString("response_language", "auto").orEmpty(),
+                onSaveResponseLanguage = { language -> prefs.edit().putString("response_language", language).apply() },
                 onOpenApp = { q -> openRequestedApp(q) },
                 onInstalledApps = { installedAppNames() }
             )
@@ -307,7 +309,7 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun askGemini(prompt: String, callback: (String) -> Unit): () -> Unit {
+    private fun askGemini(prompt: String, responseLanguage: String, callback: (String) -> Unit): () -> Unit {
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
         Thread {
@@ -325,7 +327,7 @@ class MainActivity : ComponentActivity() {
                 connection.readTimeout = 180000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val body = JSONObject().put("message", prompt)
+                val body = JSONObject().put("message", prompt).put("responseLanguage", responseLanguage)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -770,7 +772,8 @@ private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
     onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
     geminiConfigured: () -> Boolean, onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (String) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
+    onAskGemini: (String, String, (String) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
+    initialResponseLanguage: String, onSaveResponseLanguage: (String) -> Unit,
     onInstalledApps: () -> List<String>
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
@@ -822,6 +825,7 @@ private fun JarvisScreen(
     var settings by remember { mutableStateOf(false) }
     var voiceArmed by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
+    var responseLanguage by remember { mutableStateOf(initialResponseLanguage) }
     val lines = remember { mutableStateListOf<Line>() }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -868,7 +872,7 @@ private fun JarvisScreen(
         busy = true
         statusText = "ANALYSING REQUEST"
         onSearch(q)
-        cancelCurrentRequest = onAskGemini(requestText) { response ->
+        cancelCurrentRequest = onAskGemini(requestText, responseLanguage) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
             val responseLine = Line(false, answer)
@@ -1322,12 +1326,35 @@ private fun JarvisScreen(
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
                 title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
                 text={Column {
+                    Text("Bahasa respons JARVIS",color=TextMuted,fontSize=11.sp)
+                    Spacer(Modifier.height(7.dp))
+                    Row(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("auto" to "AUTO", "id" to "INDONESIA", "en" to "ENGLISH").forEach { (value, label) ->
+                            TextButton(onClick = { responseLanguage = value }, modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.textButtonColors(contentColor = if (responseLanguage == value) Cyan else TextMuted)) {
+                                Text(label, fontSize = 8.sp, letterSpacing = .5.sp)
+                            }
+                        }
+                    }
+                    Text(
+                        when (responseLanguage) {
+                            "en" -> "Kamu tetap bicara Bahasa Indonesia. JARVIS akan memahami lalu menjawab dan berbicara dalam Bahasa Inggris."
+                            "id" -> "JARVIS selalu menjawab dan berbicara dalam Bahasa Indonesia."
+                            else -> "JARVIS otomatis mengikuti bahasa yang kamu gunakan."
+                        }, color = TextMuted, fontSize = 9.sp, lineHeight = 14.sp
+                    )
+                    Spacer(Modifier.height(14.dp))
                     Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
                     OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
                     Spacer(Modifier.height(14.dp))
 
                 }},
-                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
+                confirmButton={TextButton(onClick={
+                    onSaveResponseLanguage(responseLanguage)
+                    if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim())
+                    settings=false;keyDraft=""
+                }){Text("SAVE",color=Cyan)}},
                 dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
