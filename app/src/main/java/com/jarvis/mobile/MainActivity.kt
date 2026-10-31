@@ -29,6 +29,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -38,11 +42,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,11 +61,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import java.util.Locale
@@ -474,6 +486,54 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
+@Composable
+private fun RichMessageText(markdown: String) {
+    val uriHandler = LocalUriHandler.current
+    val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
+    val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
+    val clean = markdown.replace("\\\\n", "\n").replace(Regex("(?m)^#{1,3}\\s*"), "")
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        val matches = (linkPattern.findAll(clean).map { it to "link" } + boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
+        for ((match, kind) in matches) {
+            if (match.range.first < cursor) continue
+            append(clean.substring(cursor, match.range.first))
+            if (kind == "link") {
+                val start = length
+                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(match.groupValues[1]) }
+                addStringAnnotation("URL", match.groupValues[2], start, length)
+            } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
+            cursor = match.range.last + 1
+        }
+        if (cursor < clean.length) append(clean.substring(cursor))
+    }
+    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = 14.sp, lineHeight = 22.sp), onClick = { offset ->
+        annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
+    })
+}
+
+@Composable
+private fun SourceStrip(markdown: String) {
+    val uriHandler = LocalUriHandler.current
+    val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(5).toList()
+    if (links.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("REFERENSI", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.5.sp)
+        Spacer(Modifier.height(7.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+            links.forEach { url ->
+                val host = runCatching { Uri.parse(url).host?.removePrefix("www.") ?: "WEB" }.getOrDefault("WEB")
+                Surface(onClick = { runCatching { uriHandler.openUri(url) } }, color = Color(0xFF102A36), shape = RoundedCornerShape(20.dp), border = BorderStroke(1.dp, Color(0x6652DFF2))) {
+                    Row(Modifier.padding(horizontal = 9.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(host, color = Color(0xFFB9EAF2), fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
 private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
     onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
@@ -486,6 +546,7 @@ private fun JarvisScreen(
     var command by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
+    var processStage by remember { mutableStateOf("Menganalisis permintaan") }
     var settings by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
@@ -558,7 +619,8 @@ private fun JarvisScreen(
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
-    LaunchedEffect(lines.size) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+    LaunchedEffect(lines.size, busy) { if (lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+    LaunchedEffect(busy) { if (busy) { val stages = listOf("Memahami konteks", "Menyusun strategi pencarian", "Memeriksa informasi", "Merangkum hasil"); var i = 0; while (busy) { processStage = stages[i++ % stages.size]; kotlinx.coroutines.delay(1450) } } else processStage = "Siap membantu" }
 
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -568,7 +630,7 @@ private fun JarvisScreen(
         BoxWithConstraints(Modifier.fillMaxSize().imePadding().navigationBarsPadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 22.sp, fontWeight = FontWeight.Light, letterSpacing = 4.sp)
@@ -700,25 +762,35 @@ private fun JarvisScreen(
                                     .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(13.dp)) {
                                     Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / FINAL RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.3.sp, fontWeight=FontWeight.Bold)
                                     Spacer(Modifier.height(7.dp))
-                                    Text(line.text, color=Color(0xFFE2F5F8), fontSize=14.sp, lineHeight=21.sp)
+                                    RichMessageText(line.text)
+                                    if (!line.user) SourceStrip(line.text)
                                 }
                             }
                         }
                         if(busy) item {
-                            Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(10.dp)).border(1.dp, Color(0x6652DFF2), RoundedCornerShape(10.dp)).padding(14.dp)) {
-                                Row(verticalAlignment=Alignment.CenterVertically) {
-                                    CircularProgressIndicator(Modifier.size(18.dp), color=Cyan, strokeWidth=2.dp)
-                                    Spacer(Modifier.width(10.dp))
-                                    Text("J.A.R.V.I.S. IS THINKING", color=Cyan, fontSize=9.sp, letterSpacing=1.4.sp)
+                            AnimatedVisibility(visible=true, enter=fadeIn(tween(350))+slideInVertically(initialOffsetY={ it / 5 }, animationSpec=tween(400))) {
+                                val loadingTransition = rememberInfiniteTransition(label="chatLoading")
+                                val pulse by loadingTransition.animateFloat(.72f, 1f, infiniteRepeatable(tween(850), RepeatMode.Reverse), label="loadingPulse")
+                                val orbit by loadingTransition.animateFloat(0f, 360f, infiniteRepeatable(tween(1800), RepeatMode.Restart), label="loadingOrbit")
+                                Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(Color(0xFF0A202C), Color(0xFF0B1725))), RoundedCornerShape(16.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(16.dp)).padding(14.dp)) {
+                                    Row(verticalAlignment=Alignment.CenterVertically) {
+                                        Box(Modifier.size(38.dp), contentAlignment=Alignment.Center) {
+                                            Canvas(Modifier.fillMaxSize().rotate(orbit)) { drawCircle(Cyan.copy(alpha=.25f), style=Stroke(1.2.dp.toPx())); drawCircle(Cyan.copy(alpha=pulse), radius=3.2.dp.toPx(), center=Offset(size.width*.5f,size.height*.08f)) }
+                                            Text("J", color=Cyan.copy(alpha=pulse), fontSize=17.sp, fontWeight=FontWeight.Light)
+                                        }
+                                        Spacer(Modifier.width(11.dp))
+                                        Column(Modifier.weight(1f)) { Text("J.A.R.V.I.S. / WORKING", color=Cyan, fontSize=9.sp, letterSpacing=1.4.sp); Spacer(Modifier.height(3.dp)); Text(processStage, color=Color(0xFFD6F4F8), fontSize=12.sp) }
+                                        Text("LIVE", color=Color(0xFF8AEAFF), fontSize=8.sp, letterSpacing=1.sp)
+                                    }
+                                    Spacer(Modifier.height(12.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(5.dp), verticalAlignment=Alignment.CenterVertically) { repeat(24) { index -> val level = kotlin.math.abs(kotlin.math.sin(wavePhase + index * .42f)); Box(Modifier.weight(1f).height((3 + level * 13).dp).background(Cyan.copy(alpha=.25f + level*.55f), RoundedCornerShape(4.dp))) } }
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Menganalisis · memverifikasi · menyusun jawaban", color=TextMuted, fontSize=9.sp)
                                 }
-                                Spacer(Modifier.height(9.dp))
-                                Text("Understanding request  ·  Consulting AI Council  ·  Preparing response", color=Color(0xFFB5DCE4), fontSize=10.sp)
-                                Spacer(Modifier.height(9.dp))
-                                LinearProgressIndicator(Modifier.fillMaxWidth(), color=Cyan, trackColor=Color(0xFF19313C))
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(vertical=8.dp)
+                    Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=10.dp)
                         .background(Color(0xFF081923), RoundedCornerShape(28.dp))
                         .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
                         .padding(start=16.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
@@ -727,7 +799,7 @@ private fun JarvisScreen(
                             singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
-                            decorationBox={ inner -> if(command.isEmpty()) Text("Tulis perintah untuk JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
+                            decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
                         IconButton(onClick={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } },enabled=!busy) {
                             Icon(Icons.Default.Send,"Send command",tint=if(busy) TextMuted else Cyan)
                         }
