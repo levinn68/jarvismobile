@@ -964,12 +964,6 @@ private fun JarvisScreen(
                                 Text(if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO INPUT STANDBY",
                                     color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
                             }
-                            if (!voiceListening) {
-                                Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("J", color = Color(0xFF8DEEFF).copy(alpha = .8f), fontSize = 32.sp, fontWeight = FontWeight.ExtraLight)
-                                    Text("STANDBY", color = Color(0xFF8DEEFF), fontSize = 7.sp, letterSpacing = 2.sp)
-                                }
-                            }
                             Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                                 Spacer(Modifier.height(7.dp))
@@ -996,7 +990,7 @@ private fun JarvisScreen(
                                     color = if (voiceListening) Cyan else Color(0xFFFF8A8A), fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
+                                IconButton(onClick = { voiceListening = false; page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
                                     Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(20.dp))
                                 }
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
@@ -1183,7 +1177,7 @@ private fun JarvisScreen(
                         .background(Color(0xFF071923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
                         listOf("COMMAND", "VOICE").forEach { tab ->
-                            TextButton(onClick = { page = tab }, modifier = Modifier.weight(1f),
+                            TextButton(onClick = { if (tab == "COMMAND") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
                                 Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
