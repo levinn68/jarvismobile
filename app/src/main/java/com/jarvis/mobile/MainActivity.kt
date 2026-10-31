@@ -898,22 +898,20 @@ private fun JarvisScreen(
             if (wake.containsMatchIn(heard)) {
                 val request = heard.replaceFirst(wake, "").trim()
                 if (request.isBlank() || request.equals("open", true)) {
-                    // Wake phrase arms the next utterance as the actual command.
-                    // Previously this branch only spoke "Yes, I'm listening" and
-                    // then discarded the following command because it lacked "Jarvis".
+                    // A bare wake word gets a short acknowledgement. The next
+                    // utterance is always accepted as a command, without another wake word.
                     voiceArmed = true
-                    statusText = "JARVIS ACTIVATED · LISTENING FOR COMMAND"
-                    onSpeak("Saya mendengarkan. Silakan beri perintah.")
+                    statusText = "JARVIS ACTIVATED · READY FOR COMMAND"
+                    onSpeak("Ya, Sir. Saya siap.")
                 } else {
                     voiceArmed = false
                     send(request, true)
                 }
-            } else if (voiceArmed) {
+            } else {
+                // Voice mode is conversational: accept a direct Indonesian command
+                // without requiring "Jarvis" at the beginning of every sentence.
                 voiceArmed = false
                 send(heard, true)
-            } else {
-                statusText = "SAY JARVIS TO ACTIVATE"
-                onStartListening()
             }
         } else if (page != "VOICE" || !voiceListening) {
             voiceArmed = false
@@ -1132,7 +1130,7 @@ private fun JarvisScreen(
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                         }
-                        Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
+                        Text(if (voiceListening) "BICARA LANGSUNG · JARVIS SIAP MENDENGARKAN" else "ENABLE MIC TO START VOICE CONTROL",
                             color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
