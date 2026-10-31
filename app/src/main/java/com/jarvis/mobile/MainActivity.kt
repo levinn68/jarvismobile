@@ -56,6 +56,8 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -569,6 +571,7 @@ private fun JarvisScreen(
     data class Line(val user: Boolean, val text: String, val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()), val attachments: List<Attachment> = emptyList())
     var page by remember { mutableStateOf("VOICE") }
     var command by remember { mutableStateOf("") }
+    var lastPrompt by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -603,6 +606,7 @@ private fun JarvisScreen(
         pendingAttachments.clear()
         val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
         val requestText = q + attachmentNote
+        if (q.isNotBlank()) lastPrompt = q
         lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
@@ -671,7 +675,7 @@ private fun JarvisScreen(
     val inputFocus = remember { FocusRequester() }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
-        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().imePadding().navigationBarsPadding()
+        BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
@@ -807,7 +811,11 @@ private fun JarvisScreen(
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
-                                        if (!line.user) IconButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.ContentCopy, contentDescription="Copy response", tint=TextMuted, modifier=Modifier.size(13.dp)) }
+                                        if (!line.user) {
+                                            IconButton(onClick = { onSpeak(line.text) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.VolumeUp, contentDescription="Bacakan jawaban", tint=TextMuted, modifier=Modifier.size(14.dp)) }
+                                            IconButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, modifier = Modifier.size(27.dp)) { Icon(Icons.Default.ContentCopy, contentDescription="Copy response", tint=TextMuted, modifier=Modifier.size(13.dp)) }
+                                            IconButton(onClick = { if (!busy && lastPrompt.isNotBlank()) send(lastPrompt) }, enabled=!busy && lastPrompt.isNotBlank(), modifier = Modifier.size(27.dp)) { Icon(Icons.Default.Refresh, contentDescription="Ulangi pertanyaan terakhir", tint=TextMuted, modifier=Modifier.size(14.dp)) }
+                                        }
                                     }
                                     Spacer(Modifier.height(7.dp))
                                     RichMessageText(line.text)
@@ -842,16 +850,23 @@ private fun JarvisScreen(
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(top=12.dp,bottom=10.dp)
-                        .background(Color(0xFF081923), RoundedCornerShape(28.dp))
+                    if (lines.isEmpty() && pendingAttachments.isEmpty()) {
+                        Row(Modifier.fillMaxWidth().padding(top=3.dp), horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                            listOf("Cari informasi", "Bandingkan produk", "Jelaskan foto").forEach { suggestion ->
+                                androidx.compose.material3.AssistChip(onClick={ command = when(suggestion) { "Cari informasi" -> "Carikan informasi terbaru tentang "; "Bandingkan produk" -> "Bandingkan "; else -> "Jelaskan " } ; inputFocus.requestFocus() }, label={ Text(suggestion, fontSize=9.sp) }, colors=AssistChipDefaults.assistChipColors(containerColor=Color(0xFF0B2632), labelColor=Color(0xFFBDEFFA)), border=BorderStroke(1.dp, Color(0x4452DFF2)))
+                            }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=2.dp)
+                        .background(Color(0xFF081923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
-                        .padding(start=16.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
+                        .padding(start=7.dp,end=5.dp,top=3.dp,bottom=3.dp), verticalAlignment=Alignment.CenterVertically) {
                         IconButton(onClick={ if (!busy) attachmentPicker.launch(arrayOf("image/*", "video/*", "application/pdf", "text/*", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")) }, enabled=!busy, modifier=Modifier.size(38.dp)) {
                             Icon(Icons.Default.AttachFile, "Lampirkan foto, video, atau dokumen", tint=Cyan, modifier=Modifier.size(20.dp))
                         }
                         BasicTextField(value=command,onValueChange={command=it},
-                            modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=12.dp),
-                            singleLine=true,textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
+                            modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
+                            singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
                             decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
@@ -860,7 +875,7 @@ private fun JarvisScreen(
                         }
                     }
                 }
-                Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
+                if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
                 title={Text("JARVIS SYSTEM SETTINGS",color=Color.White)},
