@@ -556,8 +556,22 @@ private fun JarvisScreen(
 
     LaunchedEffect(recognizedText) {
         if (recognizedText.isNotBlank() && voiceMode) {
-            execute(recognizedText, true)
-            onConsumed()
+            val heard = recognizedText.trim()
+            val wake = Regex("(?i)^jarvis[,.! ]*")
+            if (wake.containsMatchIn(heard)) {
+                val command = heard.replaceFirst(wake, "").trim()
+                onConsumed()
+                if (command.isBlank() || command.equals("open", true)) {
+                    onSpeak("Ya, saya siap. Ada perintah?")
+                    statusLabel = "JARVIS ACTIVATED"
+                } else {
+                    execute(command, true)
+                }
+            } else {
+                statusLabel = "WAITING FOR WAKE WORD"
+                onConsumed()
+                onStartListening()
+            }
         }
     }
     LaunchedEffect(Unit) { onStartListening() }
