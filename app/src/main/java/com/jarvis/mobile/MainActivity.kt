@@ -1046,6 +1046,17 @@ private fun JarvisScreen(
                                                 Spacer(Modifier.width(4.dp))
                                                 Text("Ulangi", color = TextMuted, fontSize = 9.sp)
                                             }
+                                            TextButton(onClick = {
+                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                    type = "text/plain"
+                                                    putExtra(Intent.EXTRA_TEXT, line.text)
+                                                }
+                                                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
+                                            }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                                                Icon(Icons.Default.Language, null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Bagikan", color = TextMuted, fontSize = 9.sp)
+                                            }
                                         }
                                     }
                                     line.attachments.forEach { file ->
