@@ -227,7 +227,7 @@ async function handleChat(body, env) {
 
   const transcript = discussion.map((d) => `[PUTARAN ${d.round} · ${d.agent.toUpperCase()}]\n${d.message}`).join("\n\n");
   events.push({ type: "synthesis_started", label: "JARVIS sedang menyusun kesimpulan" });
-  const synthesisPrompt = `Pertanyaan pengguna: ${prompt}\n\nHasil diskusi AI Council:\n${transcript}\n\nBuat satu jawaban akhir dalam bahasa pengguna. Sintesis argumen terkuat, koreksi kesalahan, pisahkan fakta dari asumsi, dan jelaskan jika para AI belum sepakat. Jangan mengklaim telah melakukan pencarian web jika tidak ada sumber web yang diberikan.`;
+  const synthesisPrompt = `Pertanyaan pengguna: ${prompt}\n\nHasil diskusi AI Council:\n${transcript}\n\nBuat satu jawaban akhir dalam bahasa pengguna. Sintesis argumen terkuat, koreksi kesalahan, pisahkan fakta dari asumsi, dan jelaskan jika para AI belum sepakat. Jangan mengklaim telah melakukan pencarian web jika tidak ada sumber web yang diberikan. Jika diskusi memuat tautan sumber, referensi, atau URL produk dalam format Markdown, pertahankan URL dan judul tautan persis apa adanya di jawaban akhir; jangan menghapus atau mengarang tautan. Letakkan daftar sumber di bagian akhir.`;
   let finalAnswer;
   if (level === "simple") {
     finalAnswer = successful[0].answer;
