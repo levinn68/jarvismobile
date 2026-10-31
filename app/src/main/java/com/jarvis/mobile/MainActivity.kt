@@ -244,7 +244,7 @@ class MainActivity : ComponentActivity() {
     private var voiceLoudnessEnhancer: LoudnessEnhancer? = null
     @Volatile private var queuedSpeechText: String? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
-    private var voiceModeEnabled = true
+    private var voiceModeEnabled = false
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
     private val geminiKey get() = prefs.getString("gemini_api_key", "").orEmpty()
 
@@ -326,7 +326,7 @@ class MainActivity : ComponentActivity() {
                     // JarvisScreen owns the single startListening call when its Voice tab becomes active.
                     // Avoid starting SpeechRecognizer twice from both this callback and LaunchedEffect.
                     if (!voiceMode) { clapDetector.reset(); recognizer?.cancel() }
-                    voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
+                    voiceStatus.value = if (voiceMode) "WAITING FOR JARVIS OPEN" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 geminiConfigured = { true },
@@ -550,8 +550,9 @@ class MainActivity : ComponentActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-                voiceStatus.value = "MICROPHONE READY"
-                speak("JARVIS sudah online. Saya siap mendengarkan.")
+                // Permission is silent: never greet or speak before the wake phrase.
+                voiceStatus.value = "WAITING FOR JARVIS OPEN"
+                if (voiceModeEnabled) handler.postDelayed({ startListening() }, 250)
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
     }
@@ -613,7 +614,11 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() { recognizer?.cancel(); super.onPause() }
-    override fun onResume() { super.onResume(); if (recognizer != null) handler.postDelayed({ startListening() }, 500) }
+    override fun onResume() {
+        super.onResume()
+        // Only resume the microphone when the user is actually in Voice mode.
+        if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 180)
+    }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
@@ -1027,12 +1032,11 @@ private fun JarvisScreen(
     var splashIntro by remember { mutableStateOf(false) }
     var splashTextIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        // Cinematic reveal: a dark beat, vertical light streaks, then the mark.
-        kotlinx.coroutines.delay(380)
+        // Begin the cinematic reveal on the first frame: no artificial blank delay.
         splashIntro = true
-        kotlinx.coroutines.delay(420)
+        kotlinx.coroutines.delay(150)
         splashTextIntro = true
-        kotlinx.coroutines.delay(1120)
+        kotlinx.coroutines.delay(980)
         showSplash = false
         kotlinx.coroutines.delay(520)
         splashMounted = false
@@ -1097,13 +1101,6 @@ private fun JarvisScreen(
         statusText = "ANALYSING REQUEST"
         processStage = "Menyiapkan pencarian"
         onSearch(q)
-        if (voice) {
-            val searchAck = if (responseLanguage == "en")
-                "Certainly, Sir. I'm working on it."
-            else
-                "Baik, Sir. Saya sedang mencarikannya."
-            onSpeak(searchAck)
-        }
         cancelCurrentRequest = onAskGemini(requestText, responseLanguage) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
@@ -1122,46 +1119,43 @@ private fun JarvisScreen(
         }
     }
 
-    LaunchedEffect(recognizedText, page, voiceListening) {
+    LaunchedEffect(recognizedText, page, voiceListening, voiceArmed) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)^jarvis[,.! ]*")
-            val hasWakeWord = wake.containsMatchIn(heard)
-            val request = if (hasWakeWord) heard.replaceFirst(wake, "").trim() else heard
-            val normalizedRequest = request.lowercase(Locale.ROOT)
-                .replace(Regex("[,.!?]"), " ").replace(Regex("\\s+"), " ").trim()
+            val normalizedHeard = heard.lowercase(Locale.ROOT)
+                .replace(Regex("[^\\p{L}\\p{N}\\s]"), " ")
+                .replace(Regex("\\s+"), " ").trim()
 
-            // The listening session stays active until the user explicitly closes it.
-            if (hasWakeWord && normalizedRequest in setOf("close", "stop listening", "sleep", "matikan", "berhenti mendengarkan")) {
+            // A strict two-word wake phrase is required before any command is accepted.
+            // Speech outside an armed session is discarded silently.
+            val wakeMatch = Regex("(?i)^\\s*jarvis[\\s,]+open\\b[\\s,!.?]*").find(heard)
+            if (!voiceArmed) {
+                if (wakeMatch != null) {
+                    voiceArmed = true
+                    statusText = "JARVIS ACTIVE · AWAITING COMMAND"
+                    val firstCommand = heard.substring(wakeMatch.range.last + 1).trim()
+                    if (firstCommand.isNotBlank()) {
+                        send(firstCommand, true)
+                    } else {
+                        // No spoken acknowledgement here; immediately reopen recognition.
+                        kotlinx.coroutines.delay(180)
+                        onStartListening()
+                    }
+                } else {
+                    statusText = "SAY “JARVIS, OPEN” TO ACTIVATE"
+                }
+            } else if (normalizedHeard in setOf(
+                    "jarvis close", "close", "stop listening", "sleep", "matikan",
+                    "berhenti mendengarkan", "stop listening jarvis"
+                )) {
                 voiceArmed = false
                 statusText = "JARVIS STANDBY"
                 lines.add(Line(true, heard))
-                lines.add(Line(false, "Baik, Sir. Saya berhenti mendengarkan."))
-                voiceListening = false
-                onSpeak("Baik, Sir. Sampai Anda memanggil saya kembali.")
-            } else if (hasWakeWord && (normalizedRequest.isBlank() || normalizedRequest == "open" || normalizedRequest == "aktif" || normalizedRequest == "mulai")) {
-                voiceArmed = true
-                statusText = "CONTINUOUS LISTENING · ACTIVE"
-                lines.add(Line(true, heard))
-                lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
-                onSpeak("J.A.R.V.I.S. aktif, Sir. Saya akan terus mendengarkan sampai Anda mengatakan Jarvis, close.")
-            } else if (hasWakeWord) {
-                // A wake phrase may prefix the first command; remove it and execute only the remainder.
-                voiceArmed = true
-                statusText = "CONTINUOUS LISTENING · ACTIVE"
-                if (normalizedRequest.isNotBlank()) send(request, true)
-                else {
-                    lines.add(Line(true, heard))
-                    lines.add(Line(false, "J.A.R.V.I.S. aktif. Silakan beri perintah."))
-                    onSpeak("J.A.R.V.I.S. aktif, Sir. Saya siap membantu.")
-                }
-            } else if (voiceArmed || (page == "VOICE" && voiceListening)) {
-                // Voice mode is hands-free: accept the user's speech without a wake phrase.
-                voiceArmed = true
-                send(heard, true)
+                lines.add(Line(false, "Voice session ended."))
+                onSpeak("Voice session ended, Sir.")
             } else {
-                statusText = "VOICE MODE STANDBY"
+                send(heard, true)
             }
         } else if (page != "VOICE" || !voiceListening) {
             voiceArmed = false
@@ -1169,7 +1163,9 @@ private fun JarvisScreen(
     }
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
-        voiceArmed = voiceOn
+        // Entering Voice starts in locked standby; it does not arm commands automatically.
+        voiceArmed = false
+        statusText = if (voiceOn) "SAY “JARVIS, OPEN” TO ACTIVATE" else "SYSTEM STANDBY"
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
@@ -1214,13 +1210,18 @@ private fun JarvisScreen(
                         val hasVoiceImages = remember(latestVisualAnswer) {
                             parseMarkdownBlocks(latestVisualAnswer).any { it is MarkdownBlock.Image }
                         }
+                        val hudDiameter = minOf(maxWidth * .88f, if (compact) 318.dp else 340.dp)
                         val reactorSize by androidx.compose.animation.core.animateDpAsState(
-                            targetValue = if (hasVoiceImages) (if (compact) 190.dp else 204.dp) else (if (compact) 220.dp else 246.dp),
-                            animationSpec = tween(durationMillis = 720), label = "reactor-product-layout"
+                            targetValue = if (hasVoiceImages) (if (compact) 214.dp else 232.dp) else hudDiameter,
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = .82f, stiffness = 240f
+                            ), label = "reactor-product-layout"
                         )
                         val reactorLift by androidx.compose.animation.core.animateDpAsState(
-                            targetValue = if (hasVoiceImages) (-9).dp else 0.dp,
-                            animationSpec = tween(durationMillis = 720), label = "reactor-product-lift"
+                            targetValue = if (hasVoiceImages) (-66).dp else 0.dp,
+                            animationSpec = androidx.compose.animation.core.spring(
+                                dampingRatio = .86f, stiffness = 220f
+                            ), label = "reactor-product-lift"
                         )
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
@@ -1417,7 +1418,12 @@ private fun JarvisScreen(
                                 Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                         }
-                        Text(if (voiceListening) "BICARA LANGSUNG · JARVIS SIAP MENDENGARKAN" else "ENABLE MIC TO START VOICE CONTROL",
+                        Text(
+                            when {
+                                !voiceListening -> "MICROPHONE OFF"
+                                voiceArmed -> "J.A.R.V.I.S. ACTIVE · LISTENING FOR COMMANDS"
+                                else -> "SAY “JARVIS, OPEN” TO ACTIVATE"
+                            },
                             color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
@@ -1601,8 +1607,8 @@ private fun JarvisScreen(
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp)
-                        .height(36.dp)
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 3.dp)
+                        .height(42.dp)
                         .background(Color(0xFF071923), RoundedCornerShape(20.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(20.dp)).padding(2.dp)) {
                         listOf("VOICE", "CHAT").forEach { tab ->
@@ -1612,8 +1618,7 @@ private fun JarvisScreen(
                                 .clickable {
                                     page = if (tab == "VOICE") "VOICE" else "CHAT"
                                     voiceListening = tab == "VOICE"
-                                    voiceArmed = tab == "VOICE"
-                                    if (tab == "CHAT") onModeChanged(false)
+                                    voiceArmed = false
                                 }, contentAlignment = Alignment.Center) {
                                 Text(if (tab == "VOICE") "⌘  COMMAND" else "◉  CHAT",
                                     color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
