@@ -68,10 +68,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.CompareArrows
-import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.*
@@ -1533,15 +1529,14 @@ private fun JarvisScreen(
                                         ) {
                                             Icon(
                                                 when (index) {
-                                                    0 -> Icons.Default.Search
-                                                    1 -> Icons.Default.CompareArrows
-                                                    else -> Icons.Default.SmartDisplay
+                                                    0 -> Icons.Default.Image
+                                                    1 -> Icons.Default.Refresh
+                                                    else -> Icons.Default.Language
                                                 },
                                                 null, tint = Cyan, modifier = Modifier.size(15.dp)
                                             )
                                             Text(suggestion, color=Color(0xFFD9EDF2), fontSize=11.sp,
                                                 modifier=Modifier.weight(1f))
-                                            Icon(Icons.Default.ChevronRight, null, tint=TextMuted, modifier=Modifier.size(15.dp))
                                         }
                                     }
                                 }
