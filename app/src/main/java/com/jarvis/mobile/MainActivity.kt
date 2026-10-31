@@ -747,25 +747,28 @@ private fun RichMessageText(markdown: String) {
         // Put verified visual material first. Product specifications and the
         // rest of the answer follow beneath the image gallery.
         if (images.isNotEmpty()) {
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(9.dp)
-            ) {
-                images.forEach { image ->
-                    Column(
-                        Modifier.width(220.dp)
-                            .background(Color(0xFF071923), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
-                            .padding(7.dp)
-                    ) {
-                        RemoteMessageImage(image.url, image.alt, 148.dp)
-                        if (image.alt.isNotBlank()) {
-                            Text(
-                                image.alt.replace(Regex("\\s+"), " ").trim(),
-                                color = Color(0xFFE1F6FA), fontSize = 10.sp,
-                                lineHeight = 14.sp, maxLines = 2,
-                                modifier = Modifier.padding(top = 6.dp)
-                            )
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val cardWidth = if (images.size == 1) maxWidth else (maxWidth - 8.dp) / 2
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    images.forEach { image ->
+                        Column(
+                            Modifier.width(cardWidth)
+                                .background(Color(0xFF071923), RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                                .padding(6.dp)
+                        ) {
+                            RemoteMessageImage(image.url, image.alt, if (images.size == 1) 164.dp else 112.dp)
+                            if (image.alt.isNotBlank()) {
+                                Text(
+                                    image.alt.replace(Regex("\\s+"), " ").trim(),
+                                    color = Color(0xFFE1F6FA), fontSize = 10.sp,
+                                    lineHeight = 14.sp, maxLines = 2,
+                                    modifier = Modifier.padding(top = 6.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -868,35 +871,78 @@ private fun SourceLogo(url: String) {
 
 @Composable
 private fun VoiceVisualResults(markdown: String) {
-    val images = remember(markdown) {
-        parseMarkdownBlocks(markdown).filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
-    }
-    if (images.isNotEmpty()) {
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(9.dp)
-        ) {
-            images.forEach { image ->
-                Column(
-                    Modifier.width(172.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(13.dp))
-                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(13.dp))
-                        .padding(7.dp)
+    val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
+    val images = blocks.filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
+    val summary = blocks.filterIsInstance<MarkdownBlock.Paragraph>()
+        .firstOrNull()?.text?.replace(Regex("\\s+"), " ")?.trim()?.take(240).orEmpty()
+    val table = blocks.filterIsInstance<MarkdownBlock.Table>().firstOrNull()
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        if (images.isNotEmpty()) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val cardWidth = if (images.size == 1) maxWidth else (maxWidth - 8.dp) / 2
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    RemoteMessageImage(image.url, image.alt, 112.dp)
-                    if (image.alt.isNotBlank()) {
-                        Text(image.alt.replace(Regex("\\s+"), " ").trim(),
-                            color = Color(0xFFE1F6FA), fontSize = 10.sp, lineHeight = 14.sp,
-                            maxLines = 2, modifier = Modifier.padding(top = 7.dp))
+                    images.forEach { image ->
+                        Column(
+                            Modifier.width(cardWidth)
+                                .background(Color(0xFF071923), RoundedCornerShape(12.dp))
+                                .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                                .padding(6.dp)
+                        ) {
+                            RemoteMessageImage(image.url, image.alt, if (images.size == 1) 138.dp else 98.dp)
+                            if (image.alt.isNotBlank()) {
+                                Text(image.alt.replace(Regex("\\s+"), " ").trim(),
+                                    color = Color(0xFFE1F6FA), fontSize = 9.sp,
+                                    lineHeight = 12.sp, maxLines = 2,
+                                    modifier = Modifier.padding(top = 5.dp))
+                            }
+                        }
                     }
-                    Spacer(Modifier.height(5.dp))
-                    Text("VISUAL RESULT", color = Cyan, fontSize = 7.sp, letterSpacing = 1.sp)
+                }
+            }
+        }
+        if (summary.isNotBlank()) {
+            Text(summary, color = Color(0xFFD8EDF2), fontSize = 10.sp,
+                lineHeight = 15.sp, maxLines = 3)
+        }
+        if (table != null && table.rows.size > 1) {
+            val headers = table.rows.first()
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val cardWidth = (maxWidth - 8.dp) / 2
+                table.rows.drop(1).take(4).chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { row ->
+                            Column(
+                                Modifier.width(cardWidth)
+                                    .background(Color(0xFF071923), RoundedCornerShape(10.dp))
+                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(10.dp))
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(row.firstOrNull().orEmpty(), color = Color(0xFFE8F8FB),
+                                    fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+                                row.drop(1).forEachIndexed { index, value ->
+                                    if (value.isNotBlank()) {
+                                        Text(headers.getOrNull(index + 1)?.uppercase(Locale.ROOT).orEmpty(),
+                                            color = Cyan, fontSize = 7.sp, letterSpacing = .7.sp)
+                                        Text(value.replace(Regex("\\\\*\\*(.*?)\\\\*\\*"), "$1"),
+                                            color = Color(0xFFD8EDF2), fontSize = 9.sp, maxLines = 2)
+                                    }
+                                }
+                            }
+                        }
+                        if (pair.size == 1) Spacer(Modifier.width(cardWidth))
+                    }
                 }
             }
         }
     }
 }
-
 @Composable
 private fun SourceStrip(markdown: String) {
     val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(6).toList()
@@ -1188,7 +1234,7 @@ private fun JarvisScreen(
                         )
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-                        Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
+                        Text("HOLOGRAM ACTIVE · VISUAL RESULTS ALWAYS ON", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.35.sp)
                         Box(Modifier.fillMaxWidth().weight(1f).animateContentSize(animationSpec = tween(720)), contentAlignment = Alignment.Center) {
                             val reactorOffset = reactorLift
 
@@ -1331,7 +1377,16 @@ private fun JarvisScreen(
                                     color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
                             }
                             Column(Modifier.align(Alignment.BottomCenter).offset(y = reactorOffset).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
+                                Text(
+                                    when {
+                                        busy -> "PROCESSING"
+                                        statusText == "RESPONSE READY" -> "COMPLETED"
+                                        voiceArmed -> "LISTENING"
+                                        else -> "READY"
+                                    },
+                                    color = if (busy) Color(0xFFFF7777) else Cyan,
+                                    fontSize = 9.sp, letterSpacing = 2.sp
+                                )
                                 Spacer(Modifier.height(7.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                     repeat(39) { bar ->
@@ -1409,8 +1464,9 @@ private fun JarvisScreen(
                                         contentDescription = if (busy) "Stop" else "Listen",
                                         tint = if (busy) Color(0xFFFF8A8A) else Cyan, modifier = Modifier.size(32.dp))
                                 }
-                                Text(if (busy) "STOP" else if (voiceListening) "LISTENING" else "LISTEN",
-                                    color = Cyan, fontSize = 8.sp, letterSpacing = 1.5.sp)
+                                Text(if (busy) "STOP" else "LISTEN",
+                                    color = if (busy) Color(0xFFFF7777) else Cyan,
+                                    fontSize = 8.sp, letterSpacing = 1.5.sp)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Box(Modifier.size(50.dp).background(Color(0x220D2833), CircleShape)
@@ -1451,14 +1507,32 @@ private fun JarvisScreen(
                                     color=TextMuted, fontSize=12.sp, textAlign=TextAlign.Center)
                                 Spacer(Modifier.height(18.dp))
                                 Column(Modifier.fillMaxWidth().background(Color(0x99081721), RoundedCornerShape(14.dp))
-                                    .border(1.dp, Color(0x4449B8CB), RoundedCornerShape(14.dp)).padding(15.dp)) {
-                                    Text("TRY A COMMAND", color=Cyan, fontSize=8.sp, letterSpacing=1.8.sp)
-                                    Spacer(Modifier.height(10.dp))
-                                    Text("“Carikan rekomendasi HP terbaik.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Bandingkan dua pilihan laptop.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Buka YouTube.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
+                                    .border(1.dp, Color(0x4449B8CB), RoundedCornerShape(14.dp)).padding(10.dp)) {
+                                    Text("QUICK COMMANDS", color=Cyan, fontSize=8.sp, letterSpacing=1.8.sp)
+                                    Spacer(Modifier.height(8.dp))
+                                    listOf("Cari rekomendasi HP", "Bandingkan dua laptop", "Buka YouTube").forEachIndexed { index, suggestion ->
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 3.dp)
+                                                .background(Color(0xAA071923), RoundedCornerShape(9.dp))
+                                                .border(1.dp, Color(0x3349B8CB), RoundedCornerShape(9.dp))
+                                                .clickable { send(suggestion) }
+                                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                        ) {
+                                            Icon(
+                                                when (index) {
+                                                    0 -> Icons.Default.Search
+                                                    1 -> Icons.Default.CompareArrows
+                                                    else -> Icons.Default.SmartDisplay
+                                                },
+                                                null, tint = Cyan, modifier = Modifier.size(15.dp)
+                                            )
+                                            Text(suggestion, color=Color(0xFFD9EDF2), fontSize=11.sp,
+                                                modifier=Modifier.weight(1f))
+                                            Icon(Icons.Default.ChevronRight, null, tint=TextMuted, modifier=Modifier.size(15.dp))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1611,10 +1685,10 @@ private fun JarvisScreen(
                     }
                 }
                     Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 3.dp)
-                        .height(42.dp)
+                        .height(44.dp)
                         .background(Color(0xFF071923), RoundedCornerShape(20.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(20.dp)).padding(2.dp)) {
-                        listOf("VOICE", "CHAT").forEach { tab ->
+                        listOf("CHAT", "VOICE").forEach { tab ->
                             val selected = if (tab == "VOICE") page == "VOICE" else page == "CHAT"
                             Box(Modifier.weight(1f).fillMaxHeight()
                                 .background(if (selected) Color(0x3320BFD8) else Color.Transparent, RoundedCornerShape(17.dp))
@@ -1623,7 +1697,7 @@ private fun JarvisScreen(
                                     voiceListening = tab == "VOICE"
                                     voiceArmed = false
                                 }, contentAlignment = Alignment.Center) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "◉  CHAT",
+                                Text(if (tab == "VOICE") "◉  VOICE" else "⌂  CHAT",
                                     color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
                                     letterSpacing = 1.05.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
