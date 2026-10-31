@@ -197,13 +197,17 @@ async function handleChat(body, env) {
   const transcript = discussion.map((d) => `[PUTARAN ${d.round} · ${d.agent.toUpperCase()}]\\n${d.message}`).join("\\n\\n");
   events.push({ type: "synthesis_started", label: "JARVIS sedang menyusun kesimpulan" });
   const synthesisPrompt = `Pertanyaan pengguna: ${prompt}\\n\\nHasil diskusi AI Council:\\n${transcript}\\n\\nBuat satu jawaban akhir dalam bahasa pengguna. Sintesis argumen terkuat, koreksi kesalahan, pisahkan fakta dari asumsi, dan jelaskan jika para AI belum sepakat. Jangan mengklaim telah melakukan pencarian web jika tidak ada sumber web yang diberikan.`;
-  const synthesizer = keyOrder("openai", env).length ? "openai" : successful[0].provider;
   let finalAnswer;
-  try {
-    const result = await askProvider(synthesizer, env, synthesisPrompt, `${systemBase}\\nYou are the final JARVIS moderator. Be balanced, decisive when evidence supports it, and transparent about unresolved disagreement.`);
-    finalAnswer = result.answer;
-  } catch (_) {
-    finalAnswer = successful[0].answer + (discussion.length > 1 ? "\\n\\nCatatan: proses sintesis akhir gagal; ini adalah jawaban dari AI pertama yang berhasil." : "");
+  if (level === "simple") {
+    finalAnswer = successful[0].answer;
+  } else {
+    const synthesizer = keyOrder("openai", env).length ? "openai" : successful[0].provider;
+    try {
+      const result = await askProvider(synthesizer, env, synthesisPrompt, `${systemBase}\\nYou are the final JARVIS moderator. Be balanced, decisive when evidence supports it, and transparent about unresolved disagreement.`);
+      finalAnswer = result.answer;
+    } catch (_) {
+      finalAnswer = successful[0].answer + (discussion.length > 1 ? "\\n\\nCatatan: proses sintesis akhir gagal; ini adalah jawaban dari AI pertama yang berhasil." : "");
+    }
   }
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
 
