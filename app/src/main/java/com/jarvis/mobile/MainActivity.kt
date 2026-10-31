@@ -424,7 +424,8 @@ private fun JarvisScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val transition = rememberInfiniteTransition(label = "reactor")
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
-    val breathe by transition.animateFloat(.96f, 1.04f, infiniteRepeatable(tween(1500), RepeatMode.Reverse), label = "breathe")
+    val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
+    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
@@ -520,8 +521,15 @@ private fun JarvisScreen(
                                 Text("J", color = Color(0xFFD8FAFF), fontSize = 58.sp, fontWeight = FontWeight.ExtraLight)
                             }
                         }
+                        Row(Modifier.align(Alignment.Center).padding(top = size + 86.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            repeat(25) { bar ->
+                                val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .48f))
+                                Box(Modifier.width(3.dp).height((5 + level * (if (busy) 28 else 15)).dp)
+                                    .background(Cyan.copy(alpha = .45f + level * .5f), RoundedCornerShape(3.dp)))
+                            }
+                        }
                         Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(if (busy) "JARVIS IS THINKING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
+                            Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
                             Spacer(Modifier.height(8.dp))
                             Text("SAY  “JARVIS, OPEN”  TO ACTIVATE", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
                         }
@@ -529,7 +537,7 @@ private fun JarvisScreen(
                     Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).border(1.dp, Color(0x445DEBFF), RoundedCornerShape(12.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("VOICE ASSISTANT", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                         Spacer(Modifier.height(8.dp))
-                        Text(if (busy) "Processing your request…" else "Listening for the wake phrase", color = Color(0xFFE2F5F8), fontSize = 14.sp)
+                        Text(if (busy) "Neural core engaged · analysing" else "Awaiting activation phrase", color = Color(0xFFE2F5F8), fontSize = 14.sp)
                         Text("JARVIS speaks only after activation.", color = TextMuted, fontSize = 10.sp)
                     }
                     Spacer(Modifier.height(20.dp))
