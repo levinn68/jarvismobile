@@ -854,102 +854,123 @@ private fun JarvisScreen(
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
                 if (page == "VOICE") {
-                    Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                        val size = if (compact) 170.dp else 205.dp
-                        Canvas(Modifier.size(size + 74.dp).scale(breathe).rotate(spin * .35f).clickable { onStartListening() }) {
-                            val cx = this.size.width / 2f
-                            val cy = this.size.height / 2f
-                            val r = this.size.minDimension * .43f
-                            val cyan = Color(0xFF56DDF4)
-                            val faint = Color(0x3356DDF4)
-                            // Holographic reactor glow and layered transparent rings.
-                            val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                            drawCircle(Brush.radialGradient(listOf(Color(0x6644E8FF), Color(0x2238D8F4), Color.Transparent), Offset(cx, cy), r * 1.28f), r * 1.28f, Offset(cx, cy))
-                            drawCircle(faint, r, Offset(cx, cy), style = Stroke(1.2f))
-                            drawCircle(cyan.copy(alpha = .25f + pulse * .18f), r * (.91f + pulse * .018f), Offset(cx, cy), style = Stroke(2.2f))
-                            drawCircle(cyan.copy(alpha = .16f), r * .78f, Offset(cx, cy), style = Stroke(.8f))
-                            drawCircle(cyan.copy(alpha = .12f), r * .68f, Offset(cx, cy), style = Stroke(.7f))
-                            // Animated scan arcs and orbiting signal points.
-                            for (ring in 0..2) {
-                                val rr = r * (1.10f + ring * .075f + pulse * .025f)
-                                drawArc(cyan.copy(alpha = .24f + pulse * .2f), startAngle = spin * (if (ring % 2 == 0) 1f else -1f) + ring * 95f,
-                                    sweepAngle = 72f + ring * 22f, useCenter = false,
-                                    topLeft = Offset(cx - rr, cy - rr), size = androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.1f))
+                    Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+                        Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
+                        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                            val reactorSize = if (compact) 245.dp else 285.dp
+                            Canvas(Modifier.size(reactorSize).scale(breathe).rotate(spin * .12f).clickable { onStartListening() }) {
+                                val cx = size.width / 2f
+                                val cy = size.height / 2f
+                                val r = size.minDimension * .43f
+                                val cyan = Color(0xFF36DDF5)
+                                val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
+                                drawCircle(Brush.radialGradient(listOf(Color(0x6634D9F3), Color(0x2221AFCB), Color.Transparent), Offset(cx, cy), r * 1.55f), r * 1.55f, Offset(cx, cy))
+                                // Layered translucent holographic disc, matching the reference interface.
+                                for (ring in 0..7) {
+                                    val rr = r * (1f - ring * .105f)
+                                    drawCircle(cyan.copy(alpha = .11f + pulse * .035f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 2f else .8f))
+                                }
+                                // Fine segmented perimeter and scanning arcs.
+                                for (i in 0 until 144) {
+                                    val a = Math.PI * 2.0 * i / 144.0 + spin * Math.PI / 180.0
+                                    val major = i % 12 == 0
+                                    val r1 = r * if (major) .91f else .96f
+                                    val r2 = r * if (major) 1.04f else 1.005f
+                                    drawLine(cyan.copy(alpha = if (major) .62f else .19f),
+                                        Offset(cx + kotlin.math.cos(a).toFloat() * r1, cy + kotlin.math.sin(a).toFloat() * r1),
+                                        Offset(cx + kotlin.math.cos(a).toFloat() * r2, cy + kotlin.math.sin(a).toFloat() * r2),
+                                        if (major) 1.6f else .65f)
+                                }
+                                for (i in 0..3) {
+                                    val rr = r * (.62f + i * .12f)
+                                    drawArc(cyan.copy(alpha = .22f + pulse * .18f), spin * (if (i % 2 == 0) 1f else -1f) + i * 70f,
+                                        48f + i * 13f, false, Offset(cx - rr, cy - rr), androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.2f))
+                                }
+                                // Textured central wireframe globe and dotted matrix.
+                                val core = r * .43f
+                                for (lat in -5..5) {
+                                    val yy = lat / 5f
+                                    val half = core * kotlin.math.sqrt((1f - yy * yy).coerceAtLeast(.02f))
+                                    drawOval(cyan.copy(alpha = .22f), Offset(cx - half, cy + yy * core - core * .055f),
+                                        androidx.compose.ui.geometry.Size(half * 2f, core * .11f), style = Stroke(.8f))
+                                }
+                                for (lon in 0..12) {
+                                    val w = core * kotlin.math.abs(kotlin.math.cos(lon * Math.PI / 12.0)).toFloat().coerceAtLeast(.06f)
+                                    drawOval(cyan.copy(alpha = .2f), Offset(cx - w, cy - core),
+                                        androidx.compose.ui.geometry.Size(w * 2f, core * 2f), style = Stroke(.8f))
+                                }
+                                for (y in -5..5) for (x in -5..5) {
+                                    val distance = kotlin.math.sqrt((x*x + y*y).toFloat())
+                                    if (distance <= 5.5f) {
+                                        val alpha = (.18f + pulse * .34f) * (1f - distance / 7f)
+                                        drawCircle(Color(0xFF9CF5FF).copy(alpha = alpha.coerceAtLeast(.05f)),
+                                            if (x == 0 && y == 0) 2.2f else 1.05f,
+                                            Offset(cx + x * core * .14f, cy + y * core * .14f))
+                                    }
+                                }
+                                // Three linked holographic nodes phase in and out around the core.
+                                val nodeAlpha = (.25f + pulse * .55f)
+                                val points = (0..2).map { index ->
+                                    val a = (spin * .35f + index * 120f - 90f) * Math.PI / 180.0
+                                    Offset(cx + kotlin.math.cos(a).toFloat() * core * .9f, cy + kotlin.math.sin(a).toFloat() * core * .9f)
+                                }
+                                drawLine(cyan.copy(alpha = nodeAlpha), points[0], points[1], 1.4f)
+                                drawLine(cyan.copy(alpha = nodeAlpha), points[1], points[2], 1.4f)
+                                drawLine(cyan.copy(alpha = nodeAlpha), points[2], points[0], 1.4f)
+                                points.forEach { point ->
+                                    drawCircle(cyan.copy(alpha = .18f), 13f, point)
+                                    drawCircle(Color(0xFF8CF3FF).copy(alpha = .9f), 5f, point)
+                                    drawCircle(cyan.copy(alpha = .75f), 9f, point, style = Stroke(1.2f))
+                                }
+                                drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
                             }
-                            for (node in 0..5) {
-                                val a = (spin * .45f + node * 60f) * Math.PI / 180.0
-                                val rr = r * (1.12f + .035f * kotlin.math.sin(wavePhase + node).toFloat())
-                                val p = Offset(cx + kotlin.math.cos(a).toFloat() * rr, cy + kotlin.math.sin(a).toFloat() * rr)
-                                drawCircle(cyan.copy(alpha = .7f), 2.2f + pulse, p)
-                                drawCircle(cyan.copy(alpha = .18f), 6f + pulse * 2f, p, style = Stroke(1f))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(SimpleDateFormat("h:mm", Locale.getDefault()).format(Date()),
+                                    color = Color(0xFFD8FBFF), fontSize = 27.sp, fontWeight = FontWeight.Light, letterSpacing = 1.sp)
+                                Text(SimpleDateFormat("a", Locale.getDefault()).format(Date()),
+                                    color = Color(0xFF6FCFE0), fontSize = 9.sp, letterSpacing = 2.sp)
                             }
-                            // Uneven energy perimeter, like the particle shell in the reference.
-                            val shell = androidx.compose.ui.graphics.Path()
-                            for (i in 0..180) {
-                                val a = Math.PI * 2.0 * i / 180.0
-                                val wobble = 1f + .018f * kotlin.math.sin(i * .71f) + .012f * kotlin.math.cos(i * .23f)
-                                val rr = r * wobble
-                                val x = cx + kotlin.math.cos(a).toFloat() * rr
-                                val y = cy + kotlin.math.sin(a).toFloat() * rr
-                                if (i == 0) shell.moveTo(x, y) else shell.lineTo(x, y)
+                            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
+                                Spacer(Modifier.height(7.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    repeat(31) { bar ->
+                                        val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .42f))
+                                        Box(Modifier.width(2.dp).height((4 + level * (if (busy) 18 else 11)).dp)
+                                            .background(Cyan.copy(alpha = .35f + level * .55f), RoundedCornerShape(2.dp)))
+                                    }
+                                }
                             }
-                            shell.close()
-                            drawPath(shell, cyan.copy(alpha = .42f), style = Stroke(1.6f))
-                            // Instrument-like radial calibration marks.
-                            for (i in 0 until 72) {
-                                val a = Math.PI * 2.0 * i / 72.0 + spin * Math.PI / 180.0
-                                val major = i % 6 == 0
-                                val r1 = r * if (major) .94f else .97f
-                                val r2 = r * if (major) 1.04f else 1.005f
-                                drawLine(cyan.copy(alpha = if (major) .8f else .28f),
-                                    Offset(cx + kotlin.math.cos(a).toFloat() * r1, cy + kotlin.math.sin(a).toFloat() * r1),
-                                    Offset(cx + kotlin.math.cos(a).toFloat() * r2, cy + kotlin.math.sin(a).toFloat() * r2),
-                                    if (major) 2f else 1f)
-                            }
-                            // Spherical wireframe core: latitude and longitude contours.
-                            val sphere = r * .48f
-                            for (i in -3..3) {
-                                val y = i / 3f
-                                val h = sphere * kotlin.math.sqrt((1f - y * y).coerceAtLeast(.02f))
-                                drawOval(cyan.copy(alpha = .32f), Offset(cx - h, cy + y * sphere - sphere * .13f), androidx.compose.ui.geometry.Size(h * 2f, sphere * .26f), style = Stroke(1f))
-                            }
-                            for (i in 0..8) {
-                                val w = sphere * kotlin.math.abs(kotlin.math.cos(i * Math.PI / 8.0)).toFloat().coerceAtLeast(.08f)
-                                drawOval(cyan.copy(alpha = .24f), Offset(cx - w, cy - sphere), androidx.compose.ui.geometry.Size(w * 2f, sphere * 2f), style = Stroke(1f))
-                            }
-                            // Luminous digital core with a moving horizontal scan.
-                            drawCircle(Brush.radialGradient(listOf(Color(0xDD62E9FF), Color(0x6652DDF4), Color.Transparent), Offset(cx, cy), sphere * .95f), sphere * .95f, Offset(cx, cy))
-                            drawLine(cyan.copy(alpha = .38f + pulse * .35f),
-                                Offset(cx - sphere * .82f, cy + kotlin.math.sin(wavePhase) * sphere * .25f),
-                                Offset(cx + sphere * .82f, cy + kotlin.math.sin(wavePhase) * sphere * .25f), 1.2f)
-                            for (dot in 0..8) {
-                                val dx = (dot - 4) * sphere * .15f
-                                val dy = kotlin.math.sin(wavePhase * 1.4f + dot * .8f).toFloat() * sphere * .42f
-                                drawCircle(Color(0xFFB9F7FF).copy(alpha = .35f + pulse * .55f), if (dot == 4) 2.4f else 1.2f, Offset(cx + dx, cy + dy))
-                            }
-                            drawCircle(Color(0xFFB9F7FF).copy(alpha = .9f), 2.5f, Offset(cx, cy))
                         }
-                        Row(Modifier.align(Alignment.Center).padding(top = size + 86.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            repeat(25) { bar ->
-                                val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .48f))
-                                Box(Modifier.width(3.dp).height((5 + level * (if (busy) 28 else 15)).dp)
-                                    .background(Cyan.copy(alpha = .45f + level * .5f), RoundedCornerShape(3.dp)))
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)
+                            .background(Color(0x5520AFC4), RoundedCornerShape(12.dp))
+                            .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                IconButton(onClick = { onStartListening() }, modifier = Modifier.size(38.dp)) {
+                                    Icon(Icons.Default.SettingsVoice, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                }
+                                Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                IconButton(onClick = { page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
+                                    Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                }
+                                Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                IconButton(onClick = { onStartListening() }, modifier = Modifier.size(38.dp)) {
+                                    Icon(Icons.Default.Mic, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                }
+                                Text("VOICE", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                             }
                         }
-                        Column(Modifier.align(Alignment.BottomCenter), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 10.sp, letterSpacing = 2.sp)
-                            Spacer(Modifier.height(8.dp))
-                            Text("TAP THE CORE  ·  OR SAY “JARVIS”", color = Color(0xFF638C9A), fontSize = 8.sp, letterSpacing = 1.sp)
-                        }
+                        Text("TAP THE REACTOR OR SAY “JARVIS”", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
+                            modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
-                    Column(Modifier.fillMaxWidth().background(Color(0xFF071923), RoundedCornerShape(12.dp)).border(1.dp, Color(0x445DEBFF), RoundedCornerShape(12.dp)).padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("VOICE ASSISTANT", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Text(if (busy) "PROCESSING REQUEST" else "VOICE INTERFACE STANDBY", color = Color(0xFFE2F5F8), fontSize = 14.sp)
-                        Text("Tap the reactor or say JARVIS to begin.", color = TextMuted, fontSize = 10.sp)
-                    }
-                    Spacer(Modifier.height(20.dp))
-                } else {
+               } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
