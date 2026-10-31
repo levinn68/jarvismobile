@@ -951,10 +951,13 @@ private fun JarvisScreen(
     var showSplash by remember { mutableStateOf(true) }
     var splashMounted by remember { mutableStateOf(true) }
     var splashIntro by remember { mutableStateOf(false) }
+    var splashTextIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        // Start the reveal on the very first composition frame; no artificial black pause.
+        // Begin immediately, then bring in the wordmark a fraction later.
         splashIntro = true
-        kotlinx.coroutines.delay(1850)
+        kotlinx.coroutines.delay(240)
+        splashTextIntro = true
+        kotlinx.coroutines.delay(1180)
         showSplash = false
         kotlinx.coroutines.delay(520)
         splashMounted = false
@@ -1492,22 +1495,22 @@ private fun JarvisScreen(
             if (splashMounted) {
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = splashFade }
                     .background(Color.Black), contentAlignment = Alignment.Center) {
-                    val logoScale = .94f + .06f * splashReveal
-                    Box(Modifier.size(286.dp).scale(1f + .012f * (breathe - 1f)).background(
+                    val logoScale = .86f + .14f * splashReveal
+                    Box(Modifier.size(214.dp).scale(1f + .008f * (breathe - 1f)).background(
                         Brush.radialGradient(
-                            listOf(Color(0x5546DDF4), Color(0x2428BFD8), Color(0x0D28BFD8), Color.Transparent),
-                            radius = 390f
+                            listOf(Color(0x4446DDF4), Color(0x1B28BFD8), Color(0x0828BFD8), Color.Transparent),
+                            radius = 300f
                         ), CircleShape))
                     Image(
                         painter = painterResource(id = R.drawable.ic_jarvis),
                         contentDescription = "J.A.R.V.I.S. logo",
-                        modifier = Modifier.size(148.dp)
+                        modifier = Modifier.size(88.dp)
                             .scale(logoScale)
                             .graphicsLayer { alpha = splashReveal }
                     )
                     Column(
-                        Modifier.align(Alignment.Center).offset(y = (132f - 9f * splashReveal).dp)
-                            .graphicsLayer { alpha = splashReveal },
+                        Modifier.align(Alignment.Center).offset(y = 59.dp)
+                            .graphicsLayer { alpha = ((splashTextIntro).let { if (it) 1f else 0f }) },
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text("J.A.R.V.I.S.", color = Color(0xFFEAFBFF),
