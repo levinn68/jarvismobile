@@ -1238,7 +1238,28 @@ private fun JarvisScreen(
                                 val r = size.minDimension * .43f
                                 val cyan = Color(0xFF36DDF5)
                                 val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                drawCircle(Brush.radialGradient(listOf(Color(0x5534D9F3), Color(0x1A21AFCB), Color.Transparent), Offset(cx, cy), r * 1.52f), r * 1.52f, Offset(cx, cy))
+                                drawCircle(Brush.radialGradient(listOf(Color(0x7746E8FF), Color(0x3321BFD8), Color(0x1021AFCB), Color.Transparent), Offset(cx, cy), r * 1.62f), r * 1.62f, Offset(cx, cy))
+                                // Bright outer energy rings and radial calibration marks.
+                                for (ring in 0..4) {
+                                    val radius = r * (1.00f + ring * .055f)
+                                    drawCircle(
+                                        cyan.copy(alpha = if (ring == 0) .34f + pulse * .12f else .10f + pulse * .035f),
+                                        radius, Offset(cx, cy),
+                                        style = Stroke(if (ring == 0) 1.45f else .7f)
+                                    )
+                                }
+                                for (beam in 0 until 48) {
+                                    val angle = Math.PI * 2.0 * beam / 48.0 + spin * .0015
+                                    val inner = r * (1.04f + (beam % 4) * .012f)
+                                    val outer = r * (1.10f + if (beam % 6 == 0) .085f else .018f)
+                                    val beamAlpha = if (beam % 6 == 0) .52f else .13f
+                                    drawLine(
+                                        cyan.copy(alpha = beamAlpha * (.72f + pulse * .28f)),
+                                        Offset(cx + kotlin.math.cos(angle).toFloat() * inner, cy + kotlin.math.sin(angle).toFloat() * inner),
+                                        Offset(cx + kotlin.math.cos(angle).toFloat() * outer, cy + kotlin.math.sin(angle).toFloat() * outer),
+                                        if (beam % 6 == 0) 1.25f else .55f
+                                    )
+                                }
                                 // Organic, translucent reactor membrane from the reference video.
                                 for (layer in 0..3) {
                                     val contour = androidx.compose.ui.graphics.Path()
@@ -1259,9 +1280,9 @@ private fun JarvisScreen(
                                 drawCircle(cyan.copy(alpha = .07f + pulse * .025f), r * .78f, Offset(cx, cy), style = Stroke(.9f))
                                 drawCircle(cyan.copy(alpha = .09f), r * .58f, Offset(cx, cy), style = Stroke(.8f))
                                 // Layered translucent holographic disc, matching the reference interface.
-                                for (ring in 0..9) {
-                                    val rr = r * (.72f - ring * .061f)
-                                    drawCircle(cyan.copy(alpha = .075f + pulse * .025f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 1.2f else .55f))
+                                for (ring in 0..13) {
+                                    val rr = r * (.78f - ring * .052f)
+                                    drawCircle(cyan.copy(alpha = .10f + pulse * .045f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 1.45f else .68f))
                                 }
                                 // Fine segmented perimeter and scanning arcs.
                                 for (i in 0 until 144) {
@@ -1332,10 +1353,11 @@ private fun JarvisScreen(
                                 Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                                 Spacer(Modifier.height(7.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    repeat(31) { bar ->
-                                        val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .42f))
-                                        Box(Modifier.width(2.dp).height((4 + level * (if (busy) 18 else 11)).dp)
-                                            .background(Cyan.copy(alpha = .35f + level * .55f), RoundedCornerShape(2.dp)))
+                                    repeat(39) { bar ->
+                                        val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .36f) *
+                                            kotlin.math.cos(bar * .11f))
+                                        Box(Modifier.width(2.5.dp).height((5 + level * (if (busy) 23 else 16)).dp)
+                                            .background(Cyan.copy(alpha = .38f + level * .55f), RoundedCornerShape(2.dp)))
                                     }
                                 }
                             }
