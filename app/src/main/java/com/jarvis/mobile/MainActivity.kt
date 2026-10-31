@@ -953,11 +953,12 @@ private fun JarvisScreen(
     var splashIntro by remember { mutableStateOf(false) }
     var splashTextIntro by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        // Begin immediately, then bring in the wordmark a fraction later.
+        // Cinematic reveal: a dark beat, vertical light streaks, then the mark.
+        kotlinx.coroutines.delay(380)
         splashIntro = true
-        kotlinx.coroutines.delay(240)
+        kotlinx.coroutines.delay(420)
         splashTextIntro = true
-        kotlinx.coroutines.delay(1180)
+        kotlinx.coroutines.delay(1120)
         showSplash = false
         kotlinx.coroutines.delay(520)
         splashMounted = false
@@ -1505,7 +1506,34 @@ private fun JarvisScreen(
             if (splashMounted) {
                 Box(Modifier.fillMaxSize().graphicsLayer { alpha = splashFade }
                     .background(Color.Black), contentAlignment = Alignment.Center) {
-                    val logoScale = .86f + .14f * splashReveal
+                    Canvas(Modifier.fillMaxSize()) {
+                        val centerX = size.width * .5f
+                        val centerY = size.height * .5f
+                        val beamPhase = wavePhase
+                        val beamEnvelope = (1f - kotlin.math.abs(splashReveal - .42f) * 1.8f).coerceIn(0f, 1f)
+                        for (i in 0..10) {
+                            val spread = (i - 5) * (42f - splashReveal * 34f)
+                            val drift = kotlin.math.sin(beamPhase * .55f + i * .7f) * 10f
+                            val x = centerX + spread + drift
+                            val alpha = beamEnvelope * (if (i == 5) .95f else .42f)
+                            drawLine(
+                                brush = Brush.horizontalGradient(
+                                    listOf(Color.Transparent, Color(0xFF13DDF5).copy(alpha = alpha),
+                                        Color(0xFFBDFBFF).copy(alpha = alpha * .75f), Color.Transparent)
+                                ),
+                                start = Offset(x, centerY - size.height * .29f),
+                                end = Offset(x, centerY + size.height * .29f),
+                                strokeWidth = if (i == 5) 5f else 2.2f
+                            )
+                        }
+                        drawRect(
+                            Brush.verticalGradient(listOf(Color.Transparent, Color(0x3311CDEB), Color.Transparent)),
+                            topLeft = Offset(0f, centerY - 1.5f),
+                            size = androidx.compose.ui.geometry.Size(size.width, 3f),
+                            alpha = beamEnvelope
+                        )
+                    }
+                    val logoScale = .78f + .22f * splashReveal
                     Box(Modifier.size(214.dp).scale(1f + .008f * (breathe - 1f)).background(
                         Brush.radialGradient(
                             listOf(Color(0x4446DDF4), Color(0x1B28BFD8), Color(0x0828BFD8), Color.Transparent),
