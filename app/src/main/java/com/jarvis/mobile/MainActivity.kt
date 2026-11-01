@@ -293,7 +293,7 @@ class MainActivity : ComponentActivity() {
                         return
                     }
                     // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
-                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · READY FOR JARVIS" else "MIC OFF"
+                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · RECONNECTING" else "MIC OFF"
                     if (voiceModeEnabled) {
                         handler.removeCallbacks(listeningRestart)
                         handler.postDelayed(listeningRestart, if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 300L else 850L)
@@ -310,10 +310,12 @@ class MainActivity : ComponentActivity() {
                         recognitionLanguage = detectRecognitionLanguage(text)
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                        if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
-                        handler.postDelayed(listeningRestart, 350L)
-                    } else if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
+                        // Do not reopen the microphone here. Compose first routes the transcript:
+                        // wake-only -> speak confirmation; command -> execute; no wake -> resume listening.
+                    } else if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
                         handler.postDelayed(listeningRestart, 300L)
+                    }
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
@@ -567,6 +569,7 @@ class MainActivity : ComponentActivity() {
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
             recognitionStartPending = true
+            voiceStatus.value = "LISTENING"
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
@@ -1904,7 +1907,12 @@ private fun JarvisScreen(
             val heard = recognizedText.trim()
             onConsumed()
             val wake = Regex("(?i)\\bjarvis\\b[,.! ]*")
-            if (!wake.containsMatchIn(heard)) return@LaunchedEffect
+            if (!wake.containsMatchIn(heard)) {
+                // Ignore speech not addressed to JARVIS, then resume the same always-on voice mode.
+                kotlinx.coroutines.delay(250)
+                onStartListening()
+                return@LaunchedEffect
+            }
             val request = heard.replaceFirst(wake, "").trim()
             if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
