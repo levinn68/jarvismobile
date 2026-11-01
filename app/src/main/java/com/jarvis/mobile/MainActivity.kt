@@ -284,7 +284,7 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (!voiceMode) { clapDetector.reset(); recognizer?.cancel() }
+                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
@@ -750,7 +750,6 @@ private fun MarkdownTable(rows: List<List<String>>) {
                     }
                 }
             }
-
         }
     }
 }
@@ -916,29 +915,15 @@ private fun JarvisScreen(
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
     var settings by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
-    // Only Chat and Voice are exposed in the current app navigation.
     val lines = remember { mutableStateListOf<Line>() }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
-    // Animate only toward the active Voice state; Chat remains frame-efficient.
-    val voiceActive = page == "VOICE"
-    val spin by animateFloatAsState(
-        targetValue = if (voiceActive) 360f else 0f,
-        animationSpec = tween(if (voiceActive) 16000 else 0),
-        label = "spin"
-    )
-    val breathe by animateFloatAsState(
-        targetValue = if (voiceActive) 1.06f else 1f,
-        animationSpec = tween(if (voiceActive) 950 else 0),
-        label = "breathe"
-    )
-    val wavePhase by animateFloatAsState(
-        targetValue = if (voiceActive) 6.28318f else 0f,
-        animationSpec = tween(if (voiceActive) 1100 else 0),
-        label = "wavePhase"
-    )
+    val transition = rememberInfiniteTransition(label = "reactor")
+    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
+    val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
+    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
@@ -977,12 +962,8 @@ private fun JarvisScreen(
         statusText = "ANALYSING REQUEST"
         onSearch(q)
         cancelCurrentRequest = onAskGemini(requestText) { response ->
-            val fullAnswer = response.substringAfter("KESIMPULAN JARVIS", response)
+            val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
-            // Keep pathological model output from creating thousands of Compose nodes at once.
-            val answer = if (fullAnswer.length > 16000) {
-                fullAnswer.take(16000) + "\n\n[Jawaban dipotong agar aplikasi tetap responsif.]"
-            } else fullAnswer
             if (voice) { voiceAnswer = answer } else {
                 val responseLine = Line(false, answer)
                 responseLine.displayText.value = answer
