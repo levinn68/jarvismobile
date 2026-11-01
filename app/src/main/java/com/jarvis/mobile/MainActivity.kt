@@ -1059,13 +1059,51 @@ private fun JarvisScreen(
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
+                // Primary navigation stays close to the app identity, like a native segmented control.
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 8.dp)
+                        .background(Color(0xFF0A1822), RoundedCornerShape(18.dp))
+                        .border(1.dp, Color(0x334E9EAE), RoundedCornerShape(18.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    listOf("CHAT", "VOICE").forEach { tab ->
+                        val selected = page == tab
+                        Row(
+                            Modifier.weight(1f).height(40.dp)
+                                .background(
+                                    if (selected) Brush.verticalGradient(listOf(Color(0xFF15566A), Color(0xFF0D3545))) else Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent)),
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .then(if (selected) Modifier.border(1.dp, Color(0xAA48DDF2), RoundedCornerShape(14.dp)) else Modifier)
+                                .clickable {
+                                    if (tab == "CHAT") voiceListening = false
+                                    else voiceListening = true
+                                    page = tab
+                                }
+                                .padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                if (tab == "CHAT") Icons.Default.AutoAwesome else Icons.Default.SettingsVoice,
+                                contentDescription = null,
+                                tint = if (selected) Cyan else TextMuted,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(tab, color = if (selected) Color(0xFFE9FBFF) else TextMuted,
+                                fontSize = 11.sp, letterSpacing = 1.1.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium)
+                        }
+                    }
+                }
                 if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 292.dp else 336.dp
+                            val reactorSize = if (compact) 204.dp else 232.dp
                             Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f)
                                 .clickable(enabled=voiceListening){onStartListening()},
                                 contentAlignment=Alignment.Center) {
@@ -1193,13 +1231,13 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
-                            color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
-                            modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
+                        Text(if (voiceListening) "BICARA DENGAN JARVIS" else "AKTIFKAN MIKROFON UNTUK MEMULAI",
+                            color = Color(0xFF648C98), fontSize = 8.sp, letterSpacing = 1.0.sp,
+                            modifier = Modifier.padding(top = 5.dp, bottom = 4.dp))
                     }
                } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("LIVE CONVERSATION", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                        Text("PERCAKAPAN", color = Color(0xFF8EDDED), fontSize = 10.sp, letterSpacing = 1.2.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -1429,7 +1467,7 @@ private fun JarvisScreen(
                             singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
-                            decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
+                            decorationBox={ inner -> if(command.isEmpty()) Text("Ketik pesan ke JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
                         if (busy) {
                             IconButton(onClick = {
                                 cancelCurrentRequest?.invoke()
@@ -1447,17 +1485,7 @@ private fun JarvisScreen(
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("CHAT", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "CHAT") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "▣  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
-                            }
-                        }
-                    }
-                if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
+                    if (page == "VOICE") Text("J.A.R.V.I.S.  ·  PERSONAL AI", color=Color(0xFF355C68), fontSize=7.sp, letterSpacing=1.1.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(top=5.dp,bottom=2.dp))
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
                 title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
