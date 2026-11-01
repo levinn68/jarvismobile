@@ -684,7 +684,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                 dataRows.forEachIndexed { index, row ->
                     val title=row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), "")
                     val cells=row.drop(1)
-                    val imageCell=cells.firstOrNull { Regex("!\\\\[[^]]*]\\\\(https?://").containsMatchIn(it) }
+                    val imageCell=cells.firstOrNull { Regex("!\\[[^]]*]\\(https?://").containsMatchIn(it) }
                     val priceIndex=headers.indexOfFirst { it.contains("harga",true) || it.contains("price",true) }
                     val detailIndex=headers.indexOfFirst { it.contains("detail",true) || it.contains("deskripsi",true) }
                     val linkIndex=headers.indexOfFirst { it.contains("link",true) || it.contains("url",true) }
