@@ -757,72 +757,43 @@ private fun MarkdownTable(rows: List<List<String>>) {
 @Composable
 private fun RichMessageText(markdown: String) {
     val blocks = parseMarkdownBlocks(markdown)
-    var index = 0
-    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        while (index < blocks.size) {
-            val block = blocks[index]
-            if (block is MarkdownBlock.Heading) {
-                Column(Modifier.fillMaxWidth()
-                    .background(Color(0xB907202B), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(12.dp))
-                    .padding(11.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Row(verticalAlignment=Alignment.CenterVertically) {
-                        Box(Modifier.size(22.dp).background(Color(0xFF0E3A4A), RoundedCornerShape(6.dp)), contentAlignment=Alignment.Center) {
-                            Icon(Icons.Default.AutoAwesome, null, tint=Cyan, modifier=Modifier.size(14.dp))
-                        }
-                        Spacer(Modifier.width(8.dp))
-                        Text(block.text, color=Color(0xFFE9FAFF), fontSize=13.sp, fontWeight=FontWeight.SemiBold)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownBlock.Heading -> Column(
+                    Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 1.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(block.text, color = Color(0xFFB8F2FA), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+                    Box(Modifier.width(42.dp).height(2.dp).background(Brush.horizontalGradient(listOf(Cyan, Color.Transparent)), RoundedCornerShape(2.dp)))
+                }
+                is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text, 13.sp)
+                is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
+                is MarkdownBlock.Bullet -> Row(
+                    Modifier.fillMaxWidth().padding(start = 3.dp),
+                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(Modifier.padding(top = 7.dp).size(5.dp).background(Cyan, CircleShape))
+                    InlineMarkdownText(block.text, 12.sp)
+                }
+                is MarkdownBlock.Code -> Column(
+                    Modifier.fillMaxWidth().background(Color(0xFF06121B), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp)).padding(11.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(block.language.ifBlank { "CODE" }.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.2.sp)
+                        Text("SOURCE", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
                     }
-                    index++
-                    while (index < blocks.size && blocks[index] !is MarkdownBlock.Heading) {
-                        when (val part=blocks[index]) {
-                            is MarkdownBlock.Paragraph -> InlineMarkdownText(part.text, 12.sp)
-                            is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(part.alt, part.url)
-                            is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Text(if(part.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
-                                InlineMarkdownText(part.text, 11.sp)
-                            }
-                            is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
-                                .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
-                                    Text(part.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
-                                    Text("CODE BLOCK", color=TextMuted, fontSize=7.sp)
-                                }
-                                Spacer(Modifier.height(6.dp))
-                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                                    SelectionContainer { Text(part.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
-                                }
-                            }
-                            is MarkdownBlock.Table -> MarkdownTable(part.rows)
-                            is MarkdownBlock.Heading -> Unit
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        SelectionContainer {
+                            Text(block.text, color = Color(0xFFD2E8EF), fontSize = 10.sp, lineHeight = 15.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                         }
-                        index++
                     }
                 }
-            } else {
-                when (block) {
-                    is MarkdownBlock.Heading -> Unit
-                    is MarkdownBlock.Paragraph -> Column(Modifier.fillMaxWidth()
-                        .background(Color(0xA907202B), RoundedCornerShape(11.dp))
-                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(11.dp)).padding(11.dp)) {
-                        InlineMarkdownText(block.text, 12.sp)
-                    }
-                    is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
-                    is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth().padding(horizontal=5.dp), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                        Text(if(block.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
-                        InlineMarkdownText(block.text, 11.sp)
-                    }
-                    is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
-                        .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
-                        Text(block.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
-                        Spacer(Modifier.height(6.dp))
-                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                            SelectionContainer { Text(block.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
-                        }
-                    }
-                    is MarkdownBlock.Table -> MarkdownTable(block.rows)
-                }
-                index++
+                is MarkdownBlock.Table -> MarkdownTable(block.rows)
             }
         }
     }
@@ -1051,9 +1022,9 @@ private fun JarvisScreen(
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
                 if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-                        Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
+                        Text("J.A.R.V.I.S.", color = Color(0xFFB9F5FC), fontSize = 12.sp, letterSpacing = 4.sp,
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
+                        Text("LIVE VOICE INTERFACE  /  PRIVATE SESSION", color = Color(0xFF568B99), fontSize = 7.sp, letterSpacing = 1.5.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 292.dp else 336.dp
                             Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f)
@@ -1091,7 +1062,8 @@ private fun JarvisScreen(
                                     color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
                             }
                             Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
+                                Text(if (busy) "PROCESSING" else if (voiceListening) "LISTENING" else "MICROPHONE STANDBY",
+                                    color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
                                 Spacer(Modifier.height(7.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                                     repeat(31) { bar ->
@@ -1103,17 +1075,20 @@ private fun JarvisScreen(
                             }
                         }
                         val latestVoiceAnswer = voiceAnswer
-                        Column(Modifier.fillMaxWidth().padding(horizontal=5.dp, vertical=3.dp)
-                            .background(Color(0x99071923), RoundedCornerShape(18.dp))
-                            .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(18.dp)).padding(horizontal=12.dp, vertical=8.dp),
-                            verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(horizontal=5.dp, vertical=5.dp)
+                            .background(Brush.verticalGradient(listOf(Color(0xCC102532),Color(0xCC07131D))), RoundedCornerShape(17.dp))
+                            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(17.dp)).padding(horizontal=13.dp, vertical=10.dp),
+                            verticalArrangement=Arrangement.spacedBy(7.dp)) {
                             Row(verticalAlignment=Alignment.CenterVertically) {
                                 Box(Modifier.size(25.dp).background(Color(0xFF0D3C4C),CircleShape),contentAlignment=Alignment.Center) {
                                     Icon(Icons.Default.Mic,null,tint=Cyan,modifier=Modifier.size(15.dp))
                                 }
                                 Spacer(Modifier.width(8.dp))
-                                Text(voiceTranscript.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
-                                    fontSize=13.sp,maxLines=2,modifier=Modifier.weight(1f))
+                                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                                    Text("YOU SAID",color=Color(0xFF68C9D8),fontSize=7.sp,letterSpacing=1.2.sp)
+                                    Text(voiceTranscript.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
+                                        fontSize=12.sp,lineHeight=17.sp,maxLines=2)
+                                }
                                 Row(horizontalArrangement=Arrangement.spacedBy(2.dp),verticalAlignment=Alignment.CenterVertically) {
                                     repeat(7) { n ->
                                         val h=4+kotlin.math.abs(kotlin.math.sin(wavePhase+n*.65f))*11
@@ -1122,8 +1097,8 @@ private fun JarvisScreen(
                                 }
                             }
                             if(latestVoiceAnswer.isNotBlank()) {
-                                Text("J.A.R.V.I.S. / RESPONSE",color=Cyan,fontSize=7.sp,letterSpacing=1.2.sp)
-                                Text(latestVoiceAnswer,color=Color(0xFFC8E8EF),fontSize=12.sp,lineHeight=18.sp,maxLines=4)
+                                Text("J.A.R.V.I.S.  /  RESPONSE",color=Cyan,fontSize=7.sp,letterSpacing=1.4.sp)
+                                Text(latestVoiceAnswer,color=Color(0xFFE0F3F7),fontSize=12.sp,lineHeight=18.sp,maxLines=4)
                             }
                         }
                         // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
