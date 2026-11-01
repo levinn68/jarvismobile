@@ -103,7 +103,7 @@ async function serpApiSearch(env, engine, query, options = {}) {
 function searchKind(prompt) {
   const q = prompt.toLowerCase();
   if (/(cari|carikan|rekomendasi|bandingkan|termurah|harga|beli|belikan|produk|marketplace|toko online)/i.test(q) &&
-      /(hp|handphone|smartphone|laptop|tablet|bantal|sepatu|tas|bola|basket|headphone|earphone|keyboard|mouse|monitor|kamera|produk|barang|jam tangan|charger|case|kursi|meja|tv|televisi)/i.test(q)) return "products";
+      /(hp|handphone|smartphone|laptop|tablet|bantal|sepatu|tas|bola|basket|headphone|earphone|keyboard|mouse|monitor|kamera|produk|barang|jam tangan|charger|case|kursi|meja|tv|televisi|kaca|glass|cermin|akrilik|plexiglass|monitor|layar|baju|kaos|celana|sepeda|motor|mobil)/i.test(q)) return "products";
   if (/(cari|carikan|tampilkan|lihatkan|temukan|referensi|contoh).{0,35}(gambar|foto|visual)|\b(gambar|foto)\b.{0,35}\b(referensi|contoh|asli|produk)\b/i.test(q)) return "images";
   return "";
 }
