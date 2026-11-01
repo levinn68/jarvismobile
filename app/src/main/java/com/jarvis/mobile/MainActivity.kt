@@ -685,7 +685,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
 }
 
 @Composable
-private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
+private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 16.sp) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
     val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
@@ -711,7 +711,7 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
         }
         if (cursor < clean.length) append(clean.substring(cursor))
     }
-    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = 22.sp), onClick = { offset ->
+    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = 26.sp), onClick = { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
     })
 }
@@ -815,8 +815,8 @@ private fun RichMessageText(markdown: String) {
                     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                         SelectionContainer {
                             Text(
-                                block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp,
-                                lineHeight = 18.sp,
+                                block.text, color = Color(0xFFD2E8EF), fontSize = 14.sp,
+                                lineHeight = 21.sp,
                                 fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
                             )
                         }
@@ -1558,11 +1558,26 @@ private fun JarvisScreen(
                                         animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
                                     )
                             ) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
-                                    .wrapContentWidth(Alignment.Start)
-                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
-                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = if (line.user) Arrangement.End else Arrangement.Start
+                            ) {
+                                Column(
+                                    Modifier.then(
+                                        if (line.user) Modifier.widthIn(max = containerMaxWidth * .88f)
+                                        else Modifier.fillMaxWidth()
+                                    )
+                                        .background(
+                                            if (line.user) Color(0xFF0A2633) else Color(0xCC081923),
+                                            RoundedCornerShape(if (line.user) 18.dp else 14.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (line.user) Color(0x7755CFE8) else Color(0x3349B8CB),
+                                            RoundedCornerShape(if (line.user) 18.dp else 14.dp)
+                                        )
+                                        .padding(horizontal = if (line.user) 15.dp else 4.dp, vertical = 13.dp)
+                                ) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / CHAT" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
