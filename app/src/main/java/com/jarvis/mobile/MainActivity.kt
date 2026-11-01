@@ -1258,43 +1258,56 @@ private fun JarvisScreen(
                                 verticalArrangement = Arrangement.Center
                             ) {
                                 Box(
-                                    Modifier.size(if (compact) 112.dp else 132.dp)
-                                        .background(
-                                            Brush.radialGradient(
-                                                listOf(Color(0xFF15566A), Color(0xFF0A2634), Color(0xFF04111A))
-                                            ), CircleShape
-                                        )
-                                        .border(1.5.dp, Color(0xAA52DFF2), CircleShape),
+                                    Modifier.size(if (compact) 154.dp else 184.dp)
+                                        .background(Brush.radialGradient(listOf(Color(0xFF1A7186), Color(0xFF0B2B3A), Color(0xFF04111A))), CircleShape)
+                                        .border(1.5.dp, Color(0xCC69E9FF), CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Canvas(Modifier.size(if (compact) 98.dp else 116.dp)) {
+                                    Canvas(Modifier.size(if (compact) 144.dp else 172.dp)) {
                                         val c = Cyan
-                                        drawCircle(c.copy(alpha = .25f), style = Stroke(1.dp.toPx()))
-                                        drawCircle(c.copy(alpha = .55f), radius = size.minDimension * .39f, style = Stroke(1.1.dp.toPx()))
-                                        drawCircle(c.copy(alpha = .75f), radius = size.minDimension * .29f, style = Stroke(1.5.dp.toPx()))
-                                        for (i in 0 until 48) {
-                                            val angle = i * Math.PI * 2 / 48
-                                            val r = size.minDimension * .45f
-                                            val p = Offset(center.x + kotlin.math.cos(angle).toFloat() * r,
-                                                center.y + kotlin.math.sin(angle).toFloat() * r)
-                                            drawCircle(c.copy(alpha = if (i % 4 == 0) .85f else .28f),
-                                                if (i % 4 == 0) 1.5.dp.toPx() else .7.dp.toPx(), p)
+                                        val r = size.minDimension * .46f
+                                        drawCircle(Brush.radialGradient(listOf(Color(0x553CE5FF), Color(0x1B25B9D8), Color.Transparent), center, r*1.4f), r*1.4f, center)
+                                        for (layer in 0..4) drawCircle(c.copy(alpha=.18f+layer*.06f), r*(1f-layer*.13f), center, style=Stroke(if(layer==0) 1.5.dp.toPx() else .8.dp.toPx()))
+                                        for (i in 0 until 72) {
+                                            val angle=i*Math.PI*2/72
+                                            val inner=r*.88f
+                                            val outer=r*if(i%6==0) 1.04f else .94f
+                                            drawLine(c.copy(alpha=if(i%6==0) .95f else .32f),
+                                                Offset(center.x+kotlin.math.cos(angle).toFloat()*inner,center.y+kotlin.math.sin(angle).toFloat()*inner),
+                                                Offset(center.x+kotlin.math.cos(angle).toFloat()*outer,center.y+kotlin.math.sin(angle).toFloat()*outer),
+                                                if(i%6==0) 1.5.dp.toPx() else .7.dp.toPx())
                                         }
                                     }
-                                    Text("J", color = Color(0xFF8CF3FF), fontSize = 54.sp, fontWeight = FontWeight.Light)
+                                    Text("J", color=Color(0xFFB4F7FF), fontSize=72.sp, fontWeight=FontWeight.ExtraLight)
                                 }
-                                Spacer(Modifier.height(22.dp))
-                                Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 17.sp,
-                                    letterSpacing = 4.sp, fontWeight = FontWeight.Light)
-                                Spacer(Modifier.height(8.dp))
-                                Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF5E9BA9),
-                                    fontSize = 8.sp, letterSpacing = 1.6.sp)
                                 Spacer(Modifier.height(14.dp))
-                                Text("I'm online. How may I assist?", color = Color(0xFFD7F7FF),
-                                    fontSize = 12.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                Spacer(Modifier.height(9.dp))
-                                Text("TYPE A MESSAGE OR USE VOICE", color = Color(0xFF397F8D),
-                                    fontSize = 7.sp, letterSpacing = 1.2.sp)
+                                Text("J.A.R.V.I.S.", color=Color(0xFFE8FCFF), fontSize=21.sp, letterSpacing=5.sp, fontWeight=FontWeight.Light)
+                                Spacer(Modifier.height(5.dp))
+                                Text("PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF65B9C9), fontSize=8.sp, letterSpacing=2.sp)
+                                Spacer(Modifier.height(10.dp))
+                                Text("All systems operational. How can I assist you today?", color=Color(0xFFD9F7FC), fontSize=11.sp, textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                                Spacer(Modifier.height(7.dp))
+                                Text("SELECT A MODULE OR ENTER A COMMAND", color=Color(0xFF4D8998), fontSize=7.sp, letterSpacing=1.sp)
+                                Spacer(Modifier.height(12.dp))
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                    listOf(Triple("⌘","GITHUB","MCP CONNECTED"), Triple("</>","CODING","CODE · DEBUG"), Triple("◈","PROJECT","BUILD · MANAGE"), Triple("✧","TOOLS","AI · AUTOMATION")).forEach { item ->
+                                        Column(Modifier.width(103.dp).height(66.dp).background(Brush.verticalGradient(listOf(Color(0xCC103342),Color(0xB9071A27))),RoundedCornerShape(9.dp)).border(1.dp,Color(0x7752DFF2),RoundedCornerShape(9.dp)).clickable {
+                                            command = when(item.second) {
+                                                "GITHUB" -> "Help me inspect my GitHub repository"
+                                                "CODING" -> "Help me write or debug code"
+                                                "PROJECT" -> "Help me plan and manage a project"
+                                                else -> "Show me the available JARVIS tools"
+                                            }
+                                            inputFocus.requestFocus()
+                                        }.padding(horizontal=8.dp,vertical=7.dp), verticalArrangement=Arrangement.SpaceBetween) {
+                                            Text(item.first,color=Cyan,fontSize=16.sp)
+                                            Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                                                Text(item.second,color=Color(0xFFE1F9FF),fontSize=8.sp,fontWeight=FontWeight.SemiBold,letterSpacing=.8.sp)
+                                                Text(item.third,color=Color(0xFF6EA9B7),fontSize=6.sp,letterSpacing=.3.sp)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         items(lines.size) { i ->
