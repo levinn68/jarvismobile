@@ -251,11 +251,11 @@ class MainActivity : ComponentActivity() {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) {
-                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 550)
+                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.postDelayed({ startListening() }, 550)
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        if (!geminiSpeechInProgress) handler.postDelayed({ startListening() }, 700)
+                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.postDelayed({ startListening() }, 700)
                     }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
@@ -264,14 +264,14 @@ class MainActivity : ComponentActivity() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             recognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING" }
+                override fun onReadyForSpeech(params: Bundle?) { if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
                 override fun onRmsChanged(rmsdB: Float) {
                     liveRms.value = rmsdB.coerceIn(0f, 16f)
                     if (voiceModeEnabled) clapDetector.onRms(rmsdB)
                 }
                 override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
+                override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
                     if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
@@ -282,15 +282,18 @@ class MainActivity : ComponentActivity() {
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
                         else -> "RECONNECTING VOICE CORE"
                     }
-                    if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) handler.postDelayed({ startListening() }, 900)
+                    if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS && voiceModeEnabled) handler.postDelayed({ startListening() }, 900)
                 }
                 override fun onResults(results: Bundle?) {
-                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                    val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
+                    val text = candidates.getOrNull(bestIndex).orEmpty()
                     if (text.isNotBlank()) {
                         recognitionLanguage = detectRecognitionLanguage(text)
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                    } else handler.postDelayed({ startListening() }, 600)
+                    } else if (voiceModeEnabled) handler.postDelayed({ startListening() }, 600)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
@@ -312,8 +315,8 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
-                    voiceStatus.value = if (voiceMode) "LISTENING" else "CHAT CONSOLE READY"
+                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel(); voiceStatus.value = "MIC OFF" }
+                    voiceStatus.value = if (voiceMode) "MICROPHONE STARTING" else "MIC OFF"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
@@ -532,7 +535,6 @@ class MainActivity : ComponentActivity() {
         }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
-            speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
@@ -1854,8 +1856,10 @@ private fun JarvisScreen(
             onConsumed()
             val wake = Regex("(?i)^jarvis[,.! ]*")
             val request = if (wake.containsMatchIn(heard)) heard.replaceFirst(wake, "").trim() else heard
-            if (request.isBlank() || request.equals("open", true)) {
-                onSpeak("Ya, saya mendengarkan. Silakan sebutkan perintahmu.")
+            if (request.isBlank()) {
+                onSpeak("Ya, Sir?")
+            } else if (request.equals("open", true) || request.equals("buka", true)) {
+                onSpeak("Aplikasi apa yang ingin dibuka?")
             } else {
                 send(request, voice = true)
             }
@@ -2094,12 +2098,13 @@ private fun JarvisScreen(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .weight(1f),
-                                contentAlignment = Alignment.Center
+                                    .weight(1f)
+                                    .animateContentSize(animationSpec = tween(420)),
+                                contentAlignment = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) Alignment.TopCenter else Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     VoiceHudReactor(
-                                        modifier = Modifier.size(if (compact) 170.dp else 210.dp),
+                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 142.dp else if (compact) 170.dp else 210.dp),
                                         phase = phase,
                                         spin = spin,
                                         breathe = breathe
@@ -2161,7 +2166,6 @@ private fun JarvisScreen(
                                         .border(1.dp, Cyan, CircleShape)
                                         .clickable {
                                             voiceListening = !voiceListening
-                                            if (voiceListening) onStartListening()
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -2338,7 +2342,7 @@ private fun JarvisScreen(
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = if (voiceListening) "LISTENING" else "TAP TO SPEAK",
+                                        text = if (voiceListening) "LISTENING" else "MIC OFF",
                                         color = Cyan,
                                         fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Bold,
