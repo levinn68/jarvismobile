@@ -1907,6 +1907,12 @@ private fun JarvisScreen(
             val request = heard.replaceFirst(wake, "").trim()
             if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
+                val readyReply = if (detectEnglishContent(heard)) {
+                    "Yes, Sir. J.A.R.V.I.S. is online and ready for your commands."
+                } else {
+                    "Siap, Sir. J.A.R.V.I.S. sudah aktif dan siap menerima perintah."
+                }
+                onSpeak(readyReply)
                 return@LaunchedEffect
             }
             if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby)$").matches(request)) {
