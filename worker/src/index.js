@@ -279,6 +279,16 @@ async function handleChat(body, env) {
   const events = [{ type: "classified", level, label: `Tingkat permintaan: ${level}` }];
   const visualKind = searchKind(prompt);
   let visualResults = [];
+  // Automatically attach one relevant illustration to substantive answers.
+  // Keep explicit product/image searches unchanged and make this best-effort only.
+  const wantsAutoIllustration = !visualKind && prompt.trim().length >= 12;
+  const illustrationPromise = wantsAutoIllustration && env.SERPAPI_API_KEY
+    ? serpApiSearch(env, "google_images", prompt.slice(0, 180), { limit: 1 })
+        .catch((error) => {
+          events.push({ type: "illustration_failed", label: "Ilustrasi tidak tersedia", detail: String(error.message || error).slice(0, 120) });
+          return { configured: true, results: [] };
+        })
+    : Promise.resolve({ configured: Boolean(env.SERPAPI_API_KEY), results: [] });
   if (visualKind) {
     if (!env.SERPAPI_API_KEY) {
       events.push({ type: "search_unconfigured", label: "Image/Product Search belum dikonfigurasi" });
@@ -364,7 +374,18 @@ async function handleChat(body, env) {
     }
   }
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
-  if (visualResults.length) finalAnswer = appendVisualResults(finalAnswer, visualKind, visualResults);
+  if (visualResults.length) {
+    finalAnswer = appendVisualResults(finalAnswer, visualKind, visualResults);
+  } else if (wantsAutoIllustration) {
+    const illustration = await illustrationPromise;
+    if (illustration.results.length) {
+      visualResults = illustration.results.slice(0, 1);
+      finalAnswer += "\n\n## Ilustrasi\n\n" +
+        `![Ilustrasi: ${visualResults[0].title || "Referensi visual"}](${visualResults[0].image})` +
+        (visualResults[0].page ? `\n\n[Sumber gambar](${visualResults[0].page})` : "");
+      events.push({ type: "illustration_added", count: 1, label: "Ilustrasi ditambahkan ke jawaban" });
+    }
+  }
 
   return json({
     ok: true,
