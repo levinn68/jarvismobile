@@ -650,7 +650,7 @@ private fun RemoteMarkdownImage(alt: String, url: String) {
     val context = LocalContext.current
     Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(11.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(11.dp)).padding(7.dp)) {
         AsyncImage(
-            model = ImageRequest.Builder(context).data(url).crossfade(true)
+            model = ImageRequest.Builder(context).data(url)
                 .memoryCacheKey(url).diskCacheKey(url).build(),
             contentDescription = alt.ifBlank { "Hasil gambar JARVIS" },
             modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 260.dp),
