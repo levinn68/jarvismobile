@@ -605,8 +605,10 @@ class MainActivity : ComponentActivity() {
             recognitionStartPending = false
             recognitionActive = false
             voiceStatus.value = "VOICE CORE RESTARTING"
-            if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
+            if (voiceModeEnabled) {
+                handler.removeCallbacks(listeningRestart)
                 handler.postDelayed(listeningRestart, 1000L)
+            }
         }
     }
 
@@ -1946,17 +1948,15 @@ private fun JarvisScreen(
             val request = heard.replaceFirst(wake, "").trim()
             if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
-                // Acknowledge activation once. Repeated short wake detections must not
-                // replace a real task with another generic "I'm ready" announcement.
-                if (!wakeAcknowledged) {
-                    wakeAcknowledged = true
-                    val readyReply = if (detectEnglishContent(heard)) {
-                        "Ready, Sir. I'm listening for your command."
-                    } else {
-                        "Siap, Sir. Saya sudah aktif dan siap menerima perintah."
-                    }
-                    onSpeak(readyReply)
+                // Every explicit wake-only activation gets an acknowledgement.
+                // Speech completion restarts the recognizer for the next command.
+                wakeAcknowledged = true
+                val readyReply = if (detectEnglishContent(heard)) {
+                    "Ready, Sir. I'm listening for your command."
+                } else {
+                    "Siap, Sir. Saya sudah aktif dan siap menerima perintah."
                 }
+                onSpeak(readyReply)
                 return@LaunchedEffect
             }
             wakeAcknowledged = true
