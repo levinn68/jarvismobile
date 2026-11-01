@@ -275,69 +275,17 @@ class MainActivity : ComponentActivity() {
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) {
-                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.postDelayed({ startListening() }, 550)
+                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.post { restartListeningSession() }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.postDelayed({ startListening() }, 700)
+                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.post { restartListeningSession() }
                     }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
             }
         }
-        if (SpeechRecognizer.isRecognitionAvailable(this)) {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(this)
-            recognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { recognitionStartPending = false; recognitionActive = true; if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
-                override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
-                override fun onRmsChanged(rmsdB: Float) {
-                    liveRms.value = rmsdB.coerceIn(0f, 16f)
-                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
-                }
-                override fun onBufferReceived(buffer: ByteArray?) {}
-                override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
-                override fun onError(error: Int) {
-                    recognitionActive = false
-                    recognitionStartPending = false
-                    if (geminiSpeechInProgress || clapActivationInProgress) return
-                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-                        voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
-                        return
-                    }
-                    // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
-                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · RECONNECTING" else "MIC OFF"
-                    if (voiceModeEnabled) {
-                        handler.removeCallbacks(listeningRestart)
-                        handler.postDelayed(listeningRestart, if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 300L else 850L)
-                    }
-                }
-                override fun onResults(results: Bundle?) {
-                    recognitionActive = false
-                    recognitionStartPending = false
-                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
-                    val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
-                    val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
-                    val text = candidates.getOrNull(bestIndex).orEmpty()
-                    if (text.isNotBlank()) {
-                        recognitionLanguage = detectRecognitionLanguage(text)
-                        voiceText.value = text
-                        voiceStatus.value = "COMMAND RECEIVED"
-                        // Do not reopen the microphone here. Compose first routes the transcript:
-                        // wake-only -> speak confirmation; command -> execute; no wake -> resume listening.
-                    } else if (voiceModeEnabled) {
-                        handler.removeCallbacks(listeningRestart)
-                        handler.postDelayed(listeningRestart, 300L)
-                    }
-                }
-                override fun onPartialResults(partialResults: Bundle?) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                    if (partial.isNotBlank()) {
-                        voiceStatus.value = "HEARING: ${partial.take(28)}"
-                    }
-                }
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
-        } else voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"
+        createSpeechRecognizer()
 
         setContent {
             JarvisScreen(
@@ -529,7 +477,7 @@ class MainActivity : ComponentActivity() {
                                 it.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                handler.postDelayed({ startListening() }, 450)
+                                handler.post { restartListeningSession() }
                             }
                             setOnErrorListener { player, _, _ ->
                                 player.release()
@@ -578,6 +526,83 @@ class MainActivity : ComponentActivity() {
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
     }
 
+    private fun createSpeechRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"
+            recognizer = null
+            return
+        }
+        recognizer?.destroy()
+        recognizer = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer?.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { recognitionStartPending = false; recognitionActive = true; if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
+                override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
+                override fun onRmsChanged(rmsdB: Float) {
+                    liveRms.value = rmsdB.coerceIn(0f, 16f)
+                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
+                }
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
+                override fun onError(error: Int) {
+                    recognitionActive = false
+                    recognitionStartPending = false
+                    if (geminiSpeechInProgress || clapActivationInProgress) return
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
+                        return
+                    }
+                    // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
+                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · RECONNECTING" else "MIC OFF"
+                    if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 300L else 850L)
+                    }
+                }
+                override fun onResults(results: Bundle?) {
+                    recognitionActive = false
+                    recognitionStartPending = false
+                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                    val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
+                    val text = candidates.getOrNull(bestIndex).orEmpty()
+                    if (text.isNotBlank()) {
+                        recognitionLanguage = detectRecognitionLanguage(text)
+                        voiceText.value = text
+                        voiceStatus.value = "COMMAND RECEIVED"
+                        // Do not reopen the microphone here. Compose first routes the transcript:
+                        // wake-only -> speak confirmation; command -> execute; no wake -> resume listening.
+                    } else if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, 300L)
+                    }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    if (partial.isNotBlank()) {
+                        voiceStatus.value = "HEARING: ${partial.take(28)}"
+                    }
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {})
+    }
+
+    private fun restartListeningSession() {
+        handler.removeCallbacks(listeningRestart)
+        recognitionActive = false
+        recognitionStartPending = false
+        if (!voiceModeEnabled || geminiSpeechInProgress || isFinishing || isDestroyed) return
+        voiceStatus.value = "RECONNECTING VOICE CORE"
+        runCatching {
+            recognizer?.cancel()
+            recognizer?.destroy()
+            recognizer = null
+            createSpeechRecognizer()
+        }.onFailure {
+            voiceStatus.value = "VOICE CORE RESTARTING"
+        }
+        handler.postDelayed({
+            if (voiceModeEnabled && !geminiSpeechInProgress) startListening()
+        }, 650L)
+    }
     private fun startListening() {
         clapActivationInProgress = false
         if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress || recognitionActive || recognitionStartPending) return
@@ -592,7 +617,7 @@ class MainActivity : ComponentActivity() {
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
             recognitionStartPending = true
-            voiceStatus.value = "LISTENING"
+            voiceStatus.value = "CONNECTING MICROPHONE"
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
@@ -675,7 +700,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (recognizer != null && voiceModeEnabled && !recognitionActive && !recognitionStartPending && !geminiSpeechInProgress) {
-            handler.postDelayed({ startListening() }, 500)
+            handler.postDelayed({ restartListeningSession() }, 500)
         }
     }
     override fun onDestroy() {
