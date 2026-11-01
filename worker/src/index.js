@@ -389,6 +389,7 @@ async function handleChat(body, env) {
 
   return json({
     ok: true,
+    success: true,
     level,
     aiCount: new Set(discussion.map((d) => d.agent)).size,
     rounds: plan.maxRounds,
@@ -397,6 +398,9 @@ async function handleChat(body, env) {
     events,
     discussion,
     answer: finalAnswer,
+    reply: finalAnswer,
+    response: finalAnswer,
+    message: finalAnswer,
     visuals: { kind: visualKind || null, results: visualResults },
   });
 }
@@ -463,7 +467,9 @@ export default {
         const body = await request.json();
         return await handleChat(body, env);
       } catch (error) {
-        return json({ error: "Internal JARVIS error", detail: String(error.message || error).slice(0, 200) }, 500);
+        const detail = String(error.message || error).slice(0, 200);
+        const reply = "Maaf, terjadi gangguan pada server pemrosesan JARVIS.";
+        return json({ ok: false, success: false, error: "Internal JARVIS error", detail, reply, response: reply, message: reply }, 500);
       }
     }
     return json({ error: "Not found" }, 404);
