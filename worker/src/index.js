@@ -451,8 +451,12 @@ async function handleChat(body, env) {
     const additional = commonsPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")");
     uniqueImages = [...new Set([...uniqueImages, ...additional])].slice(0, 4);
   }
-  // Route image bytes through the Worker so Android does not hit marketplace
-  // hotlink/CORS restrictions. The original URL is retained as the proxy target.
+  // Remove unverified model-authored image Markdown completely. Only the
+  // verified page previews and dedicated image-search results are reinserted.
+  finalAnswer = String(finalAnswer || "").replace(imagePattern, "").trim();
+
+  // Route verified image bytes through the Worker so Android does not hit
+  // marketplace hotlink/CORS restrictions.
   finalAnswer = String(finalAnswer || "").replace(imagePattern, (whole, alt, imageUrl) => {
     const proxyUrl = new URL("/v1/image", "https://jarvis-api.alvinorasya1304.workers.dev");
     proxyUrl.searchParams.set("url", imageUrl);
