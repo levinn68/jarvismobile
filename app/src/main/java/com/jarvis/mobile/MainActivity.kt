@@ -47,40 +47,31 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.SettingsVoice
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -88,6 +79,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -112,28 +104,42 @@ import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.launch
-import androidx.compose.ui.draw.clip
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.GraphicEq
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-private val Background = Color(0xFF05070C)
-private val Panel = Color(0xFF101820)
-private val Cyan = Color(0xFF5CEBFF)
-private val TextMuted = Color(0xFF8EA6B2)
-private val Ice = Color(0xFFF3FBFF)
+// --- SCI-FI HUD PALETTE ---
+private val Background = Color(0xFF040911)
+private val DeepCard = Color(0xFF081421)
+private val Panel = Color(0xFF0B1A2A)
+private val Cyan = Color(0xFF00E5FF)
+private val CyanGlow = Color(0xFF26F0FF)
+private val CyanBorder = Color(0xFF145674)
+private val TextMuted = Color(0xFF7B9EB2)
+private val Ice = Color(0xFFECF9FF)
 private val WarnAmber = Color(0xFFFFC56A)
-private val AlertRed = Color(0xFFFF6B78)
-private val OkGreen = Color(0xFF3EE0A2)
-private val Glass = Color(0xF20B1118)
-private val HudShape = RoundedCornerShape(18.dp)
+private val AlertRed = Color(0xFFFF5E6E)
+private val OkGreen = Color(0xFF00F59B)
+private val Glass = Color(0xE6081420)
+private val HudShape = RoundedCornerShape(16.dp)
+private val CardShape = RoundedCornerShape(14.dp)
 
-/**
- * Lightweight clap-pattern detector fed by SpeechRecognizer's live RMS callback.
- * A single clap fires after the double-clap window; two distinct spikes fire immediately.
- * Threshold follows the room's quiet baseline to reduce triggers from steady background noise.
- */
+data class VisualProduct(
+    val title: String,
+    val image: String,
+    val price: String,
+    val source: String,
+    val rating: String,
+    val reviews: String,
+    val link: String,
+    val badge: String = "Rekomendasi"
+)
+
+data class ChatResponsePayload(
+    val answer: String,
+    val products: List<VisualProduct> = emptyList(),
+    val images: List<Pair<String, String>> = emptyList()
+)
+
 private class ClapPatternDetector(
     private val handler: Handler,
     private val onDetected: (Int) -> Unit
@@ -210,6 +216,7 @@ class MainActivity : ComponentActivity() {
     private val handler = Handler(Looper.getMainLooper())
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
+    private val liveRms = mutableStateOf(2f)
     private var permissionAsked = false
     @Volatile private var clapActivationInProgress = false
     private val clapDetector by lazy {
@@ -226,10 +233,8 @@ class MainActivity : ComponentActivity() {
     }
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
-    private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
     private var voiceModeEnabled = false
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
-    private val geminiKey get() = prefs.getString("gemini_api_key", "").orEmpty()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -240,8 +245,8 @@ class MainActivity : ComponentActivity() {
                 val voices = tts?.voices.orEmpty()
                 val indoVoice = voices.firstOrNull { it.locale.toLanguageTag().equals("id-ID", true) }
                 if (indoVoice != null) tts?.voice = indoVoice else tts?.language = Locale("id", "ID")
-                tts?.setSpeechRate(0.86f)
-                tts?.setPitch(0.78f)
+                tts?.setSpeechRate(0.88f)
+                tts?.setPitch(0.80f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
                     override fun onDone(utteranceId: String?) {
@@ -258,15 +263,18 @@ class MainActivity : ComponentActivity() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             recognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING · SPEAK NOW" }
-                override fun onBeginningOfSpeech() { voiceStatus.value = "HEARING YOUR VOICE" }
-                override fun onRmsChanged(rmsdB: Float) { if (voiceModeEnabled) clapDetector.onRms(rmsdB) }
+                override fun onReadyForSpeech(params: Bundle?) { voiceStatus.value = "LISTENING" }
+                override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
+                override fun onRmsChanged(rmsdB: Float) {
+                    liveRms.value = rmsdB.coerceIn(0f, 16f)
+                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
+                }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
                     if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "DIDN'T CATCH THAT · TRY AGAIN"
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "LISTENING · STANDBY"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
                         else -> "RECONNECTING VOICE CORE"
                     }
@@ -279,7 +287,12 @@ class MainActivity : ComponentActivity() {
                         voiceStatus.value = "COMMAND RECEIVED"
                     } else handler.postDelayed({ startListening() }, 600)
                 }
-                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    if (partial.isNotBlank()) {
+                        voiceStatus.value = "HEARING: ${partial.take(28)}"
+                    }
+                }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
             })
         } else voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"
@@ -288,31 +301,29 @@ class MainActivity : ComponentActivity() {
             JarvisScreen(
                 recognizedText = voiceText.value,
                 status = voiceStatus.value,
+                rmsLevel = liveRms.value,
                 onConsumed = { voiceText.value = "" },
                 onSpeak = { speak(it) },
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
                     if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
-                    voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
+                    voiceStatus.value = if (voiceMode) "LISTENING" else "CHAT CONSOLE READY"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
-                geminiConfigured = { true },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
-                onOpenApp = { q -> openRequestedApp(q) },
-                onInstalledApps = { installedAppNames() }
+                onOpenApp = { q -> openRequestedApp(q) }
             )
         }
     }
 
-
-    private fun askGemini(prompt: String, callback: (String) -> Unit): () -> Unit {
+    private fun askGemini(prompt: String, callback: (ChatResponsePayload) -> Unit): () -> Unit {
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
         Thread {
             var connection: HttpURLConnection? = null
-            val result = try {
+            val payload = try {
                 val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
                 connection = endpoint.openConnection() as HttpURLConnection
                 activeConnection.set(connection)
@@ -330,7 +341,6 @@ class MainActivity : ComponentActivity() {
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                 if (stream == null) throw IllegalStateException("Server tidak mengirim response body.")
-                // Bound response memory to protect lower-memory Android devices from oversized AI payloads.
                 val rawBytes = stream.use { input ->
                     val output = java.io.ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
@@ -352,19 +362,51 @@ class MainActivity : ComponentActivity() {
                         val item = diagnostics.optJSONObject(i) ?: return@mapNotNull null
                         item.optString("provider") + ": " + item.optString("detail", item.optString("status"))
                     }.joinToString("\n") else ""
-                    json.optString("error").ifBlank { "JARVIS API error ($code)." } +
+                    val errText = json.optString("error").ifBlank { "JARVIS API error ($code)." } +
                         if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
+                    ChatResponsePayload(errText)
                 } else {
-                    json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
+                    val answer = json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
+                    val visualsObj = json.optJSONObject("visuals")
+                    val kind = visualsObj?.optString("kind").orEmpty()
+                    val resultsArr = visualsObj?.optJSONArray("results")
+                    val parsedProducts = mutableListOf<VisualProduct>()
+                    val parsedImages = mutableListOf<Pair<String, String>>()
+                    if (resultsArr != null) {
+                        val badges = listOf("Terlaris", "Rekomendasi", "Murah", "Pilihan", "Top")
+                        for (i in 0 until resultsArr.length()) {
+                            val item = resultsArr.optJSONObject(i) ?: continue
+                            if (kind == "products" || item.has("price")) {
+                                parsedProducts.add(
+                                    VisualProduct(
+                                        title = item.optString("title", "Produk"),
+                                        image = item.optString("image", ""),
+                                        price = item.optString("price", "Cek Harga"),
+                                        source = item.optString("source", "Toko Online"),
+                                        rating = item.optDouble("rating", 4.8).let { if (it.isNaN() || it <= 0.0) "4.8" else String.format(Locale.US, "%.1f", it) },
+                                        reviews = item.optInt("reviews", 0).let { if (it > 0) "$it" else "100+" },
+                                        link = item.optString("link", ""),
+                                        badge = badges[i % badges.size]
+                                    )
+                                )
+                            } else {
+                                val img = item.optString("image", "")
+                                val title = item.optString("title", "Referensi Visual")
+                                if (img.isNotBlank()) parsedImages.add(title to img)
+                            }
+                        }
+                    }
+                    ChatResponsePayload(answer, parsedProducts, parsedImages)
                 }
             } catch (e: Exception) {
                 val message = e.message.orEmpty()
-                if (message.contains("Jawaban terlalu besar")) message
+                val err = if (message.contains("Jawaban terlalu besar")) message
                 else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
+                ChatResponsePayload(err)
             } finally {
                 connection?.disconnect()
             }
-            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(result) }
+            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(payload) }
         }.start()
         return {
             cancelled.set(true)
@@ -374,6 +416,14 @@ class MainActivity : ComponentActivity() {
 
     private fun speak(text: String) {
         if (text.isBlank()) return
+        val cleanSpeech = text.replace(Regex("```[\\s\\S]*?```"), " blok kode telah ditampilkan di layar. ")
+            .replace(Regex("!\\[[^]]*]\\([^)]*\\)"), "")
+            .replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "$1")
+            .replace(Regex("[#*|>`~_]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(550)
+        if (cleanSpeech.isBlank()) return
         geminiSpeechInProgress = true
         clapDetector.reset()
         tts?.stop()
@@ -387,7 +437,7 @@ class MainActivity : ComponentActivity() {
                 connection.readTimeout = 90000
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val body = JSONObject().put("text", text)
+                val body = JSONObject().put("text", cleanSpeech)
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 if (code !in 200..299) {
@@ -406,7 +456,7 @@ class MainActivity : ComponentActivity() {
                         speechPlayer = MediaPlayer().apply {
                             setDataSource(audioFile.absolutePath)
                             setOnPreparedListener {
-                                voiceStatus.value = "JARVIS MCU VOICE · SPEAKING"
+                                voiceStatus.value = "JARVIS SPEAKING"
                                 it.start()
                             }
                             setOnCompletionListener {
@@ -419,7 +469,7 @@ class MainActivity : ComponentActivity() {
                                 player.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                voiceStatus.value = "FISH AUDIO PLAYBACK ERROR"
+                                voiceStatus.value = "AUDIO PLAYBACK ERROR"
                                 handler.postDelayed({ startListening() }, 900)
                                 true
                             }
@@ -432,11 +482,10 @@ class MainActivity : ComponentActivity() {
                         voiceStatus.value = "VOICE PLAYBACK ERROR"
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 handler.post {
                     geminiSpeechInProgress = false
-                    voiceStatus.value = "FISH AUDIO ERROR · CHECK SERVER KEY"
-                    speakWithAndroid(text)
+                    speakWithAndroid(cleanSpeech)
                 }
             } finally {
                 connection?.disconnect()
@@ -485,17 +534,6 @@ class MainActivity : ComponentActivity() {
                 if (voiceModeEnabled) speak("Good day. JARVIS is online. I am listening.")
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
-    }
-
-    private fun installedAppNames(): List<String> {
-        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return try {
-            packageManager.queryIntentActivities(launcherIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                .mapNotNull { it.loadLabel(packageManager)?.toString()?.trim() }
-                .filter { it.isNotBlank() }
-                .distinct()
-                .sortedBy { it.lowercase(Locale.ROOT) }
-        } catch (_: Exception) { emptyList() }
     }
 
     private fun openRequestedApp(command: String): Boolean {
@@ -557,13 +595,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// --- MARKDOWN & STRUCTURED HUD WIDGET PARSER ---
 private sealed class MarkdownBlock {
     data class Heading(val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Code(val language: String, val text: String) : MarkdownBlock()
     data class Table(val rows: List<List<String>>) : MarkdownBlock()
     data class ImageBlock(val alt: String, val url: String) : MarkdownBlock()
-    data class Bullet(val text: String, val ordered: Boolean) : MarkdownBlock()
+    data class Bullet(val text: String, val ordered: Boolean, val index: Int = 1) : MarkdownBlock()
 }
 
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
@@ -577,9 +616,10 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
         line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
 
     var i = 0
+    var orderCounter = 1
     while (i < lines.size) {
         val line = lines[i]
-        if (line.isBlank()) { i++; continue }
+        if (line.isBlank()) { i++; orderCounter = 1; continue }
         val imageMatch = Regex("^\\s*!\\[([^]]*)]\\((https?://[^ )]+)\\)\\s*$").matchEntire(line)
         if (imageMatch != null) { blocks.add(MarkdownBlock.ImageBlock(imageMatch.groupValues[1], imageMatch.groupValues[2])); i++; continue }
         val heading = Regex("^\\s{0,3}(#{1,3})\\s+(.+)$").matchEntire(line)
@@ -587,6 +627,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
         if (heading != null) {
             blocks.add(MarkdownBlock.Heading(heading.groupValues[2].ifBlank { heading.groupValues[1] }))
             i++
+            orderCounter = 1
             continue
         }
         if (line.trimStart().startsWith("```")) {
@@ -621,9 +662,11 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
             blocks.add(MarkdownBlock.Table(rows.map { row -> row + List((columns - row.size).coerceAtLeast(0)) { "" } }))
             continue
         }
-        val bullet = Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)(.*)$").matchEntire(line)
+        val bullet = Regex("^\\s*(?:[-*+]\\s+|(\\d+)[.)]\\s+)(.*)$").matchEntire(line)
         if (bullet != null) {
-            blocks.add(MarkdownBlock.Bullet(bullet.groupValues[1], Regex("^\\s*\\d").containsMatchIn(line)))
+            val isOrd = bullet.groupValues[1].isNotEmpty()
+            val idx = bullet.groupValues[1].toIntOrNull() ?: orderCounter++
+            blocks.add(MarkdownBlock.Bullet(bullet.groupValues[2], isOrd, idx))
             i++
             continue
         }
@@ -641,7 +684,7 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
 }
 
 @Composable
-private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
+private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 13.5.sp) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
     val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
@@ -658,38 +701,162 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
             if (kind == "link" || kind == "url") {
                 val startOffset = length
                 val target = if (kind == "link") match.groupValues[2] else match.value
-                val label = if (kind == "link") match.groupValues[1] else runCatching { java.net.URI(target).host?.removePrefix("www.") ?: "Buka tautan" }.getOrDefault("Buka tautan")
-                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(label) }
+                val label = if (kind == "link") match.groupValues[1] else runCatching { java.net.URI(target).host?.removePrefix("www.") ?: "Lihat Produk" }.getOrDefault("Lihat Produk")
+                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold)) { append(label) }
                 addStringAnnotation("URL", target, startOffset, length)
-            } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
+            } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF3FCFF))) { append(match.groupValues[1]) }
             cursor = match.range.last + 1
         }
         if (cursor < clean.length) append(clean.substring(cursor))
     }
-    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = fontSize, lineHeight = if (fontSize.value >= 14f) 23.sp else 16.sp), onClick = { offset ->
-        annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
-    })
+    ClickableText(
+        text = annotated,
+        style = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = fontSize, lineHeight = if (fontSize.value >= 13f) 20.sp else 16.sp),
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
+        }
+    )
 }
 
 @Composable
 private fun RemoteMarkdownImage(alt: String, url: String) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxWidth().clip(HudShape).background(Color(0xFF0C141C)).border(1.dp, Cyan.copy(alpha = .22f), HudShape)) {
-        AsyncImage(
-            model = ImageRequest.Builder(context).data(url)
-                .memoryCacheKey(url).diskCacheKey(url).build(),
-            contentDescription = alt.ifBlank { "Hasil gambar JARVIS" },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp, max = 240.dp),
-            contentScale = androidx.compose.ui.layout.ContentScale.Crop
-        )
-        if (alt.isNotBlank()) Text(alt, color = TextMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+    val uriHandler = LocalUriHandler.current
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Color(0xFF06101B))
+            .border(1.dp, Cyan.copy(alpha = .32f), CardShape)
+    ) {
+        Column {
+            AsyncImage(
+                model = ImageRequest.Builder(context).data(url)
+                    .memoryCacheKey(url).diskCacheKey(url).build(),
+                contentDescription = alt.ifBlank { "Hasil gambar JARVIS" },
+                modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 230.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+            if (alt.isNotBlank()) {
+                Text(alt, color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+            }
+        }
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .size(28.dp)
+                .clip(RoundedCornerShape(7.dp))
+                .background(Color(0xB3040B14))
+                .border(1.dp, Cyan.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
+                .clickable { runCatching { uriHandler.openUri(url) } },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.OpenInFull, contentDescription = "Buka gambar", tint = Cyan, modifier = Modifier.size(14.dp))
+        }
     }
 }
+
 @Composable
-private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextUnit = 10.sp) {
+private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextUnit = 10.5.sp) {
     val image = Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(value)
     if (image != null) RemoteMarkdownImage(image.groupValues[1], image.groupValues[2])
     else InlineMarkdownText(value, fontSize)
+}
+
+@Composable
+private fun ProductCarouselCards(products: List<VisualProduct>) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(products) { item ->
+            Column(
+                modifier = Modifier
+                    .width(172.dp)
+                    .clip(CardShape)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0A1B2E), Color(0xFF06111D))))
+                    .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(106.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF040B14))
+                ) {
+                    if (item.image.isNotBlank()) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context).data(item.image)
+                                .memoryCacheKey(item.image).diskCacheKey(item.image).build(),
+                            contentDescription = item.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ShoppingBag, null, tint = Cyan.copy(alpha = 0.4f), modifier = Modifier.size(32.dp))
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xD9050E1A))
+                            .border(0.7.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(item.badge, color = Ice, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Text(
+                    text = item.title,
+                    color = Ice,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    minLines = 2,
+                    lineHeight = 15.sp,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.price,
+                    color = Cyan,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Storefront, null, tint = OkGreen, modifier = Modifier.size(12.dp))
+                    Text(item.source.take(18), color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("★", color = WarnAmber, fontSize = 11.sp)
+                    Text("${item.rating} (${item.reviews})", color = TextMuted, fontSize = 10.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF0A2236))
+                        .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                        .clickable { if (item.link.isNotBlank()) runCatching { uriHandler.openUri(item.link) } }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.OpenInNew, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                        Text("Lihat Produk", color = Ice, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -697,64 +864,145 @@ private fun MarkdownTable(rows: List<List<String>>) {
     if (rows.isEmpty()) return
     val headers = rows.first()
     val dataRows = rows.drop(1)
-    val productLike = headers.size >= 4
+    val productLike = headers.size >= 4 && headers.any { it.contains("harga", true) || it.contains("produk", true) || it.contains("toko", true) }
+    val vsComparison = headers.size == 3 && !productLike
+
     if (productLike) {
-        Column(Modifier.fillMaxWidth(), verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-                Text("Pilihan", color=Cyan, fontSize=12.sp, fontWeight=FontWeight.SemiBold)
-                Spacer(Modifier.weight(1f))
-                Text("${dataRows.size} hasil  ·  geser", color=TextMuted, fontSize=11.sp)
+        val extracted = dataRows.mapIndexed { idx, row ->
+            val title = row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), "").trim()
+            val imgMatch = row.firstNotNullOfOrNull { Regex("!\\[[^]]*]\\((https?://[^ )]+)\\)").find(it) }
+            val priceIdx = headers.indexOfFirst { it.contains("harga", true) || it.contains("price", true) }
+            val storeIdx = headers.indexOfFirst { it.contains("toko", true) || it.contains("rating", true) || it.contains("detail", true) }
+            val linkMatch = row.firstNotNullOfOrNull { Regex("\\[[^]]+]\\((https?://[^ )]+)\\)").find(it) }
+            val badges = listOf("Terlaris", "Rekomendasi", "Murah", "Pilihan")
+            VisualProduct(
+                title = title.ifBlank { "Produk ${idx + 1}" },
+                image = imgMatch?.groupValues?.getOrNull(1).orEmpty(),
+                price = if (priceIdx >= 0) row.getOrNull(priceIdx).orEmpty().replace("**", "") else "",
+                source = if (storeIdx >= 0) row.getOrNull(storeIdx).orEmpty().substringBefore("·").trim() else "Marketplace",
+                rating = "4.8",
+                reviews = "1rb+",
+                link = linkMatch?.groupValues?.getOrNull(1).orEmpty(),
+                badge = badges[idx % badges.size]
+            )
+        }
+        ProductCarouselCards(extracted)
+    } else if (vsComparison) {
+        // Spec VS Comparison Table like in reference image
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(Color(0xFF071422))
+                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0C2238))
+                    .padding(vertical = 8.dp, horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    headers.getOrNull(1).orEmpty().replace("**", ""),
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF071626))
+                        .border(1.dp, Cyan, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("VS", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                Text(
+                    headers.getOrNull(2).orEmpty().replace("**", ""),
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-                dataRows.forEachIndexed { index, row ->
-                    val title=row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), "")
-                    val cells=row.drop(1)
-                    val imageCell=cells.firstOrNull { Regex("!\\[[^]]*]\\(https?://").containsMatchIn(it) }
-                    val priceIndex=headers.indexOfFirst { it.contains("harga",true) || it.contains("price",true) }
-                    val detailIndex=headers.indexOfFirst { it.contains("detail",true) || it.contains("deskripsi",true) }
-                    val linkIndex=headers.indexOfFirst { it.contains("link",true) || it.contains("url",true) }
-                    val price=if(priceIndex>0) row.getOrNull(priceIndex).orEmpty() else ""
-                    val detail=if(detailIndex>0) row.getOrNull(detailIndex).orEmpty() else ""
-                    val link=if(linkIndex>0) row.getOrNull(linkIndex).orEmpty() else ""
-                    Column(Modifier.width(258.dp).background(Color(0xFF07141C),HudShape)
-                        .border(1.dp,Color(0x6648BFD4),HudShape).padding(10.dp),
-                        verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text("0${index+1}  /  ${dataRows.size.toString().padStart(2,'0')}",color=Color(0xFF62C8DA),
-                            fontSize=7.sp,letterSpacing=1.1.sp)
-                        Text(title,color=Color(0xFFEAFBFF),fontSize=12.sp,lineHeight=17.sp,
-                            fontWeight=FontWeight.SemiBold,minLines=2,maxLines=2)
-                        if(imageCell!=null) {
-                            val match=Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(imageCell)
-                            if(match!=null) {
-                                val context=LocalContext.current
-                                AsyncImage(model=ImageRequest.Builder(context).data(match.groupValues[2])
-                                    .memoryCacheKey(match.groupValues[2]).diskCacheKey(match.groupValues[2]).build(),
-                                    contentDescription=match.groupValues[1],
-                                    modifier=Modifier.fillMaxWidth().height(148.dp).clip(HudShape).background(Color(0xFF041018)),
-                                    contentScale=androidx.compose.ui.layout.ContentScale.Fit)
+            dataRows.forEachIndexed { idx, r ->
+                val isPrice = r.getOrNull(0).orEmpty().contains("harga", true)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (idx % 2 == 0) Color(0xFF081828) else Color.Transparent, RoundedCornerShape(6.dp))
+                        .padding(vertical = 6.dp, horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        r.getOrNull(0).orEmpty().replace("**", ""),
+                        color = TextMuted,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(0.75f)
+                    )
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (isPrice) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(OkGreen.copy(alpha = 0.16f))
+                                    .border(1.dp, OkGreen.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(r.getOrNull(1).orEmpty().replace("**", ""), color = OkGreen, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                             }
+                        } else {
+                            MarkdownCell(r.getOrNull(1).orEmpty(), 10.5.sp)
                         }
-                        if(price.isNotBlank()) Text(price.replace(Regex("\\*\\*"), ""),color=Color(0xFF8DEBFA),
-                            fontSize=16.sp,fontWeight=FontWeight.Bold)
-                        if(detail.isNotBlank()) Text(detail.replace(Regex("\\*\\*"), "").take(105),
-                            color=Color(0xFFAAC5CE),fontSize=10.sp,lineHeight=14.sp,maxLines=3)
-                        Spacer(Modifier.weight(1f))
-                        if(link.isNotBlank()) MarkdownCell(link,10.sp)
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (isPrice) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(WarnAmber.copy(alpha = 0.16f))
+                                    .border(1.dp, WarnAmber.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(r.getOrNull(2).orEmpty().replace("**", ""), color = WarnAmber, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            MarkdownCell(r.getOrNull(2).orEmpty(), 10.5.sp)
+                        }
                     }
                 }
             }
         }
     } else {
-        Column(Modifier.fillMaxWidth().background(Color(0xFF07131C), HudShape)
-            .border(1.dp, Color(0x6652DFF2), HudShape).padding(5.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(Color(0xFF07131E))
+                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                .padding(6.dp)
+        ) {
             rows.forEachIndexed { ri, row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { cell ->
-                        Box(Modifier.weight(1f).heightIn(min=31.dp)
-                            .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
-                            .border(.4.dp,Color(0x3349B8CB)).padding(5.dp)) {
-                            MarkdownCell(cell, 9.sp)
+                        Box(
+                            Modifier
+                                .weight(1f)                                .heightIn(min = 32.dp)
+                                .background(if (ri == 0) Color(0xFF0E2C42) else Color.Transparent)
+                                .border(0.5.dp, Color(0x3349B8CB))
+                                .padding(6.dp)
+                        ) {
+                            MarkdownCell(cell, if (ri == 0) 10.5.sp else 10.sp)
                         }
                     }
                 }
@@ -764,38 +1012,238 @@ private fun MarkdownTable(rows: List<List<String>>) {
 }
 
 @Composable
-private fun RichMessageText(markdown: String) {
+private fun CodeBlockHudCard(language: String, code: String) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    val lines = code.lines()
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Color(0xFF060E18))
+            .border(1.dp, Cyan.copy(alpha = .38f), CardShape)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0B1C2E))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Default.Code, null, tint = Cyan, modifier = Modifier.size(15.dp))
+                Text(
+                    text = if (language.isNotBlank()) "Kode (${language.lowercase()})" else "Kode Program",
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF102A42))
+                    .border(1.dp, Cyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .clickable {
+                        clipboard.setText(AnnotatedString(code))
+                        copied = true
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                Text(if (copied) "Tersalin" else "Salin", color = Ice, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(12.dp)
+        ) {
+            Column(Modifier.padding(end = 10.dp), horizontalAlignment = Alignment.End) {
+                lines.forEachIndexed { idx, _ ->
+                    Text(
+                        text = "${idx + 1}",
+                        color = TextMuted.copy(alpha = 0.5f),
+                        fontSize = 11.5.sp,
+                        lineHeight = 18.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            SelectionContainer {
+                Text(
+                    text = code,
+                    color = Color(0xFFD6F4FF),
+                    fontSize = 11.5.sp,
+                    lineHeight = 18.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+private data class StructuredSection(
+    val title: String?,
+    val blocks: List<MarkdownBlock>
+)
+
+private fun groupBlocksIntoSections(blocks: List<MarkdownBlock>): List<StructuredSection> {
+    if (blocks.isEmpty()) return emptyList()
+    val sections = mutableListOf<StructuredSection>()
+    var currentTitle: String? = null
+    var currentList = mutableListOf<MarkdownBlock>()
+
+    for (b in blocks) {
+        if (b is MarkdownBlock.Heading) {
+            if (currentTitle != null || currentList.isNotEmpty()) {
+                sections.add(StructuredSection(currentTitle, currentList.toList()))
+                currentList = mutableListOf()
+            }
+            currentTitle = b.text
+        } else {
+            currentList.add(b)
+        }
+    }
+    if (currentTitle != null || currentList.isNotEmpty()) {
+        sections.add(StructuredSection(currentTitle, currentList.toList()))
+    }
+    return sections
+}
+
+@Composable
+private fun SectionIconForTitle(title: String): Pair<ImageVector, Color> {
+    val low = title.lowercase(Locale.ROOT)
+    return when {
+        low.contains("kesimpulan") || low.contains("ringkasan") || low.contains("rangkuman") -> Icons.Default.CheckCircle to OkGreen
+        low.contains("tips") || low.contains("saran") || low.contains("catatan") -> Icons.Default.Lightbulb to WarnAmber
+        low.contains("mind map") || low.contains("konsep") || low.contains("struktur") -> Icons.Default.AccountTree to Color(0xFFFF6B9D)
+        low.contains("soal") || low.contains("latihan") || low.contains("kuis") -> Icons.Default.Quiz to Cyan
+        low.contains("biaya") || low.contains("anggaran") || low.contains("harga") || low.contains("keuangan") -> Icons.Default.PieChart to WarnAmber
+        low.contains("itinerary") || low.contains("hari") || low.contains("jadwal") || low.contains("travel") -> Icons.Default.FlightTakeoff to Cyan
+        low.contains("kode") || low.contains("tampilan") || low.contains("preview") -> Icons.Default.Terminal to Cyan
+        low.contains("analisis") || low.contains("gambar") || low.contains("produk") -> Icons.Default.AutoAwesome to Cyan
+        else -> Icons.Default.DashboardCustomize to Cyan
+    }
+}
+
+@Composable
+private fun RichMessageText(
+    markdown: String,
+    products: List<VisualProduct> = emptyList(),
+    onQuickFollowUp: ((String) -> Unit)? = null
+) {
     val blocks = parseMarkdownBlocks(markdown)
     if (blocks.isEmpty() && markdown.isNotBlank()) {
-        InlineMarkdownText(markdown, 15.sp)
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(DeepCard)
+                .border(1.dp, Cyan.copy(alpha = 0.3f), CardShape)
+                .padding(12.dp)
+        ) {
+            InlineMarkdownText(markdown, 13.5.sp)
+        }
         return
     }
+
+    val sections = groupBlocksIntoSections(blocks)
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        blocks.forEach { block ->
-            when (block) {
-                is MarkdownBlock.Heading -> Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(3.dp).height(16.dp).clip(RoundedCornerShape(2.dp)).background(Cyan))
-                    Spacer(Modifier.width(8.dp))
-                    Text(block.text, color = Ice, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, lineHeight = 21.sp)
-                }
-                is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text, 15.sp)
-                is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
-                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Box(Modifier.padding(top = 8.dp).size(5.dp).background(Cyan, CircleShape))
-                    Box(Modifier.weight(1f)) { InlineMarkdownText(block.text, 15.sp) }
-                }
-                is MarkdownBlock.Code -> Column(
-                    Modifier.fillMaxWidth().clip(HudShape).background(Color(0xFF070C12)).border(1.dp, Cyan.copy(alpha = .18f), HudShape).padding(12.dp)
+        sections.forEachIndexed { idx, section ->
+            val isIntroOnly = idx == 0 && section.title == null && section.blocks.size == 1 && section.blocks.first() is MarkdownBlock.Paragraph
+            if (isIntroOnly) {
+                val p = (section.blocks.first() as MarkdownBlock.Paragraph).text
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0A1B2A))
+                        .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
-                    Text(block.language.ifBlank { "kode" }, color = Cyan, fontSize = 10.sp, letterSpacing = .6.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        SelectionContainer {
-                            Text(block.text, color = Color(0xFFD7EEF4), fontSize = 12.sp, lineHeight = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    InlineMarkdownText(p, 13.5.sp)
+                }
+            } else {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(CardShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF091726), Color(0xFF06101B))))
+                        .border(1.dp, Cyan.copy(alpha = 0.34f), CardShape)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (section.title != null) {
+                        val (icon, tint) = SectionIconForTitle(section.title)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = section.title,
+                                color = Ice,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Cyan.copy(alpha = 0.18f)))
+                    }
+                    section.blocks.forEach { block ->
+                        when (block) {
+                            is MarkdownBlock.Heading -> Text(block.text, color = Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text, 13.sp)
+                            is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
+                            is MarkdownBlock.Bullet -> Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                if (block.ordered) {
+                                    Text(
+                                        "${block.index}.",
+                                        color = Cyan,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 1.dp)
+                                    )
+                                } else {
+                                    Box(
+                                        Modifier
+                                            .padding(top = 7.dp)
+                                            .size(5.dp)
+                                            .background(Cyan, CircleShape)
+                                    )
+                                }
+                                Box(Modifier.weight(1f)) { InlineMarkdownText(block.text, 13.sp) }
+                            }
+                            is MarkdownBlock.Code -> CodeBlockHudCard(block.language, block.text)
+                            is MarkdownBlock.Table -> MarkdownTable(block.rows)
                         }
                     }
                 }
-                is MarkdownBlock.Table -> MarkdownTable(block.rows)
+            }
+        }
+
+        if (products.isNotEmpty() && blocks.none { it is MarkdownBlock.Table }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(CardShape)
+                    .background(Color(0xFF081523))
+                    .border(1.dp, Cyan.copy(alpha = 0.34f), CardShape)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.ShoppingBag, null, tint = Cyan, modifier = Modifier.size(16.dp))
+                    Text("Rekomendasi Produk Terkait", color = Ice, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                }
+                ProductCarouselCards(products)
             }
         }
     }
@@ -812,10 +1260,15 @@ private fun SourceLogo(url: String) {
             }.getOrNull()
         }
     }
-    Surface(onClick = { runCatching { uriHandler.openUri(url) } }, color = Color(0xFF102A36), shape = CircleShape, border = BorderStroke(1.dp, Color(0x6652DFF2))) {
-        Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
-            if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "Open source", modifier = Modifier.size(18.dp))
-            else Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(17.dp))
+    Surface(
+        onClick = { runCatching { uriHandler.openUri(url) } },
+        color = Color(0xFF0D2233),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, Cyan.copy(alpha = 0.4f))
+    ) {
+        Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+            if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "Open source", modifier = Modifier.size(16.dp))
+            else Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(15.dp))
         }
     }
 }
@@ -824,38 +1277,414 @@ private fun SourceLogo(url: String) {
 private fun SourceStrip(markdown: String) {
     val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(6).toList()
     if (links.isNotEmpty()) {
-        Spacer(Modifier.height(12.dp))
-        Text("Sumber", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(7.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { links.forEach { SourceLogo(it) } }
-    }
-}
-@Composable
-private fun HudTicks(modifier: Modifier = Modifier, color: Color = Cyan.copy(alpha = .72f)) {
-    Canvas(modifier) {
-        val arm = 9.dp.toPx()
-        val stroke = 1.15.dp.toPx()
-        val w = size.width
-        val h = size.height
-        drawLine(color, Offset(0f, arm), Offset(0f, 0f), stroke)
-        drawLine(color, Offset(0f, 0f), Offset(arm, 0f), stroke)
-        drawLine(color, Offset(w - arm, 0f), Offset(w, 0f), stroke)
-        drawLine(color, Offset(w, 0f), Offset(w, arm), stroke)
-        drawLine(color, Offset(0f, h - arm), Offset(0f, h), stroke)
-        drawLine(color, Offset(0f, h), Offset(arm, h), stroke)
-        drawLine(color, Offset(w - arm, h), Offset(w, h), stroke)
-        drawLine(color, Offset(w, h - arm), Offset(w, h), stroke)
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("SUMBER:", color = TextMuted, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+            links.forEach { SourceLogo(it) }
+        }
     }
 }
 
+@Composable
+private fun JarvisAvatarBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF081B2B))
+            .border(1.2.dp, Cyan, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(18.dp)) {
+            val c = center
+            val r = size.minDimension / 2f
+            drawCircle(Cyan.copy(alpha = 0.25f), r, c)
+            drawCircle(Cyan, r * 0.85f, c, style = Stroke(1.3.dp.toPx()))
+            drawCircle(Color.White, r * 0.28f, c)
+            for (i in 0 until 6) {
+                val a = i * 60f * (Math.PI / 180.0).toFloat()
+                drawLine(
+                    Cyan,
+                    Offset(c.x + kotlin.math.cos(a) * r * 0.45f, c.y + kotlin.math.sin(a) * r * 0.45f),
+                    Offset(c.x + kotlin.math.cos(a) * r * 0.8f, c.y + kotlin.math.sin(a) * r * 0.8f),
+                    1.dp.toPx()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserAvatarBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF0D2235))
+            .border(1.dp, Cyan.copy(alpha = 0.6f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Default.Person, contentDescription = "User", tint = Ice, modifier = Modifier.size(16.dp))
+    }
+}
+
+private data class CategoryTileData(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val prompt: String
+)
+
+@Composable
+private fun JarvisHomeDashboard(
+    compact: Boolean,
+    spin: Float,
+    breathe: Float,
+    onSelectPrompt: (String) -> Unit
+) {
+    val categories = remember {
+        listOf(
+            CategoryTileData("Teknologi", "(HP, Laptop, Gadget)", Icons.Default.Devices, "Bandingkan Samsung Galaxy A56 5G dengan Redmi Note 15 Pro 5G lengkap dengan tabel spesifikasi dan kesimpulan."),
+            CategoryTileData("Belajar", "(Materi, Rangkuman)", Icons.Default.MenuBook, "Rangkum materi Sistem Tata Surya, buat poin ciri-ciri & anggota, dan berikan 3 soal latihan."),
+            CategoryTileData("Produktivitas", "(To-Do, Rencana)", Icons.Default.TaskAlt, "Buatkan jadwal produktif harian untuk pelajar & developer dari pagi sampai malam beserta tips fokus."),
+            CategoryTileData("Kreativitas", "(Gambar, Desain, AI)", Icons.Default.Palette, "Carikan referensi gambar wallpaper cyberpunk futuristik resolusi tinggi dengan nuansa neon cyan."),
+            CategoryTileData("Coding", "(Kode, Debug, Project)", Icons.Default.Code, "Buatkan contoh kode HTML + CSS untuk halaman profil developer modern beserta penjelasan strukturnya."),
+            CategoryTileData("Hiburan", "(Film, Game, Musik)", Icons.Default.SportsEsports, "Rekomendasikan 5 game PC ringan terbaik untuk spek menengah beserta genre dan kelebihannya."),
+            CategoryTileData("Travel", "(Destinasi, Itinerary)", Icons.Default.Flight, "Buat itinerary 3 hari 2 malam di Bali untuk 2 orang, lengkap dengan tabel rincian estimasi biaya."),
+            CategoryTileData("Keuangan", "(Anggaran, Investasi)", Icons.Default.Savings, "Bantu buatkan rencana keuangan bulanan dengan metode 50/30/20 untuk anggaran Rp7.000.000 lengkap dengan tabel rincian dan tips."),
+            CategoryTileData("Lainnya", "(Tanya apa saja)", Icons.Default.AutoAwesome, "Jelaskan kemampuan utama sistem J.A.R.V.I.S. Mobile dan bagaimana cara memaksimalkan fitur suara serta chat.")
+        )
+    }
+
+    val quickCommands = remember {
+        listOf(
+            Triple(Icons.Default.Smartphone, "Cari rekomendasi HP 3 jutaan terbaik", "Carikan rekomendasi HP harga 3 jutaan terbaik untuk gaming dan kamera saat ini."),
+            Triple(Icons.Default.LaptopChromebook, "Bandingkan dua laptop coding", "Bandingkan dua laptop terbaik di kelas 8 jutaan untuk coding dan multitasking."),
+            Triple(Icons.Default.Map, "Buat itinerary liburan hemat", "Buatkan itinerary liburan 3 hari 2 malam ke Yogyakarta beserta estimasi anggaran.")
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Holographic J Core Orb
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (compact) 142.dp else 172.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HomeHeroOrb(
+                modifier = Modifier.size(if (compact) 136.dp else 164.dp),
+                spin = spin,
+                breathe = breathe
+            )
+        }
+
+        Text(
+            text = "GOOD DAY. I'M JARVIS.",
+            color = Ice,
+            fontSize = if (compact) 17.sp else 19.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 2.2.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = "Your personal intelligence system is ready.",
+            color = TextMuted,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        // 3x3 Category Grid
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            for (rowIndex in 0 until 3) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (colIndex in 0 until 3) {
+                        val item = categories[rowIndex * 3 + colIndex]
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Brush.verticalGradient(listOf(Color(0xFF0B1E32), Color(0xFF071220))))
+                                .border(1.dp, Cyan.copy(alpha = 0.36f), RoundedCornerShape(14.dp))
+                                .clickable { onSelectPrompt(item.prompt) }
+                                .padding(vertical = 10.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(Color(0xFF0E2942))
+                                    .border(0.8.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(9.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(item.icon, contentDescription = item.title, tint = Cyan, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = item.title,
+                                color = Ice,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = item.subtitle,
+                                color = TextMuted,
+                                fontSize = 8.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        // Indicator dots
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
+            Box(Modifier.size(5.dp).clip(CircleShape).background(Cyan.copy(alpha = 0.3f)))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Quick Commands Section
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text(
+                text = "Quick Commands",
+                color = Cyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp
+            )
+            quickCommands.forEach { (icon, label, prompt) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF081523))
+                        .border(1.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
+                        .clickable { onSelectPrompt(prompt) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(16.dp))
+                    Text(
+                        text = label,
+                        color = Ice,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeHeroOrb(modifier: Modifier, spin: Float, breathe: Float) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val min = size.minDimension
+            // Side equalizer wing ticks
+            for (side in listOf(-1, 1)) {
+                for (b in 1..6) {
+                    val x = c.x + side * (min * 0.42f + b * 7.dp.toPx())
+                    val barH = (if (b % 2 == 0) 14.dp else 8.dp).toPx() * breathe
+                    drawLine(
+                        Cyan.copy(alpha = (0.55f - b * 0.07f).coerceAtLeast(0.1f)),
+                        Offset(x, c.y - barH),
+                        Offset(x, c.y + barH),
+                        1.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+            // Outer glow
+            drawCircle(
+                Brush.radialGradient(listOf(Cyan.copy(alpha = 0.32f), Color.Transparent), c, min * 0.52f),
+                min * 0.5f * breathe,
+                c
+            )
+            // Outer dashed ring
+            drawCircle(Cyan.copy(alpha = 0.25f), min * 0.42f, c, style = Stroke(1.dp.toPx()))
+            val inset1 = min * 0.12f
+            drawArc(
+                Cyan.copy(alpha = 0.85f),
+                spin,
+                75f,
+                false,
+                topLeft = Offset(inset1, inset1),
+                size = Size(size.width - inset1 * 2, size.height - inset1 * 2),
+                style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawArc(
+                Cyan.copy(alpha = 0.85f),
+                spin + 180f,
+                75f,
+                false,
+                topLeft = Offset(inset1, inset1),
+                size = Size(size.width - inset1 * 2, size.height - inset1 * 2),
+                style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+            )
+            // Inner glowing ring
+            drawCircle(Color(0xFF071828), min * 0.27f, c)
+            drawCircle(Cyan, min * 0.27f, c, style = Stroke(2.dp.toPx()))
+            drawCircle(Cyan.copy(alpha = 0.4f), min * 0.23f, c, style = Stroke(1.dp.toPx()))
+        }
+        Text(
+            text = "J",
+            color = Ice,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif
+        )
+    }
+}
+
+@Composable
+private fun VoiceHudReactor(
+    modifier: Modifier,
+    phase: String,
+    spin: Float,
+    breathe: Float
+) {
+    val accent = when (phase) {
+        "THINK" -> WarnAmber
+        "SPEAK" -> Color(0xFF66F7FF)
+        else -> Cyan
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val min = size.minDimension
+            val pulse = if (phase == "IDLE") 1f else breathe
+
+            // Radial ambient glow
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.08f), Color.Transparent),
+                    c,
+                    min * 0.52f
+                ),
+                min * 0.50f * pulse,
+                c
+            )
+
+            // Outer tech degree ticks
+            val tickCount = 60
+            for (i in 0 until tickCount) {
+                val angle = (i * (360f / tickCount) + spin * 0.25f) * (Math.PI / 180.0).toFloat()
+                val major = i % 5 == 0
+                val rIn = min * (if (major) 0.44f else 0.455f)
+                val rOut = min * 0.48f
+                drawLine(
+                    accent.copy(alpha = if (major) 0.65f else 0.22f),
+                    Offset(c.x + kotlin.math.cos(angle) * rIn, c.y + kotlin.math.sin(angle) * rIn),
+                    Offset(c.x + kotlin.math.cos(angle) * rOut, c.y + kotlin.math.sin(angle) * rOut),
+                    strokeWidth = if (major) 1.6.dp.toPx() else 0.9.dp.toPx()
+                )
+            }
+
+            // Ring 1 (Outer segmented arcs)
+            val r1 = min * 0.08f
+            for (k in 0 until 4) {
+                drawArc(
+                    accent.copy(alpha = 0.85f),
+                    startAngle = spin + k * 90f,
+                    sweepAngle = 52f,
+                    useCenter = false,
+                    topLeft = Offset(r1, r1),
+                    size = Size(size.width - r1 * 2, size.height - r1 * 2),
+                    style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            // Ring 2 (Counter-rotating HUD ring)
+            val r2 = min * 0.16f
+            drawCircle(accent.copy(alpha = 0.25f), min * 0.34f, c, style = Stroke(1.dp.toPx()))
+            for (k in 0 until 3) {
+                drawArc(
+                    accent.copy(alpha = 0.65f),
+                    startAngle = -spin * 1.2f + k * 120f,
+                    sweepAngle = 68f,
+                    useCenter = false,
+                    topLeft = Offset(r2, r2),
+                    size = Size(size.width - r2 * 2, size.height - r2 * 2),
+                    style = Stroke(3.2.dp.toPx(), cap = StrokeCap.Butt)
+                )
+            }
+
+            // Ring 3 (Inner bright core ring)
+            drawCircle(Color(0xFF040D18), min * 0.24f, c)
+            drawCircle(accent.copy(alpha = 0.95f), min * 0.24f * pulse, c, style = Stroke(2.4.dp.toPx()))
+            drawCircle(accent.copy(alpha = 0.35f), min * 0.20f, c, style = Stroke(1.dp.toPx()))
+
+            // Horizontal HUD crosshair lines
+            drawLine(
+                accent.copy(alpha = 0.35f),
+                Offset(0f, c.y),
+                Offset(min * 0.22f, c.y),
+                1.dp.toPx()
+            )
+            drawLine(
+                accent.copy(alpha = 0.35f),
+                Offset(size.width - min * 0.22f, c.y),
+                Offset(size.width, c.y),
+                1.dp.toPx()
+            )
+        }
+
+        // Center J.A.R.V.I.S. Typography
+        Text(
+            text = "J.A.R.V.I.S.",
+            color = Ice,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 2.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
 
 @Composable
 private fun JarvisScreen(
-    recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
-    onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
-    geminiConfigured: () -> Boolean, onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (String) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
-    onInstalledApps: () -> List<String>
+    recognizedText: String,
+    status: String,
+    rmsLevel: Float,
+    onConsumed: () -> Unit,
+    onSpeak: (String) -> Unit,
+    onStartListening: () -> Unit,
+    onModeChanged: (Boolean) -> Unit,
+    onSearch: (String) -> Unit,
+    onSaveGeminiKey: (String) -> Unit,
+    onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
+    onOpenApp: (String) -> Boolean
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
@@ -863,21 +1692,28 @@ private fun JarvisScreen(
         val text: String,
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
+        val products: List<VisualProduct> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
+
     var page by remember { mutableStateOf("CHAT") }
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
-    var lastPrompt by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
     var voiceAnswer by remember { mutableStateOf("") }
+    val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
+
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         uris.forEach { uri ->
             val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-            val name = runCatching { context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null } }.getOrNull() ?: "Lampiran"
+            val name = runCatching {
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+            }.getOrNull() ?: "Lampiran"
             if (pendingAttachments.none { it.uri == uri } && pendingAttachments.size < 5) {
                 runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 pendingAttachments.add(Attachment(uri, name, mime))
@@ -900,11 +1736,11 @@ private fun JarvisScreen(
             }
         }
     }
+
     var attachmentMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
-    var processStage by remember { mutableStateOf("Menganalisis permintaan") }
+    var processStage by remember { mutableStateOf("MENAMPILKAN HASIL...") }
     var settings by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
@@ -912,14 +1748,14 @@ private fun JarvisScreen(
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
-    val transition = rememberInfiniteTransition(label = "reactor")
-    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
-    val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
-    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
-    val scan by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(6400, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "scan")
 
-    fun showJarvis(answer: String) {
-        val responseLine = Line(false, answer)
+    val transition = rememberInfiniteTransition(label = "hud_transition")
+    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(15000, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "spin")
+    val breathe by transition.animateFloat(.95f, 1.05f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "breathe")
+    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "wavePhase")
+
+    fun showJarvis(answer: String, products: List<VisualProduct> = emptyList()) {
+        val responseLine = Line(user = false, text = answer, products = products)
         responseLine.displayText.value = answer
         responseLine.revealed.value = true
         lines.add(responseLine)
@@ -933,46 +1769,54 @@ private fun JarvisScreen(
         pendingAttachments.clear()
         val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
         val requestText = q + attachmentNote
-        if (q.isNotBlank()) lastPrompt = q
-        if (voice) { voiceTranscript = q; voiceAnswer = "" } else lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
+        if (voice) {
+            voiceTranscript = q
+            voiceAnswer = ""
+            voiceProducts.clear()
+        } else {
+            lines.add(Line(user = true, text = q.ifBlank { "Tolong analisis lampiran ini dan jelaskan isinya." }, attachments = files))
+        }
+
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
-            val greeting = "Saya di sini. Mau dibantu apa?"
+            val greeting = "Good day. Sistem J.A.R.V.I.S. aktif dan siap membantu. Apa perintahmu?"
             if (voice) voiceAnswer = greeting else showJarvis(greeting)
-            statusText = "JARVIS ONLINE"
             if (voice) onSpeak(greeting)
             return
         }
         val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
-        val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|harga|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
+        val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|carikan|harga|bandingkan|buatkan|rangkum|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
         val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
         if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
-            val answer = "Baik. Perintah dijalankan."
-            if (voice) voiceAnswer = answer else showJarvis(answer); statusText = "COMMAND EXECUTED"
+            val answer = "Baik, membuka aplikasi yang diminta."
+            if (voice) voiceAnswer = answer else showJarvis(answer)
             if (voice) onSpeak(answer)
             return
         }
         if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
-            if (voice) voiceAnswer = answer else showJarvis(answer); statusText = "APP NOT FOUND"
+            if (voice) voiceAnswer = answer else showJarvis(answer)
             if (voice) onSpeak(answer)
             return
         }
+
         busy = true
-        statusText = "ANALYSING REQUEST"
         onSearch(q)
-        cancelCurrentRequest = onAskGemini(requestText) { response ->
-            val answer = response.substringAfter("KESIMPULAN JARVIS", response)
-                .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
-            if (voice) { voiceAnswer = answer } else {
-                val responseLine = Line(false, answer)
+        cancelCurrentRequest = onAskGemini(requestText) { payload ->
+            val answer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
+                .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
+            if (voice) {
+                voiceAnswer = answer
+                voiceProducts.clear()
+                voiceProducts.addAll(payload.products)
+            } else {
+                val responseLine = Line(user = false, text = answer, products = payload.products)
                 responseLine.displayText.value = answer
                 responseLine.revealed.value = false
                 lines.add(responseLine)
             }
             busy = false
             cancelCurrentRequest = null
-            statusText = "RESPONSE READY"
             if (!voice) revealScope.launch {
                 kotlinx.coroutines.delay(24)
                 lines.lastOrNull()?.revealed?.value = true
@@ -981,36 +1825,48 @@ private fun JarvisScreen(
         }
     }
 
+    // In Voice Mode: accept either direct voice commands OR "Jarvis ..." wake word seamlessly!
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
             val wake = Regex("(?i)^jarvis[,.! ]*")
-            if (wake.containsMatchIn(heard)) {
-                val request = heard.replaceFirst(wake, "").trim()
-                if (request.isBlank() || request.equals("open", true)) {
-                    statusText = "JARVIS ACTIVATED"
-                    onSpeak("Ya. Saya mendengarkan. Mau dibantu apa?")
-                } else send(request, true)
+            val request = if (wake.containsMatchIn(heard)) heard.replaceFirst(wake, "").trim() else heard
+            if (request.isBlank() || request.equals("open", true)) {
+                onSpeak("Ya, saya mendengarkan. Silakan sebutkan perintahmu.")
             } else {
-                statusText = "WAKE WORD REQUIRED"
-                onStartListening()
+                send(request, voice = true)
             }
         }
     }
+
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
         onModeChanged(voiceOn)
         if (voiceOn) onStartListening()
     }
-    LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
-    LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
-    LaunchedEffect(lines) {
-        snapshotFlow { lines.lastOrNull()?.revealed?.value }.collect {
-            if (followLatest && lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }
+            .collect { (lastVisible, total) ->
+                followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2
+            }
+    }
+    LaunchedEffect(lines.size, busy) {
+        if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1)
+    }
+    LaunchedEffect(busy) {
+        if (busy) {
+            val stages = listOf("MENAMPILKAN HASIL...", "MENGANALISIS DATA...", "MENYUSUN RESPONS HUD...", "SINKRONISASI CORE 01...")
+            var i = 0
+            while (busy) {
+                processStage = stages[i++ % stages.size]
+                kotlinx.coroutines.delay(1300)
+            }
+        } else {
+            processStage = "MENAMPILKAN HASIL..."
         }
     }
-    LaunchedEffect(busy) { if (busy) { val stages = listOf("Memahami konteks", "Menyusun strategi pencarian", "Memeriksa informasi", "Merangkum hasil"); var i = 0; while (busy) { processStage = stages[i++ % stages.size]; kotlinx.coroutines.delay(1450) } } else processStage = "Siap membantu" }
 
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
@@ -1021,286 +1877,646 @@ private fun JarvisScreen(
             kotlinx.coroutines.delay(1000)
         }
     }
-    val clock = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(now))
-    val hello = remember {
-        when (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)) {
-            in 5..10 -> "Selamat pagi"
-            in 11..14 -> "Selamat siang"
-            in 15..18 -> "Selamat sore"
-            else -> "Selamat malam"
-        }
-    }
+    val clock12 = SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
+
     val phase = when {
         busy -> "THINK"
         status.contains("SPEAK", true) -> "SPEAK"
         page == "VOICE" && voiceListening -> "LISTEN"
         else -> "IDLE"
     }
-    val phaseLabel = when (phase) {
-        "THINK" -> "Berpikir"
-        "SPEAK" -> "Berbicara"
-        "LISTEN" -> "Mendengarkan"
-        else -> "Online"
-    }
-    val phaseColor = when (phase) {
-        "THINK" -> WarnAmber
-        "SPEAK" -> Color(0xFF8AF7FF)
-        "LISTEN" -> Cyan
-        else -> OkGreen
+
+    val coreModeLabel = when {
+        page == "VOICE" -> "CORE 01 / VOICE"
+        lines.isEmpty() -> "CORE 01 / HOME"
+        else -> "CORE 01 / CHAT"
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
         Box(Modifier.fillMaxSize().background(Background)) {
+            // Futuristic HUD Outer Frame & Ambient Glow
             Canvas(Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
-                drawRect(Brush.verticalGradient(listOf(Color(0xFF05070C), Color(0xFF08131C), Color(0xFF05070C))))
-                val glowY = h * (if (page == "VOICE") .40f else .16f) + (scan - .5f) * 18f
-                val glow = Offset(w * .5f, glowY)
-                val glowColor = if (phase == "THINK") WarnAmber else Cyan
+                drawRect(Brush.verticalGradient(listOf(Color(0xFF030811), Color(0xFF071525), Color(0xFF030811))))
+                val glowCenter = Offset(w * 0.5f, h * (if (page == "VOICE") 0.34f else 0.22f))
                 drawCircle(
-                    Brush.radialGradient(listOf(glowColor.copy(alpha = .22f), Color.Transparent), glow, w * .8f),
-                    w * .8f,
-                    glow
+                    Brush.radialGradient(listOf(Cyan.copy(alpha = 0.16f), Color.Transparent), glowCenter, w * 0.85f),
+                    w * 0.85f,
+                    glowCenter
                 )
-                val arm = 14.dp.toPx()
-                val inset = 12.dp.toPx()
-                val stroke = 1.dp.toPx()
-                val frame = Cyan.copy(alpha = .26f)
-                drawLine(frame, Offset(inset, inset + arm), Offset(inset, inset), stroke)
-                drawLine(frame, Offset(inset, inset), Offset(inset + arm, inset), stroke)
-                drawLine(frame, Offset(w - inset - arm, inset), Offset(w - inset, inset), stroke)
-                drawLine(frame, Offset(w - inset, inset), Offset(w - inset, inset + arm), stroke)
-                drawLine(frame, Offset(inset, h - inset - arm), Offset(inset, h - inset), stroke)
-                drawLine(frame, Offset(inset, h - inset), Offset(inset + arm, h - inset), stroke)
-                drawLine(frame, Offset(w - inset - arm, h - inset), Offset(w - inset, h - inset), stroke)
-                drawLine(frame, Offset(w - inset, h - inset - arm), Offset(w - inset, h - inset), stroke)
             }
-            BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-                val compact = maxHeight < 700.dp
-                Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        JarvisMark(Modifier.size(36.dp))
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text("J.A.R.V.I.S.", color = Ice, fontSize = 18.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.4.sp)
-                            Text("Personal intelligence", color = TextMuted, fontSize = 11.sp)
+
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
+                val compact = maxHeight < 720.dp
+
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(1.dp, Cyan.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                        .background(Color(0x66040A12))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    // --- TOP HUD HEADER ---
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "J . A . R . V . I . S .",
+                                color = Ice,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.8.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "JUST A RATHER VERY INTELLIGENT SYSTEM",
+                                color = TextMuted,
+                                fontSize = 8.5.sp,
+                                letterSpacing = 1.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
+
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(clock, color = Cyan.copy(alpha = .9f), fontSize = 12.sp, letterSpacing = 1.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
-                            Spacer(Modifier.height(4.dp))
                             Row(
-                                Modifier.clip(RoundedCornerShape(999.dp)).background(phaseColor.copy(alpha = .12f)).padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.clickable { keyDraft = ""; settings = true }
                             ) {
-                                Box(Modifier.size(6.dp).background(phaseColor, CircleShape))
-                                Spacer(Modifier.width(5.dp))
-                                Text(phaseLabel, color = phaseColor, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
+                                Text(
+                                    text = "SYSTEM ONLINE",
+                                    color = Cyan,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (page == "CHAT" && lines.isNotEmpty()) {
+                                    Text(
+                                        text = "HOME",
+                                        color = Cyan,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFF0A2236))
+                                            .border(0.6.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                            .clickable { lines.clear() }
+                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                                Text(
+                                    text = coreModeLabel,
+                                    color = TextMuted,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.8.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
                         }
-                        IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Default.Settings, "Pengaturan", tint = TextMuted, modifier = Modifier.size(18.dp))
-                        }
                     }
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF0C131A))
-                            .border(1.dp, Cyan.copy(alpha = .16f), RoundedCornerShape(999.dp))
-                            .padding(4.dp)
-                    ) {
-                        listOf("CHAT" to "Chat", "VOICE" to "Voice").forEach { (tab, label) ->
-                            val active = page == tab
+
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()                            .height(1.dp)
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha = 0.55f), Color.Transparent)))
+                    )
+
+                    // ==========================================
+                    // VOICE MODE UI (Exact Match to Reference 2)
+                    // ==========================================
+                    if (page == "VOICE") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "J A R V I S",
+                                color = Cyan,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 4.sp
+                            )
+                            Text(
+                                text = "PERSONAL INTELLIGENCE INTERFACE",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                letterSpacing = 1.6.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            // Right Telemetry Clock + Audio Input Active + Mini Equalizer
                             Row(
-                                Modifier.weight(1f).clip(RoundedCornerShape(999.dp))
-                                    .background(if (active) Cyan.copy(alpha = .16f) else Color.Transparent)
-                                    .clickable {
-                                        if (tab == "CHAT") voiceListening = false
-                                        else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = clock12,
+                                        color = Ice,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO STANDBY",
+                                        color = TextMuted,
+                                        fontSize = 8.sp,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Spacer(Modifier.height(3.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.Bottom,
+                                        modifier = Modifier.height(12.dp)
+                                    ) {
+                                        repeat(8) { idx ->
+                                            val hBar = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase + idx * 0.6f)) * (if (voiceListening) 9f else 2f)
+                                            Box(
+                                                Modifier
+                                                    .width(2.dp)
+                                                    .height(hBar.dp)
+                                                    .background(Cyan)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Center Multi-Ring Holographic Arc Reactor
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    VoiceHudReactor(
+                                        modifier = Modifier.size(if (compact) 170.dp else 210.dp),
+                                        phase = phase,
+                                        spin = spin,
+                                        breathe = breathe
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    // Horizontal Waveform Visualizer
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        val barCount = 29
+                                        repeat(barCount) { idx ->
+                                            val centerDist = kotlin.math.abs(idx - barCount / 2).toFloat() / (barCount / 2f)
+                                            val envelope = (1f - centerDist * 0.75f).coerceAtLeast(0.15f)
+                                            val dynamicBoost = if (phase == "LISTEN" || phase == "SPEAK") (rmsLevel / 10f).coerceIn(0.35f, 1.3f) else 0.2f
+                                            val hVal = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase * 1.4f + idx * 0.45f)) * 22f * envelope * dynamicBoost
+                                            Box(
+                                                Modifier
+                                                    .width(2.5.dp)
+                                                    .height(hVal.dp)
+                                                    .clip(RoundedCornerShape(99.dp))
+                                                    .background(Cyan.copy(alpha = if (phase == "IDLE") 0.35f else 0.9f))
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = when (phase) {
+                                            "THINK" -> "PROCESSING"
+                                            "SPEAK" -> "SPEAKING"
+                                            "LISTEN" -> "LISTENING"
+                                            else -> "STANDBY"
+                                        },
+                                        color = Cyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 2.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+
+                            // Pill Voice Input Bar (Allows both Voice & Typing directly in Voice Mode!)
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xFF071524))
+                                    .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Brush.radialGradient(listOf(Cyan.copy(alpha = 0.45f), Color(0xFF061626))))
+                                        .border(1.dp, Cyan, CircleShape)
+                                        .clickable {
+                                            voiceListening = !voiceListening
+                                            if (voiceListening) onStartListening()
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Mic, contentDescription = "Mic", tint = Ice, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                BasicTextField(
+                                    value = command,
+                                    onValueChange = { command = it },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 13.5.sp),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Cyan),
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                                        if (command.isNotBlank() && !busy) {
                                             keyboard?.hide()
                                             focusManager.clearFocus()
-                                            voiceListening = true
+                                            send(command, voice = true)
                                         }
-                                        page = tab
+                                    }),
+                                    decorationBox = { inner ->
+                                        if (command.isEmpty()) {
+                                            Text(
+                                                text = voiceTranscript.ifBlank { "coba carikan bantal 30 ribuan..." },
+                                                color = if (voiceTranscript.isBlank()) TextMuted else Ice,
+                                                fontSize = 13.5.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        inner()
                                     }
-                                    .padding(vertical = 10.dp),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(if (tab == "CHAT") Icons.Default.Chat else Icons.Default.GraphicEq, null, tint = if (active) Cyan else TextMuted, modifier = Modifier.size(15.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(label, color = if (active) Ice else TextMuted, fontSize = 13.sp, fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium)
-                            }
-                        }
-                    }
-                    if (page == "VOICE") {
-                        val caption = when (phase) {
-                            "THINK" -> "Sedang menyusun jawaban"
-                            "SPEAK" -> "Ini jawabannya"
-                            "LISTEN" -> "Saya mendengarkan"
-                            else -> "Siap saat kamu siap"
-                        }
-                        val subcaption = when (phase) {
-                            "THINK" -> processStage
-                            "SPEAK" -> "Ketuk ulang kalau mau dengar lagi"
-                            "LISTEN" -> "Ucapkan JARVIS, lalu permintaanmu"
-                            else -> "Ketuk mikrofon untuk mulai"
-                        }
-                        val systemNote = when {
-                            status.contains("PERMISSION", true) -> "Izin mikrofon dibutuhkan"
-                            status.contains("UNAVAILABLE", true) -> "Pengenalan suara tidak tersedia"
-                            status.contains("CATCH", true) || status.contains("DIDN'T", true) -> "Tidak terdengar jelas. Coba lagi."
-                            status.contains("WAKE", true) -> "Sebut JARVIS di awal kalimat"
-                            status.contains("RECONNECT", true) -> "Menyambungkan ulang mikrofon"
-                            else -> null
-                        }
-                        val openInChat = {
-                            if (voiceTranscript.isNotBlank()) lines.add(Line(true, voiceTranscript))
-                            if (voiceAnswer.isNotBlank()) showJarvis(voiceAnswer)
-                            voiceListening = false
-                            page = "CHAT"
-                        }
-                        Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                ArcReactor(Modifier.size(if (compact) 196.dp else 250.dp), phase, spin, breathe)
-                                Spacer(Modifier.height(14.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    repeat(14) { n ->
-                                        val bar = 4f + kotlin.math.abs(kotlin.math.sin(wavePhase + n * .42f)) * (if (phase == "LISTEN" || phase == "SPEAK") 18f else 4f)
-                                        Box(Modifier.width(3.dp).height(bar.dp).clip(RoundedCornerShape(99.dp)).background(phaseColor.copy(alpha = if (phase == "IDLE") .28f else .92f)))
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                if (command.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            keyboard?.hide()
+                                            focusManager.clearFocus()
+                                            send(command, voice = true)
+                                        },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Cyan, modifier = Modifier.size(16.dp))
+                                    }
+                                } else {
+                                    // Mini waveform indicator inside right side of pill
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    ) {
+                                        repeat(7) { i ->
+                                            val bh = 4f + kotlin.math.abs(kotlin.math.cos(wavePhase + i * 0.7f)) * (if (voiceListening) 10f else 3f)
+                                            Box(Modifier.width(2.dp).height(bh.dp).background(Cyan, RoundedCornerShape(2.dp)))
+                                        }
                                     }
                                 }
-                                Spacer(Modifier.height(12.dp))
-                                Text(caption, color = Ice, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                                Text(subcaption, color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 3.dp, start = 24.dp, end = 24.dp))
-                                if (systemNote != null) Text(systemNote, color = WarnAmber, fontSize = 12.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp))
                             }
-                            Box(Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // MENAMPILKAN HASIL... + Horizontal Product Carousel or Voice Answer Panel
+                            if (busy || voiceProducts.isNotEmpty() || voiceAnswer.isNotBlank()) {
                                 Column(
-                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Glass).border(1.dp, Cyan.copy(alpha = .22f), RoundedCornerShape(22.dp)).padding(horizontal = 14.dp, vertical = 12.dp).animateContentSize(),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .animateContentSize(),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Text("Kamu", color = TextMuted, fontSize = 11.sp, fontWeight = FontWeight.Medium)
-                                    Text(
-                                        voiceTranscript.ifBlank { "Menunggu. Sebut JARVIS, lalu apa yang kamu butuhkan." },
-                                        color = if (voiceTranscript.isBlank()) TextMuted else Ice,
-                                        fontSize = 16.sp,
-                                        lineHeight = 22.sp,
-                                        maxLines = 3,
-                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                    )
-                                    if (voiceAnswer.isNotBlank() || busy) {
-                                        Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(1.dp).background(Cyan.copy(alpha = .14f)))
-                                        Text("JARVIS", color = Cyan, fontSize = 11.sp, letterSpacing = 1.2.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            Modifier
+                                                .size(10.dp)
+                                                .clip(CircleShape)
+                                                .border(1.5.dp, Cyan, CircleShape)
+                                        )
                                         Text(
-                                            if (busy && voiceAnswer.isBlank()) processStage else voiceAnswer,
-                                            color = Color(0xFFD7F3FA),
-                                            fontSize = 14.sp,
-                                            lineHeight = 20.sp,
-                                            maxLines = 5,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                            text = if (busy) processStage else "MENAMPILKAN HASIL...",
+                                            color = TextMuted,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            letterSpacing = 1.sp,
+                                            fontFamily = FontFamily.Monospace
                                         )
                                     }
-                                    if (voiceTranscript.isNotBlank() || voiceAnswer.isNotBlank()) {
-                                        Text("Buka di chat", color = Cyan, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.clickable { openInChat() }.padding(top = 2.dp))
+
+                                    if (voiceProducts.isNotEmpty()) {
+                                        ProductCarouselCards(voiceProducts)
+                                    } else if (voiceAnswer.isNotBlank()) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = if (compact) 120.dp else 155.dp)
+                                                .clip(CardShape)
+                                                .background(Color(0xFF081624))
+                                                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                                                .padding(10.dp)
+                                        ) {
+                                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Text(
+                                                    text = voiceAnswer,
+                                                    color = Ice,
+                                                    fontSize = 12.5.sp,
+                                                    lineHeight = 18.sp,
+                                                    maxLines = 5,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Buka detail lengkap di Chat Console →",
+                                                    color = Cyan,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.clickable {
+                                                        if (voiceTranscript.isNotBlank()) lines.add(Line(user = true, text = voiceTranscript))
+                                                        showJarvis(voiceAnswer, voiceProducts.toList())
+                                                        voiceListening = false
+                                                        page = "CHAT"
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                                HudTicks(Modifier.matchParentSize(), Cyan.copy(alpha = .5f))
                             }
-                            Row(Modifier.fillMaxWidth().padding(bottom = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
-                                RoundKey(Icons.Default.Chat, "Chat", Ice) { voiceListening = false; page = "CHAT" }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Bottom 3-Button Voice Control Dock (MIC OFF | LISTENING | CHAT)
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                // MIC OFF
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Box(
-                                        Modifier.size(if (compact) 72.dp else 84.dp)
+                                        Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF081523))
+                                            .border(1.dp, if (!voiceListening) AlertRed.copy(alpha = 0.7f) else Cyan.copy(alpha = 0.3f), CircleShape)
+                                            .clickable { voiceListening = false },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.MicOff, contentDescription = "Mic Off", tint = if (!voiceListening) AlertRed else Ice, modifier = Modifier.size(20.dp))
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("MIC OFF", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
+                                }
+
+                                // CENTER GLOWING MIC (LISTENING)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        Modifier
+                                            .size(if (compact) 64.dp else 74.dp)
                                             .scale(if (phase == "LISTEN") breathe else 1f)
                                             .clip(CircleShape)
-                                            .background(Brush.radialGradient(listOf(phaseColor.copy(alpha = .5f), Color(0xFF071016))))
-                                            .border(1.5.dp, phaseColor.copy(alpha = .9f), CircleShape)
+                                            .background(Brush.radialGradient(listOf(Cyan.copy(alpha = 0.45f), Color(0xFF061320))))
+                                            .border(2.dp, Cyan, CircleShape)
                                             .clickable {
                                                 voiceListening = !voiceListening
                                                 if (voiceListening) onStartListening()
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff, "Mikrofon", tint = Color.White, modifier = Modifier.size(30.dp))
+                                        Icon(Icons.Default.Mic, contentDescription = "Listening", tint = Ice, modifier = Modifier.size(30.dp))
                                     }
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(if (voiceListening) "Mendengar" else "Mulai", color = phaseColor, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = if (voiceListening) "LISTENING" else "TAP TO SPEAK",
+                                        color = Cyan,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
                                 }
-                                RoundKey(Icons.Default.VolumeUp, "Ulang", if (voiceAnswer.isNotBlank()) Ice else TextMuted) {
-                                    if (voiceAnswer.isNotBlank()) onSpeak(voiceAnswer)
+
+                                // CHAT SWITCH
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF081523))
+                                            .border(1.dp, Cyan.copy(alpha = 0.3f), CircleShape)
+                                            .clickable {
+                                                voiceListening = false
+                                                page = "CHAT"
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Chat", tint = Ice, modifier = Modifier.size(19.dp))
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("CHAT", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
                                 }
                             }
                         }
                     } else {
-                        androidx.compose.foundation.lazy.LazyColumn(
-                            Modifier.weight(1f).fillMaxWidth(),
+                        // ==========================================
+                        // CHAT CONSOLE / HOME DASHBOARD MODE
+                        // ==========================================
+                        if (lines.isNotEmpty()) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CHAT CONSOLE",
+                                    color = Cyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.4.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "${lines.size} ENTRIES",
+                                    color = TextMuted,
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        LazyColumn(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
                             state = listState,
-                            contentPadding = PaddingValues(top = 8.dp, bottom = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            contentPadding = PaddingValues(top = 6.dp, bottom = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            if (lines.isEmpty()) item {
-                                Column(
-                                    Modifier.fillMaxWidth().fillParentMaxHeight(.94f),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center
-                                ) {
-                                    ArcReactor(Modifier.size(if (compact) 132.dp else 168.dp), "IDLE", spin, 1f)
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(hello, color = TextMuted, fontSize = 14.sp)
-                                    Spacer(Modifier.height(2.dp))
-                                    Text("Ada yang bisa saya bantu?", color = Ice, fontSize = 26.sp, fontWeight = FontWeight.Light, textAlign = TextAlign.Center)
-                                    Spacer(Modifier.height(6.dp))
-                                    Text("Ketik, lampirkan, atau pindah ke suara.", color = TextMuted, fontSize = 13.sp)
-                                    Spacer(Modifier.height(18.dp))
-                                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        PromptChip("Rencana hari ini") { send("Bantu saya merencanakan hari ini secara singkat.") }
-                                        PromptChip("Cari sesuatu") { send("Bantu saya mencari sesuatu. Tanyakan dulu detail yang kamu butuhkan.") }
-                                        PromptChip("Bantu merancang") { send("Bantu saya merancang sebuah ide dari awal.") }
-                                        PromptChip("Buka YouTube") { send("Buka YouTube") }
-                                    }
+                            if (lines.isEmpty()) {
+                                item {
+                                    JarvisHomeDashboard(
+                                        compact = compact,
+                                        spin = spin,
+                                        breathe = breathe,
+                                        onSelectPrompt = { selectedPrompt -> send(selectedPrompt, voice = false) }
+                                    )
                                 }
                             }
+
                             items(lines.size) { i ->
                                 val line = lines[i]
                                 AnimatedVisibility(visible = true, enter = fadeIn(tween(220)) + expandVertically()) {
                                     if (line.user) {
-                                        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-                                            Text("Kamu  ·  ${line.time}", color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(end = 4.dp, bottom = 4.dp))
-                                            Column(
-                                                Modifier.widthIn(max = 320.dp)
-                                                    .clip(RoundedCornerShape(22.dp, 22.dp, 8.dp, 22.dp))
-                                                    .background(Brush.linearGradient(listOf(Color(0xFF163C4C), Color(0xFF0E2C38))))
-                                                    .border(1.dp, Cyan.copy(alpha = .34f), RoundedCornerShape(22.dp, 22.dp, 8.dp, 22.dp))
-                                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                                        Column(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.End,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Text(line.text, color = Ice, fontSize = 15.sp, lineHeight = 21.sp)
-                                                line.attachments.forEach { file ->
-                                                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                        Icon(Icons.Default.AttachFile, null, tint = Cyan, modifier = Modifier.size(13.dp))
+                                                Box(
+                                                    Modifier
+                                                        .widthIn(max = 290.dp)
+                                                        .clip(RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp))
+                                                        .background(Brush.linearGradient(listOf(Color(0xFF103454), Color(0xFF0B233B))))
+                                                        .border(1.dp, Cyan.copy(alpha = 0.45f), RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp))
+                                                        .padding(horizontal = 13.dp, vertical = 10.dp)
+                                                ) {
+                                                    Text(line.text, color = Ice, fontSize = 13.5.sp, lineHeight = 19.sp)
+                                                }
+                                                UserAvatarBadge(Modifier.padding(top = 2.dp))
+                                            }
+                                            // Display attached images or files right under user bubble
+                                            line.attachments.forEach { file ->
+                                                if (file.mime.startsWith("image/")) {
+                                                    Box(
+                                                        Modifier
+                                                            .padding(end = 36.dp)
+                                                            .widthIn(max = 260.dp)
+                                                            .clip(CardShape)
+                                                            .border(1.dp, Cyan.copy(alpha = 0.4f), CardShape)
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = file.uri,
+                                                            contentDescription = file.name,
+                                                            modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    }
+                                                } else {
+                                                    Row(
+                                                        Modifier
+                                                            .padding(end = 36.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .background(Color(0xFF0A1B2C))
+                                                            .border(1.dp, Cyan.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(Icons.Default.AttachFile, null, tint = Cyan, modifier = Modifier.size(14.dp))
                                                         Spacer(Modifier.width(4.dp))
-                                                        Text(file.name, color = Color(0xFFC5E7F1), fontSize = 12.sp, maxLines = 1)
+                                                        Text(file.name, color = Ice, fontSize = 11.5.sp, maxLines = 1)
                                                     }
                                                 }
                                             }
                                         }
                                     } else {
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            JarvisMark(Modifier.padding(top = 2.dp).size(26.dp))
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            JarvisAvatarBadge(Modifier.padding(top = 2.dp))
                                             Column(Modifier.weight(1f)) {
-                                                Text("JARVIS  ·  ${line.time}", color = Cyan, fontSize = 11.sp, letterSpacing = .8.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 4.dp))
                                                 AnimatedVisibility(visible = line.revealed.value, enter = fadeIn(tween(200))) {
-                                                    Column {
-                                                        RichMessageText(line.displayText.value.ifBlank { line.text })
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            IconButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, modifier = Modifier.size(32.dp)) {
-                                                                Icon(Icons.Default.ContentCopy, "Salin", tint = TextMuted, modifier = Modifier.size(15.dp))
+                                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        RichMessageText(
+                                                            markdown = line.displayText.value.ifBlank { line.text },
+                                                            products = line.products,
+                                                            onQuickFollowUp = { followUp -> send(followUp, voice = false) }
+                                                        )
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable { clipboard.setText(AnnotatedString(line.text)) }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.ContentCopy, "Salin", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Salin", color = TextMuted, fontSize = 10.sp)
                                                             }
-                                                            IconButton(onClick = {
-                                                                val shareIntent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, line.text) }
-                                                                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
-                                                            }, modifier = Modifier.size(32.dp)) {
-                                                                Icon(Icons.Default.Share, "Bagikan", tint = TextMuted, modifier = Modifier.size(15.dp))
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable { onSpeak(line.text) }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.VolumeUp, "Suara", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Dengar", color = TextMuted, fontSize = 10.sp)
+                                                            }
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable {
+                                                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                                            type = "text/plain"
+                                                                            putExtra(Intent.EXTRA_TEXT, line.text)
+                                                                        }
+                                                                        runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
+                                                                    }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.Share, "Bagikan", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Bagikan", color = TextMuted, fontSize = 10.sp)
                                                             }
                                                         }
                                                         SourceStrip(line.text)
@@ -1311,243 +2527,324 @@ private fun JarvisScreen(
                                     }
                                 }
                             }
-                            if (busy) item {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    JarvisMark(Modifier.size(26.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text("JARVIS", color = Cyan, fontSize = 11.sp, letterSpacing = .8.sp, fontWeight = FontWeight.SemiBold)
-                                        Spacer(Modifier.height(3.dp))
-                                        Text(processStage, color = Ice, fontSize = 14.sp)
-                                        Spacer(Modifier.height(8.dp))
-                                        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                            repeat(3) { n ->
-                                                val a = kotlin.math.sin(wavePhase + n * .9f) * .5f + .5f
-                                                Box(Modifier.size(7.dp).background(Cyan.copy(alpha = .25f + .75f * a), CircleShape))
+
+                            if (busy) {
+                                item {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        JarvisAvatarBadge()
+                                        Row(
+                                            Modifier
+                                                .clip(CardShape)
+                                                .background(Color(0xFF091828))
+                                                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(processStage, color = Ice, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                repeat(3) { n ->
+                                                    val a = kotlin.math.sin(wavePhase + n * .9f) * .5f + .5f
+                                                    Box(Modifier.size(6.dp).background(Cyan.copy(alpha = .25f + .75f * a), CircleShape))
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+
+                        // Pending attachments strip
                         if (pendingAttachments.isNotEmpty()) {
-                            Row(Modifier.fillMaxWidth().padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 pendingAttachments.toList().forEach { file ->
                                     Row(
-                                        Modifier.clip(RoundedCornerShape(999.dp)).background(Color(0xFF121A22)).border(1.dp, Cyan.copy(alpha = .25f), RoundedCornerShape(999.dp)).padding(start = 10.dp, end = 2.dp),
+                                        Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(Color(0xFF0B1C2C))
+                                            .border(1.dp, Cyan.copy(alpha = .35f), RoundedCornerShape(999.dp))
+                                            .padding(start = 10.dp, end = 2.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(file.name, color = Ice, fontSize = 12.sp, maxLines = 1, modifier = Modifier.widthIn(max = 140.dp))
-                                        IconButton(onClick = { pendingAttachments.remove(file) }, modifier = Modifier.size(28.dp)) {
-                                            Icon(Icons.Default.Close, "Hapus lampiran", tint = TextMuted, modifier = Modifier.size(14.dp))
+                                        Text(file.name, color = Ice, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.widthIn(max = 140.dp))
+                                        IconButton(onClick = { pendingAttachments.remove(file) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Close, "Hapus lampiran", tint = TextMuted, modifier = Modifier.size(13.dp))
                                         }
                                     }
                                 }
                             }
                         }
+
+                        // --- MESSAGE JARVIS... INPUT BAR ---
                         val armed = command.isNotBlank() || pendingAttachments.isNotEmpty()
                         Row(
-                            Modifier.fillMaxWidth().padding(top = 10.dp)
-                                .clip(RoundedCornerShape(28.dp))
-                                .background(Color(0xF2101820))
-                                .border(1.dp, Brush.linearGradient(listOf(Cyan.copy(alpha = if (armed) .65f else .28f), Cyan.copy(alpha = .08f))), RoundedCornerShape(28.dp))
-                                .padding(start = 2.dp, end = 6.dp, top = 3.dp, bottom = 3.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color(0xFF071422))
+                                .border(1.dp, Cyan.copy(alpha = if (armed) 0.7f else 0.36f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box {
-                                Box(Modifier.size(42.dp).clip(CircleShape).clickable(enabled = !busy) { attachmentMenu = !attachmentMenu }, contentAlignment = Alignment.Center) {
-                                    Icon(if (attachmentMenu) Icons.Default.Close else Icons.Default.Add, if (attachmentMenu) "Tutup" else "Lampirkan", tint = Cyan, modifier = Modifier.size(22.dp))
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF0C2136))
+                                        .border(1.dp, Cyan.copy(alpha = 0.5f), CircleShape)
+                                        .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        if (attachmentMenu) Icons.Default.Close else Icons.Default.Add,
+                                        contentDescription = "Lampirkan",
+                                        tint = Cyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
                                 }
                                 DropdownMenu(
                                     expanded = attachmentMenu,
                                     onDismissRequest = { attachmentMenu = false },
                                     properties = PopupProperties(focusable = false),
-                                    shape = RoundedCornerShape(16.dp),
-                                    containerColor = Color(0xFF121A22)
+                                    shape = RoundedCornerShape(14.dp),
+                                    containerColor = Color(0xFF0B1B2B)
                                 ) {
-                                    DropdownMenuItem(text = { Text("File", color = Ice, fontSize = 14.sp) }, onClick = { attachmentMenu = false; attachmentPicker.launch(arrayOf("*/*")) }, leadingIcon = { Icon(Icons.Default.AttachFile, null, tint = Cyan) })
-                                    DropdownMenuItem(text = { Text("Kamera", color = Ice, fontSize = 14.sp) }, onClick = { attachmentMenu = false; cameraPicker.launch(null) }, leadingIcon = { Icon(Icons.Default.CameraAlt, null, tint = Cyan) })
-                                    DropdownMenuItem(text = { Text("Galeri", color = Ice, fontSize = 14.sp) }, onClick = { attachmentMenu = false; photoPicker.launch("image/*") }, leadingIcon = { Icon(Icons.Default.Image, null, tint = Cyan) })
+                                    DropdownMenuItem(
+                                        text = { Text("File / Dokumen", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; attachmentPicker.launch(arrayOf("*/*")) },
+                                        leadingIcon = { Icon(Icons.Default.AttachFile, null, tint = Cyan) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Kamera", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; cameraPicker.launch(null) },
+                                        leadingIcon = { Icon(Icons.Default.CameraAlt, null, tint = Cyan) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Galeri Foto", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; photoPicker.launch("image/*") },
+                                        leadingIcon = { Icon(Icons.Default.Image, null, tint = Cyan) }
+                                    )
                                 }
                             }
+
+                            Spacer(Modifier.width(10.dp))
+
                             BasicTextField(
                                 value = command,
                                 onValueChange = { command = it },
-                                modifier = Modifier.weight(1f).focusRequester(inputFocus).padding(vertical = 10.dp, horizontal = 2.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(inputFocus)
+                                    .padding(vertical = 6.dp),
                                 minLines = 1,
                                 maxLines = 4,
-                                textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 16.sp),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 14.sp),
                                 cursorBrush = androidx.compose.ui.graphics.SolidColor(Cyan),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
                                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
-                                    if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) }
+                                    if (!busy) {
+                                        keyboard?.hide()
+                                        focusManager.clearFocus()
+                                        send(command, voice = false)
+                                    }
                                 }),
                                 decorationBox = { inner ->
-                                    if (command.isEmpty()) Text("Tulis pesan untuk JARVIS", color = TextMuted, fontSize = 15.sp)
+                                    if (command.isEmpty()) {
+                                        Text("Message JARVIS...", color = TextMuted, fontSize = 13.5.sp)
+                                    }
                                     inner()
                                 }
                             )
+
                             if (busy) {
                                 Box(
-                                    Modifier.size(40.dp).clip(CircleShape).background(AlertRed.copy(alpha = .16f)).clickable {
-                                        cancelCurrentRequest?.invoke()
-                                        cancelCurrentRequest = null
-                                        busy = false
-                                        statusText = "REQUEST STOPPED"
-                                        showJarvis("Permintaan dihentikan.")
-                                    },
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(AlertRed.copy(alpha = 0.2f))
+                                        .border(1.dp, AlertRed, CircleShape)
+                                        .clickable {
+                                            cancelCurrentRequest?.invoke()
+                                            cancelCurrentRequest = null
+                                            busy = false
+                                            showJarvis("Permintaan dihentikan.")
+                                        },
                                     contentAlignment = Alignment.Center
-                                ) { Icon(Icons.Default.Stop, "Hentikan", tint = AlertRed, modifier = Modifier.size(18.dp)) }
-                            } else if (!armed) {
-                                Box(
-                                    Modifier.size(40.dp).clip(CircleShape).background(Cyan.copy(alpha = .12f)).clickable {
-                                        keyboard?.hide()
-                                        focusManager.clearFocus()
-                                        voiceListening = true
-                                        page = "VOICE"
-                                    },
-                                    contentAlignment = Alignment.Center
-                                ) { Icon(Icons.Default.Mic, "Mode suara", tint = Cyan, modifier = Modifier.size(20.dp)) }
+                                ) {
+                                    Icon(Icons.Default.Stop, "Hentikan", tint = AlertRed, modifier = Modifier.size(16.dp))
+                                }
                             } else {
                                 Box(
-                                    Modifier.size(40.dp).clip(CircleShape).background(Cyan).clickable {
-                                        keyboard?.hide(); focusManager.clearFocus(); send(command)
-                                    },
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (armed) Cyan.copy(alpha = 0.2f) else Color.Transparent)
+                                        .clickable {
+                                            if (armed) {
+                                                keyboard?.hide()
+                                                focusManager.clearFocus()
+                                                send(command, voice = false)
+                                            } else {
+                                                keyboard?.hide()
+                                                focusManager.clearFocus()
+                                                voiceListening = true
+                                                page = "VOICE"
+                                            }
+                                        },
                                     contentAlignment = Alignment.Center
-                                ) { Icon(Icons.Default.Send, "Kirim", tint = Color(0xFF041018), modifier = Modifier.size(18.dp)) }
+                                ) {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = "Kirim",
+                                        tint = Cyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
                     }
-                }
-                if (settings) AlertDialog(
-                    onDismissRequest = { settings = false },
-                    containerColor = Color(0xFF101820),
-                    shape = RoundedCornerShape(24.dp),
-                    title = {
-                        Column {
-                            Text("Pengaturan", color = Ice, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(Modifier.height(4.dp))
-                            Text("Kunci ini hanya tersimpan di perangkatmu.", color = TextMuted, fontSize = 12.sp)
+
+                    // --- BOTTOM SEGMENTED MODE SWITCHER (Exact match to both references) ---
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF06111D))
+                            .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val isChat = page == "CHAT"
+                        // Left Tab (CHAT / COMMAND)
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
+                                    else Color.Transparent
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
+                                    shape = RoundedCornerShape(999.dp)
+                                )
+                                .clickable {
+                                    voiceListening = false
+                                    page = "CHAT"
+                                }
+                                .padding(vertical = 9.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (isChat) Icons.Default.Home else Icons.Default.GridView,
+                                contentDescription = null,
+                                tint = if (isChat) Cyan else TextMuted,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = if (isChat) "CHAT" else "COMMAND",
+                                color = if (isChat) Ice else TextMuted,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.2.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
-                    },
-                    text = {
-                        OutlinedTextField(
-                            value = keyDraft,
-                            onValueChange = { keyDraft = it },
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            placeholder = { Text("Kunci API Gemini", color = TextMuted) },
-                            label = { Text("Suara Gemini") }
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { if (keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim()); settings = false; keyDraft = "" }) { Text("Simpan", color = Cyan) }
-                    },
-                    dismissButton = { TextButton(onClick = { settings = false }) { Text("Batal", color = TextMuted) } }
-                )
+
+                        // Right Tab (VOICE)
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (!isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
+                                    else Color.Transparent
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (!isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
+                                    shape = RoundedCornerShape(999.dp)
+                                )
+                                .clickable {
+                                    keyboard?.hide()
+                                    focusManager.clearFocus()
+                                    voiceListening = true
+                                    page = "VOICE"
+                                }
+                                .padding(vertical = 9.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (!isChat) Cyan else TextMuted.copy(alpha = 0.6f))
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "VOICE",
+                                color = if (!isChat) Ice else TextMuted,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.2.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                if (settings) {
+                    AlertDialog(
+                        onDismissRequest = { settings = false },
+                        containerColor = Color(0xFF0B1826),
+                        shape = RoundedCornerShape(20.dp),
+                        title = {
+                            Column {
+                                Text("Pengaturan Sistem J.A.R.V.I.S.", color = Ice, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Kunci API opsional tersimpan lokal di perangkatmu.", color = TextMuted, fontSize = 12.sp)
+                            }
+                        },
+                        text = {
+                            OutlinedTextField(
+                                value = keyDraft,
+                                onValueChange = { keyDraft = it },
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                placeholder = { Text("Kunci API Gemini", color = TextMuted) },
+                                label = { Text("API Key Override") }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                if (keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim())
+                                settings = false
+                                keyDraft = ""
+                            }) { Text("Simpan", color = Cyan) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { settings = false }) { Text("Batal", color = TextMuted) }
+                        }
+                    )
+                }
             }
         }
-    }
-}
-
-@Composable
-private fun PromptChip(text: String, onClick: () -> Unit) {
-    Text(
-        text,
-        color = Ice,
-        fontSize = 13.sp,
-        modifier = Modifier
-            .clip(RoundedCornerShape(999.dp))
-            .background(Color(0xFF101820))
-            .border(1.dp, Cyan.copy(alpha = .28f), RoundedCornerShape(999.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
-    )
-}
-
-@Composable
-private fun RoundKey(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, tint: Color, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            Modifier.size(52.dp).clip(CircleShape).background(Color(0xFF101820)).border(1.dp, Cyan.copy(alpha = .22f), CircleShape).clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
-        ) { Icon(icon, label, tint = tint, modifier = Modifier.size(22.dp)) }
-        Spacer(Modifier.height(6.dp))
-        Text(label, color = TextMuted, fontSize = 11.sp)
-    }
-}
-
-@Composable
-private fun JarvisMark(modifier: Modifier = Modifier) {
-    Canvas(modifier) {
-        val c = center
-        val min = size.minDimension
-        drawCircle(Cyan.copy(alpha = .14f), min * .48f, c)
-        drawCircle(Cyan.copy(alpha = .78f), min * .46f, c, style = Stroke(1.15.dp.toPx()))
-        drawCircle(Cyan.copy(alpha = .28f), min * .30f, c, style = Stroke(.8.dp.toPx()))
-        drawArc(Cyan.copy(alpha = .9f), -50f, 86f, false, style = Stroke(1.7.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round))
-        drawCircle(Brush.radialGradient(listOf(Color.White, Cyan, Color(0xFF062028)), c, min * .16f), min * .16f, c)
-    }
-}
-
-@Composable
-private fun ArcReactor(modifier: Modifier, phase: String, spin: Float, breathe: Float) {
-    val accent = when (phase) {
-        "THINK" -> WarnAmber
-        "SPEAK" -> Color(0xFF8AF7FF)
-        else -> Cyan
-    }
-    Canvas(modifier) {
-        val c = center
-        val min = size.minDimension
-        val pulse = if (phase == "IDLE") 1f else breathe
-        val core = min * .15f
-        drawCircle(Brush.radialGradient(listOf(accent.copy(alpha = .28f), Color.Transparent), c, min * .5f), min * .48f * pulse, c)
-        val dots = 42
-        val orbit = min * .43f
-        for (i in 0 until dots) {
-            val angle = i * 6.2831855f / dots + spin * 0.0174533f * (if (phase == "THINK") 1.7f else .5f)
-            val hot = i % 7 == ((spin / 51f).toInt() % 7)
-            drawCircle(
-                accent.copy(alpha = if (hot) .95f else .2f),
-                if (hot) 2.7.dp.toPx() else 1.3.dp.toPx(),
-                Offset(c.x + kotlin.math.cos(angle) * orbit, c.y + kotlin.math.sin(angle) * orbit)
-            )
-        }
-        for (i in 0 until 24) {
-            val angle = i * 6.2831855f / 24f
-            val inner = min * .30f
-            val outer = inner + if (i % 6 == 0) 7.dp.toPx() else 3.5.dp.toPx()
-            drawLine(
-                accent.copy(alpha = if (i % 6 == 0) .5f else .18f),
-                Offset(c.x + kotlin.math.cos(angle) * inner, c.y + kotlin.math.sin(angle) * inner),
-                Offset(c.x + kotlin.math.cos(angle) * outer, c.y + kotlin.math.sin(angle) * outer),
-                1.dp.toPx()
-            )
-        }
-        drawCircle(accent.copy(alpha = .26f), min * .33f, c, style = Stroke(1.dp.toPx()))
-        drawCircle(accent.copy(alpha = .55f), min * .24f, c, style = Stroke(1.35.dp.toPx()))
-        val inset = min * .2f
-        drawArc(
-            accent.copy(alpha = .95f),
-            spin,
-            if (phase == "THINK") 124f else 70f,
-            false,
-            topLeft = Offset(inset, inset),
-            size = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2),
-            style = Stroke(2.5.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-        )
-        val inset2 = min * .27f
-        drawArc(
-            accent.copy(alpha = .35f),
-            -spin * .65f,
-            34f,
-            false,
-            topLeft = Offset(inset2, inset2),
-            size = androidx.compose.ui.geometry.Size(size.width - inset2 * 2, size.height - inset2 * 2),
-            style = Stroke(1.4.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-        )
-        drawCircle(Brush.radialGradient(listOf(Color.White, accent, Color(0xFF062028)), c, core), core, c)
-        drawCircle(Color.White.copy(alpha = .92f), core * .2f, c)
-        if (phase == "SPEAK") drawCircle(accent.copy(alpha = .18f), min * .37f, c, style = Stroke(1.2.dp.toPx()))
     }
 }
