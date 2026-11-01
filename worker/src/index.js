@@ -418,7 +418,8 @@ async function handleChat(body, env) {
   const plan = planFor(level);
   const events = [{ type: "classified", level, label: `Tingkat permintaan: ${level}` }];
   const visualKind = searchKind(prompt);
-  const maxProductPrice = visualKind === "products" ? extractMaxPrice(prompt) : null;
+  const requestedProductPrice = visualKind === "products" ? extractMaxPrice(prompt) : null;
+  const maxProductPrice = Number.isFinite(requestedProductPrice) ? requestedProductPrice + 6000 : null;
   const shoppingQuery = visualKind === "products" ? productSearchQuery(prompt) : prompt;
   let visualResults = [];
   let visualSearchCompleted = false;
@@ -518,7 +519,7 @@ async function handleChat(body, env) {
   if (visualResults.length) {
     finalAnswer = appendVisualResults(finalAnswer, visualKind, visualResults);
   } else if (visualKind === "products" && Number.isFinite(maxProductPrice) && visualSearchCompleted) {
-    finalAnswer = `Saya belum menemukan produk terverifikasi yang memenuhi batas harga Rp${maxProductPrice.toLocaleString("id-ID")}. Saya tidak akan menampilkan barang di atas anggaran sebagai rekomendasi. Coba naikkan sedikit batas harganya atau ubah kata kunci pencarian.`;
+    finalAnswer = `Saya belum menemukan produk terverifikasi dalam kisaran anggaran Rp${requestedProductPrice.toLocaleString("id-ID")} sampai Rp${maxProductPrice.toLocaleString("id-ID")}. Saya tidak akan menampilkan barang di atas batas tersebut sebagai rekomendasi.`;
   }
 
   return json({
