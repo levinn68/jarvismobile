@@ -212,6 +212,13 @@ private class ClapPatternDetector(
     }
 }
 
+private fun detectEnglishContent(text: String): Boolean {
+    val q = text.lowercase(Locale.ROOT)
+    val en = listOf("the ", " and ", " what ", " how ", " why ", " please ", " find ", " search ", " explain ", " calculate ", " is ", " are ", " can ").count { q.contains(it) }
+    val id = listOf("yang ", " dan ", " untuk ", " saya ", " kamu ", " tolong ", " carikan ", " jelaskan ", " berapa ", " bagaimana ", " dengan ").count { q.contains(it) }
+    return en > id
+}
+
 class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
@@ -1815,7 +1822,7 @@ private fun JarvisScreen(
     }
 
     fun buildSpokenReply(request: String, answer: String, products: List<VisualProduct>): String {
-        val english = isEnglishText(request)
+        val english = detectEnglishContent(request)
         if (products.isNotEmpty()) {
             val cheapest = products.minByOrNull { it.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE }
             val lead = if (english) listOf("Certainly, Sir. I found a few options.", "I checked the available listings, Boss.", "Here are the closest matches I found.").random()
@@ -1900,7 +1907,7 @@ private fun JarvisScreen(
             if (appCommand != null) {
                 val appName = appCommand.groupValues[3].trim()
                 val opened = onOpenApp(appName)
-                val reply = if (isEnglishText(request)) {
+                val reply = if (detectEnglishContent(request)) {
                     if (opened) "Certainly, Sir. $appName is open." else "I could not find $appName on this device, Sir."
                 } else {
                     if (opened) "Siap, Sir. $appName sudah dibuka." else "Maaf, Sir. $appName tidak ditemukan di perangkat ini."
