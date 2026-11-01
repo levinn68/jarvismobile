@@ -898,33 +898,23 @@ private fun SourceLogo(url: String) {
 private fun VoiceVisualResults(markdown: String) {
     val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
     val images = blocks.filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+    if (images.isEmpty()) return
+    BoxWithConstraints(
+        Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp)
     ) {
-        if (images.isNotEmpty()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val cardWidth = if (images.size == 1) maxWidth else (maxWidth - 8.dp) / 2
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+        val cardWidth = if (images.size == 1) maxWidth else (maxWidth - 8.dp) / 2
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            images.forEach { image ->
+                Box(
+                    Modifier.width(cardWidth)
+                        .background(Color(0xFF071923), RoundedCornerShape(12.dp))
+                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
+                        .padding(5.dp)
                 ) {
-                    images.forEach { image ->
-                        Column(
-                            Modifier.width(cardWidth)
-                                .background(Color(0xFF071923), RoundedCornerShape(12.dp))
-                                .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(12.dp))
-                                .padding(6.dp)
-                        ) {
-                            RemoteMessageImage(image.url, image.alt, if (images.size == 1) 138.dp else 98.dp)
-                            if (image.alt.isNotBlank()) {
-                                Text(image.alt.replace(Regex("\\s+"), " ").trim(),
-                                    color = Color(0xFFE1F6FA), fontSize = 9.sp,
-                                    lineHeight = 12.sp, maxLines = 2,
-                                    modifier = Modifier.padding(top = 5.dp))
-                            }
-                        }
-                    }
+                    RemoteMessageImage(image.url, image.alt, if (images.size == 1) 178.dp else 148.dp)
                 }
             }
         }
