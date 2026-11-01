@@ -1026,17 +1026,34 @@ private fun JarvisScreen(
                 animationSpec = tween(durationMillis = 1050, easing = androidx.compose.animation.core.FastOutSlowInEasing),
                 label = "chatAmbienceTransition"
             )
-            // Persistent HUD layer: it morphs from the full idle hologram into a subdued
-            // conversation backdrop instead of disappearing when the first message arrives.
-            // Calm, low-contrast backdrop. UI surfaces carry the hierarchy; no oversized HUD overlay.
+            // HUD ambience fades down after the first message so the conversation becomes primary.
             Canvas(Modifier.fillMaxSize()) {
                 val w=size.width; val h=size.height
-                drawRect(Brush.verticalGradient(listOf(Color(0xFF050B11),Color(0xFF091923),Color(0xFF050C12))))
+                drawRect(Brush.verticalGradient(listOf(Color(0xFF03080D),Color(0xFF07131B),Color(0xFF02070B))))
                 val center=Offset(w*.5f,h*.38f)
-                drawCircle(Brush.radialGradient(listOf(Color(0x1429AFC5),Color.Transparent),center,w*.62f),w*.62f,center)
-                val unit=48.dp.toPx()
-                for(x in 0..(w/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.018f),Offset(x*unit,0f),Offset(x*unit,h),.5f)
-                for(y in 0..(h/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.016f),Offset(0f,y*unit),Offset(w,y*unit),.5f)
+                drawCircle(
+                    Brush.radialGradient(
+                        listOf(Color(0x3329AFC5).copy(alpha=ambienceAlpha),Color.Transparent),
+                        center,w*.62f
+                    ),w*.62f,center
+                )
+                val unit=42.dp.toPx()
+                val gridAlpha=.055f*ambienceAlpha
+                for(x in 0..(w/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=gridAlpha),Offset(x*unit,0f),Offset(x*unit,h),.6f)
+                for(y in 0..(h/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=gridAlpha*.8f),Offset(0f,y*unit),Offset(w,y*unit),.6f)
+                // Low perspective projection plane, strongest only while the chat is idle.
+                val horizon=h*.69f
+                for(i in 0..8) {
+                    val t=i/8f
+                    val y=horizon+(h-horizon)*t*t
+                    drawLine(Color(0xFF55D7E9).copy(alpha=.09f*ambienceAlpha*(1f-t*.55f)),
+                        Offset(w*.08f,y),Offset(w*.92f,y),.7f)
+                }
+                for(i in -6..6) {
+                    val x=w*.5f+i*w*.075f
+                    drawLine(Color(0xFF55D7E9).copy(alpha=.065f*ambienceAlpha),
+                        Offset(w*.5f,horizon),Offset(x,h),.7f)
+                }
             }
             Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Row(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -1059,13 +1076,32 @@ private fun JarvisScreen(
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
+                Row(Modifier.fillMaxWidth().padding(top=7.dp,bottom=5.dp)
+                    .background(Color(0x99071923),RoundedCornerShape(18.dp))
+                    .border(1.dp,Color(0x3354DDF4),RoundedCornerShape(18.dp)).padding(3.dp)) {
+                    listOf("CHAT","VOICE").forEach { tab ->
+                        val selected=page==tab
+                        TextButton(onClick={
+                            if(tab=="CHAT") voiceListening=false
+                            if(tab=="VOICE" && page!="VOICE") { voiceTranscript=""; voiceAnswer="" }
+                            page=tab
+                        },modifier=Modifier.weight(1f),
+                            colors=ButtonDefaults.textButtonColors(
+                                containerColor=if(selected) Color(0xFF123746) else Color.Transparent,
+                                contentColor=if(selected) Color(0xFFBDF7FF) else TextMuted
+                            )) {
+                            Text(if(tab=="VOICE") "◉  VOICE" else "▣  CHAT",
+                                fontSize=10.sp,letterSpacing=1.4.sp,fontWeight=if(selected) FontWeight.SemiBold else FontWeight.Normal)
+                        }
+                    }
+                }
                 if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 292.dp else 336.dp
+                            val reactorSize = if (compact) 300.dp else 352.dp
                             Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f)
                                 .clickable(enabled=voiceListening){onStartListening()},
                                 contentAlignment=Alignment.Center) {
@@ -1137,7 +1173,7 @@ private fun JarvisScreen(
                             }
                         }
                         // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
-                        Box(Modifier.fillMaxWidth().height(if (compact) 116.dp else 132.dp), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().height(if (compact) 108.dp else 122.dp), contentAlignment = Alignment.Center) {
                             Canvas(Modifier.fillMaxWidth().height(78.dp)) {
                                 val centerY = size.height / 2f
                                 val path = androidx.compose.ui.graphics.Path()
@@ -1155,6 +1191,7 @@ private fun JarvisScreen(
                                     Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
                                         .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
                                             voiceListening = false
+                                            onModeChanged(false)
                                             statusText = "MICROPHONE OFF"
                                         }, contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.MicOff, "Matikan mikrofon", tint = if (voiceListening) TextMuted else Color(0xFFFF8A8A), modifier = Modifier.size(25.dp))
@@ -1184,6 +1221,7 @@ private fun JarvisScreen(
                                     Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
                                         .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
                                             voiceListening = false
+                                            onModeChanged(false)
                                             page = "CHAT"
                                         }, contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Language, "Buka chat", tint = Cyan, modifier = Modifier.size(25.dp))
@@ -1221,7 +1259,7 @@ private fun JarvisScreen(
                                         letterSpacing=1.4.sp,fontWeight=FontWeight.Medium)
                                 }
                                 Spacer(Modifier.height(22.dp))
-                                Box(Modifier.size(if(compact) 142.dp else 158.dp),contentAlignment=Alignment.Center) {
+                                Box(Modifier.size(if(compact) 198.dp else 224.dp),contentAlignment=Alignment.Center) {
                                     Canvas(Modifier.fillMaxSize()) {
                                         val r=size.minDimension*.47f
                                         drawCircle(Brush.radialGradient(listOf(Color(0x333BD7EF),Color(0x1121AFC8),Color.Transparent),center,r*1.2f),r*1.2f,center)
@@ -1233,14 +1271,14 @@ private fun JarvisScreen(
                                             androidx.compose.ui.geometry.Size(r*1.96f,r*1.96f),style=Stroke(1.8.dp.toPx()))
                                         drawCircle(Color(0x445FEAFF),r*.52f,center,style=Stroke(.7.dp.toPx()))
                                     }
-                                    Box(Modifier.size(if(compact) 88.dp else 98.dp)
+                                    Box(Modifier.size(if(compact) 116.dp else 132.dp)
                                         .background(Brush.radialGradient(listOf(Color(0xFF1B6072),Color(0xFF0A2B38),Color(0xFF061721))),CircleShape)
                                         .border(1.dp,Color(0x8879EFFF),CircleShape),
                                         contentAlignment=Alignment.Center) {
-                                        Text("J",color=Color(0xFFE0FBFF),fontSize=58.sp,fontWeight=FontWeight.ExtraLight)
+                                        Text("J",color=Color(0xFFE0FBFF),fontSize=if(compact) 68.sp else 78.sp,fontWeight=FontWeight.ExtraLight)
                                     }
                                 }
-                                Spacer(Modifier.height(22.dp))
+                                Spacer(Modifier.height(12.dp))
                                 Text("Good to see you.",color=Color(0xFF8CCBD6),fontSize=13.sp,
                                     fontWeight=FontWeight.Normal,letterSpacing=.4.sp)
                                 Spacer(Modifier.height(4.dp))
@@ -1331,9 +1369,7 @@ private fun JarvisScreen(
                                         }
                                     }
                                     Column(Modifier.weight(1f)
-                                        .background(Color(0xB90C1B25),RoundedCornerShape(16.dp))
-                                        .border(1.dp,Color(0x334D9EAD),RoundedCornerShape(16.dp))
-                                        .padding(horizontal=12.dp,vertical=10.dp),
+                                        .padding(horizontal=3.dp,vertical=5.dp),
                                         verticalArrangement=Arrangement.spacedBy(7.dp)) {
                                         AnimatedVisibility(visible=line.revealed.value,
                                             enter=fadeIn(tween(180))+expandVertically(expandFrom=Alignment.Top, animationSpec=tween(520))) {
@@ -1447,17 +1483,7 @@ private fun JarvisScreen(
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("CHAT", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "CHAT") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "▣  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
-                            }
-                        }
-                    }
-                if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
+                if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(top=3.dp,bottom=2.dp))
             }
             if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
                 title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
