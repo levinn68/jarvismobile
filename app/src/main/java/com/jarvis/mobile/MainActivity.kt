@@ -296,7 +296,8 @@ class MainActivity : ComponentActivity() {
                         recognitionLanguage = detectRecognitionLanguage(text)
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                    } else if (voiceModeEnabled) handler.postDelayed({ startListening() }, 600)
+                        if (voiceModeEnabled) handler.postDelayed({ startListening() }, 450)
+                    } else if (voiceModeEnabled) handler.postDelayed({ startListening() }, 350)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
