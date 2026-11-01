@@ -444,6 +444,9 @@ class MainActivity : ComponentActivity() {
             .take(1800)
         if (cleanSpeech.isBlank()) return
         geminiSpeechInProgress = true
+        recognitionActive = false
+        recognitionStartPending = false
+        recognizer?.cancel()
         clapDetector.reset()
         tts?.stop()
         Thread {
