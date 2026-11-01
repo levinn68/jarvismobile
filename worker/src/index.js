@@ -166,15 +166,19 @@ async function previewImagesFromSources(sources) {
 
 async function commonsImagePreviews(prompt) {
   try {
-    const normalized = String(prompt || "")
+    const rawPrompt = String(prompt || "");
+    const shorthandPair = rawPrompt.match(/\b(?:iphone|ip)\s*(\d{1,2})\b.*?\b(?:dan|vs|versus|&)\s*(?:iphone|ip)?\s*(\d{1,2})\b/i);
+    const normalized = rawPrompt
       .replace(/\bip\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
       .replace(/\biphone\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
       .replace(/\b(hp|handphone|ponsel)\b/gi, "smartphone")
       .replace(/\b(bandingkan|perbandingan|antara|dengan|dan|vs|versus|cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
       .replace(/\s+/g, " ").trim();
     if (!normalized) return [];
-    const models = [...normalized.matchAll(/\b(iPhone\s*\d+|Samsung\s+[A-Za-z0-9+ -]+|Galaxy\s+[A-Za-z0-9+ -]+|Pixel\s+\d+[A-Za-z]?)\b/gi)]
-      .map((match) => match[0].trim());
+    const models = shorthandPair
+      ? ["iPhone " + shorthandPair[1], "iPhone " + shorthandPair[2]]
+      : [...normalized.matchAll(/\b(iPhone\s*\d+|Samsung\s+[A-Za-z0-9+ -]+|Galaxy\s+[A-Za-z0-9+ -]+|Pixel\s+\d+[A-Za-z]?)\b/gi)]
+          .map((match) => match[0].trim());
     const terms = [...new Set(models.length ? models : [normalized])].slice(0, 4);
     const results = [];
     for (const term of terms) {
