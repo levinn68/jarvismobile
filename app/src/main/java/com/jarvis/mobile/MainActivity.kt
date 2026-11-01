@@ -526,6 +526,12 @@ class MainActivity : ComponentActivity() {
         return if (englishCue.containsMatchIn(q)) "en-US" else "id-ID"
     }
 
+    private fun isEnglishText(text: String): Boolean {
+        val q = text.lowercase(Locale.ROOT)
+        val english = Regex("\\b(the|and|you|your|what|how|why|please|could|would|hello|thanks|with|from|about|create|build|make|explain|find|search|show|tell|calculate|write|open|done|here|there|this|that|for|is|are|can|will)\\b").findAll(q).count()
+        val indonesian = Regex("\\b(aku|saya|kamu|anda|yang|dan|dengan|untuk|tidak|nggak|enggak|gimana|kenapa|tolong|bisa|buat|jadi|adalah|sekarang|besok|kemarin|carikan|jelaskan|hitung|tampilkan|berapa|bagaimana)\\b").findAll(q).count()
+        return english > indonesian
+    }
     private fun speakWithAndroid(text: String) {
         tts?.language = Locale.forLanguageTag(if (isEnglishText(text)) "en-US" else "id-ID")
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
