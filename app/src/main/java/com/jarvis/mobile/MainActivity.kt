@@ -1902,6 +1902,12 @@ private fun JarvisScreen(
     }
     val clock12 = SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
 
+    val hologramShift by animateFloatAsState(
+        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) -86f else 0f,
+        animationSpec = tween(520),
+        label = "hologramPosition"
+    )
+
     val phase = when {
         busy -> "THINK"
         status.contains("SPEAK", true) -> "SPEAK"
@@ -2099,7 +2105,10 @@ private fun JarvisScreen(
                                     .animateContentSize(animationSpec = tween(420)),
                                 contentAlignment = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) Alignment.TopCenter else Alignment.Center
                             ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Column(
+                                    modifier = Modifier.offset(y = hologramShift.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
                                     VoiceHudReactor(
                                         modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 142.dp else if (compact) 170.dp else 210.dp),
                                         phase = phase,
