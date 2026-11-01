@@ -1884,17 +1884,33 @@ private fun JarvisScreen(
         }
     }
 
-    // In Voice Mode: accept either direct voice commands OR "Jarvis ..." wake word seamlessly!
+    // Always accept normal requests; app launching requires the explicit Jarvis wake phrase.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)^jarvis[,.! ]*")
-            val request = if (wake.containsMatchIn(heard)) heard.replaceFirst(wake, "").trim() else heard
-            if (request.isBlank()) {
-                onSpeak("Ya, Sir?")
-            } else if (request.equals("open", true) || request.equals("buka", true)) {
-                onSpeak("Aplikasi apa yang ingin dibuka?")
+            if (awaitingAppName) {
+                awaitingAppName = false
+                val opened = onOpenApp(heard)
+                onSpeak(if (opened) "Certainly, Boss. $heard is open." else "I couldn't find $heard on this device, Sir.")
+                return@LaunchedEffect
+            }
+            val wake = Regex("(?i)^jarvis\\b[,.! ]*")
+            val hasWake = wake.containsMatchIn(heard)
+            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
+            if (hasWake && Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon)$").matches(request)) {
+                voiceListening = false
+                awaitingAppName = false
+                onSpeak("Understood, Sir. I'll stand down.")
+            } else if (hasWake && request.isBlank()) {
+                onSpeak("I'm listening, Sir. What would you like me to do?")
+            } else if (hasWake && Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
+                awaitingAppName = true
+                onSpeak("Certainly, Sir. Which application shall I open?")
+            } else if (hasWake && Regex("(?i)^(open|buka)(kan)?\\s+").containsMatchIn(request)) {
+                val appName = request.replaceFirst(Regex("(?i)^(open|buka)(kan)?\\s+"), "").trim()
+                val opened = onOpenApp(appName)
+                onSpeak(if (opened) "Right away, Sir. $appName is open." else "I couldn't find $appName on this device, Boss.")
             } else {
                 send(request, voice = true)
             }
