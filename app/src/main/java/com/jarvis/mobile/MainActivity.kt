@@ -218,7 +218,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
     private val geminiVoice get() = prefs.getString("gemini_voice", "Charon").orEmpty()
-    private var voiceModeEnabled = true
+    private var voiceModeEnabled = false
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
     private val geminiKey get() = prefs.getString("gemini_api_key", "").orEmpty()
 
@@ -349,7 +349,9 @@ class MainActivity : ComponentActivity() {
                     json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
                 }
             } catch (e: Exception) {
-                "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
+                val message = e.message.orEmpty()
+                if (message.contains("Jawaban terlalu besar")) message
+                else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
             } finally {
                 connection?.disconnect()
             }
@@ -471,7 +473,7 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 voiceStatus.value = "MICROPHONE READY"
-                speak("Good day. JARVIS is online. I am listening.")
+                if (voiceModeEnabled) speak("Good day. JARVIS is online. I am listening.")
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
     }
@@ -533,7 +535,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onPause() { recognizer?.cancel(); super.onPause() }
-    override fun onResume() { super.onResume(); if (recognizer != null) handler.postDelayed({ startListening() }, 500) }
+    override fun onResume() { super.onResume(); if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 500) }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
