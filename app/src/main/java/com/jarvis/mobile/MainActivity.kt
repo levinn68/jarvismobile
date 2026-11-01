@@ -30,6 +30,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.view.WindowCompat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -978,6 +979,53 @@ private fun JarvisScreen(
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
+            val ambienceTarget = if (page == "CHAT" && lines.isEmpty()) 1f else 0.20f
+            val ambienceAlpha by animateFloatAsState(
+                targetValue = ambienceTarget,
+                animationSpec = tween(durationMillis = 1050, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                label = "chatAmbienceTransition"
+            )
+            // Persistent HUD layer: it morphs from the full idle hologram into a subdued
+            // conversation backdrop instead of disappearing when the first message arrives.
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val cx = w * .5f
+                val cy = h * .39f
+                val unit = 38.dp.toPx()
+                val grid = Color(0xFF20CDEB)
+                for (x in 0..(w / unit).toInt()) {
+                    val px = x * unit
+                    drawLine(grid.copy(alpha = .075f * ambienceAlpha), Offset(px, 0f), Offset(px, h), 0.65f)
+                }
+                for (y in 0..(h / unit).toInt()) {
+                    val py = y * unit
+                    drawLine(grid.copy(alpha = .065f * ambienceAlpha), Offset(0f, py), Offset(w, py), 0.65f)
+                }
+                val glowRadius = w * .53f
+                drawCircle(
+                    Brush.radialGradient(
+                        listOf(Color(0x4421CBEA).copy(alpha = .78f * ambienceAlpha), Color(0x1421CBEA).copy(alpha = .5f * ambienceAlpha), Color.Transparent),
+                        Offset(cx, cy), glowRadius
+                    ), glowRadius, Offset(cx, cy)
+                )
+                for (ring in 0..4) {
+                    val radius = w * (.19f + ring * .075f)
+                    drawCircle(grid.copy(alpha = (.15f - ring * .018f) * ambienceAlpha),
+                        radius, Offset(cx, cy), style = Stroke(if (ring == 0) 1.25f else .65f))
+                }
+                // Low projection platform remains as a faint ambient trace during chat.
+                for (ring in 0..3) {
+                    val ovalW = w * (.34f + ring * .12f)
+                    val ovalH = h * (.025f + ring * .008f)
+                    drawOval(grid.copy(alpha = (.19f - ring * .03f) * ambienceAlpha),
+                        topLeft = Offset(cx - ovalW / 2f, h * .81f - ovalH / 2f),
+                        size = androidx.compose.ui.geometry.Size(ovalW, ovalH),
+                        style = Stroke(if (ring == 0) 1.5f else .8f)
+                    )
+                }
+                drawLine(grid.copy(alpha = .22f * ambienceAlpha), Offset(0f, cy), Offset(w, cy), .8f)
+            }
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
