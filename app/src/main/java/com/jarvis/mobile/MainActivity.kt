@@ -224,6 +224,17 @@ class MainActivity : ComponentActivity() {
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
     private val listeningRestart = Runnable { startListening() }
+    private fun startVoiceForegroundService() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        runCatching {
+            val intent = Intent(this, JarvisVoiceService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        }.onFailure { voiceStatus.value = "BACKGROUND VOICE SERVICE UNAVAILABLE" }
+    }
+
+    private fun stopVoiceForegroundService() {
+        runCatching { stopService(Intent(this, JarvisVoiceService::class.java)) }
+    }
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private val liveRms = mutableStateOf(2f)
@@ -337,8 +348,19 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else { recognitionActive = false; recognitionStartPending = false; clapDetector.reset(); recognizer?.cancel(); voiceStatus.value = "MIC OFF" }
-                    voiceStatus.value = if (voiceMode) "MICROPHONE STARTING" else "MIC OFF"
+                    if (voiceMode) {
+                        startVoiceForegroundService()
+                        startListening()
+                        voiceStatus.value = "MICROPHONE STARTING"
+                    } else {
+                        handler.removeCallbacks(listeningRestart)
+                        recognitionActive = false
+                        recognitionStartPending = false
+                        clapDetector.reset()
+                        recognizer?.cancel()
+                        stopVoiceForegroundService()
+                        voiceStatus.value = "MIC OFF"
+                    }
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
@@ -593,7 +615,7 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 voiceStatus.value = "MICROPHONE READY"
-                if (voiceModeEnabled) handler.post { startListening() }
+                if (voiceModeEnabled) handler.post { startVoiceForegroundService(); startListening() }
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
     }
@@ -643,8 +665,16 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
     }
 
-    override fun onPause() { recognitionActive = false; recognitionStartPending = false; recognizer?.cancel(); super.onPause() }
-    override fun onResume() { super.onResume(); if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 500) }
+    override fun onPause() {
+        // Keep the user-enabled Voice session alive when the app is backgrounded.
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        if (recognizer != null && voiceModeEnabled && !recognitionActive && !recognitionStartPending && !geminiSpeechInProgress) {
+            handler.postDelayed({ startListening() }, 500)
+        }
+    }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         recognizer?.destroy()
@@ -2122,7 +2152,8 @@ private fun JarvisScreen(
                         Column(
                             Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState()),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(Modifier.height(8.dp))
@@ -2192,7 +2223,7 @@ private fun JarvisScreen(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .weight(1f)
+                                    .height(if (compact) 190.dp else 250.dp)
                                     .animateContentSize(animationSpec = tween(420)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -2201,7 +2232,7 @@ private fun JarvisScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     VoiceHudReactor(
-                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 150.dp else if (compact) 190.dp else 230.dp),
+                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 132.dp else if (compact) 150.dp else 190.dp),
                                         phase = phase,
                                         spin = spin,
                                         breathe = breathe
