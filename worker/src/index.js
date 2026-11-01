@@ -166,48 +166,57 @@ async function previewImagesFromSources(sources) {
 
 async function commonsImagePreviews(prompt) {
   try {
-    const rawPrompt = String(prompt || "");
-    const shorthandPair = rawPrompt.match(/\b(?:iphone|ip)\s*(\d{1,2})\b.*?\b(?:dan|vs|versus|&)\s*(?:iphone|ip)?\s*(\d{1,2})\b/i);
-    const normalized = rawPrompt
-      .replace(/\bip\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
-      .replace(/\biphone\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
-      .replace(/\b(hp|handphone|ponsel)\b/gi, "smartphone")
-      .replace(/\b(bandingkan|perbandingan|antara|dengan|dan|vs|versus|cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
+    // General-purpose image search: derive a topic query from any visual prompt,
+    // rather than maintaining a product-specific list of supported names.
+    const normalized = String(prompt || "")
+      .replace(/\b(?:tolong|please|bisa|coba|carikan|cari|tampilkan|tunjukkan|gambar|foto|visual|image|images|picture|pictures|photo|photos|jelaskan|explain|tentang|about|informasi|information|apa itu|what is|siapa itu|who is|sejarah|history|bandingkan|perbandingan|compare|comparison|antara|dengan|dan|vs|versus|rekomendasi|recommend|recommendation|terbaik|best|terbaru|latest|review|ulasan|harga|price|berapa|how much|di|the|a|an|of|for|to|in|on|with|and)\b/gi, " ")
+      .replace(/\b(?:saya|aku|gue|gua|kamu|lu|dong|ya|nih|bro)\b/gi, " ")
       .replace(/\s+/g, " ").trim();
-    if (!normalized) return [];
-    const models = shorthandPair
-      ? ["iPhone " + shorthandPair[1], "iPhone " + shorthandPair[2]]
-      : [...normalized.matchAll(/\b(iPhone\s*\d+|Samsung\s+[A-Za-z0-9+ -]+|Galaxy\s+[A-Za-z0-9+ -]+|Pixel\s+\d+[A-Za-z]?)\b/gi)]
-          .map((match) => match[0].trim());
-    const terms = [...new Set(models.length ? models : [normalized])].slice(0, 4);
-    const results = [];
-    for (const term of terms) {
+    const tokens = [...new Set(normalized.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+      .filter((word) => word.length >= 3 && !/^\d+$/.test(word)))];
+    if (!tokens.length) return [];
+
+    // Search the full topic and a few meaningful token combinations. This
+    // works for products, people, places, animals, landmarks, science topics,
+    // and other visual subjects without hard-coded brand/model names.
+    const queries = [...new Set([
+      normalized,
+      tokens.slice(0, 5).join(" "),
+      tokens.slice(-4).join(" "),
+    ].filter((value) => value.length >= 3))].slice(0, 3);
+    const candidates = new Map();
+    for (const query of queries) {
       const api = new URL("https://commons.wikimedia.org/w/api.php");
       api.search = new URLSearchParams({
-        action: "query", generator: "search", gsrsearch: '"' + term + '"',
-        gsrnamespace: "6", gsrwhat: "text", gsrlimit: "20",
-        prop: "imageinfo", iiprop: "url", iiurlwidth: "1000",
+        action: "query", generator: "search", gsrsearch: query,
+        gsrnamespace: "6", gsrwhat: "text", gsrlimit: "30",
+        prop: "imageinfo", iiprop: "url|extmetadata", iiurlwidth: "1000",
         format: "json", formatversion: "2",
       }).toString();
       const response = await fetch(api.toString(), {
         headers: { "User-Agent": "JARVISMobile/1.0 (visual search assistant)", "Accept": "application/json" },
-        signal: AbortSignal.timeout(7500),
+        signal: AbortSignal.timeout(8000),
       });
       if (!response.ok) continue;
       const data = await response.json();
-      const wanted = term.toLowerCase().replace(/\s+/g, " ");
-      const pages = (data.query?.pages || []).map((page) => {
+      for (const page of data.query?.pages || []) {
         const title = String(page.title || "").replace(/^File:/, "").replace(/\.[^.]+$/, "");
-        return { title, lower: title.toLowerCase().replace(/[_-]+/g, " "), url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "" };
-      });
-      const exact = pages.filter((item) => item.url.startsWith("https://") &&
-        item.lower.includes(wanted) &&
-        !/(logo|icon|screenshot|manual|brochure|poster|diagram|cover|wikipedia|flag|map)/i.test(item.lower));
-      for (const item of exact.slice(0, 2)) {
-        if (!results.some((existing) => existing.url === item.url)) results.push({ title: item.title.slice(0, 90), url: item.url });
+        const lower = title.toLowerCase().replace(/[_-]+/g, " ");
+        const meta = page.imageinfo?.[0]?.extmetadata || {};
+        const description = String(meta.ImageDescription?.value || "").replace(/<[^>]+>/g, " ").toLowerCase();
+        const haystack = lower + " " + description;
+        const matches = tokens.filter((token) => haystack.includes(token));
+        const score = matches.length * 10 + (lower.split(/\s+/).some((word) => tokens.includes(word)) ? 4 : 0);
+        const url = page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "";
+        if (!url.startsWith("https://") || score < 10 ||
+            /(logo|icon|screenshot|manual|brochure|poster|diagram|cover|flag|map|specimen|sample)/i.test(lower)) continue;
+        const key = url;
+        const current = candidates.get(key);
+        if (!current || current.score < score) candidates.set(key, { title, url, score });
       }
     }
-    return results.slice(0, 4);
+    return [...candidates.values()].sort((a, b) => b.score - a.score)
+      .slice(0, 4).map(({ title, url }) => ({ title: title.slice(0, 90), url }));
   } catch (_) { return []; }
 }
 
