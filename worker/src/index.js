@@ -98,40 +98,31 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
       } catch (_) { return ""; }
     };
     const metaCandidates = [];
+    const metaValues = {};
     for (const tag of tags) {
       const property = (readAttr(tag, "property") || readAttr(tag, "name") || readAttr(tag, "itemprop")).toLowerCase();
+      const content = readAttr(tag, "content");
+      if (content) metaValues[property] = content;
       if (!["og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src", "image"].includes(property)) continue;
-      const url = absolute(readAttr(tag, "content"));
+      const url = absolute(content);
       if (url) metaCandidates.push(url);
     }
-    if (metaCandidates.length) return metaCandidates[0];
+    const pageTitle = String(metaValues["og:title"] || metaValues["twitter:title"] || "").toLowerCase();
+    const pageDescription = String(metaValues["og:description"] || metaValues.description || "").toLowerCase();
+    const expectedWords = String(expectedTitle || "").toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 2);
+    const pageText = pageTitle + " " + pageDescription;
+    const titleMatches = expectedWords.filter((word) => pageText.includes(word)).length;
+    const pageLooksDocumentary = /\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(page.pathname) ||
+      /\b(pdf|ebook|e-book|document|modul|makalah|laporan|slide|presentation|powerpoint)\b/i.test(pageTitle + " " + pageDescription);
+    const pageLooksProduct = /\b(product|produk|shop|store|marketplace|iphone|samsung|xiaomi|tokopedia|shopee|lazada)\b/i.test(
+      page.hostname + " " + pageTitle + " " + pageDescription
+    );
 
-    // Product pages commonly expose their exact photo in schema.org JSON-LD.
-    const jsonLdBlocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
-    for (const block of jsonLdBlocks) {
-      try {
-        const parsed = JSON.parse(block[1].replace(/&quot;/g, '"').trim());
-        const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
-        while (queue.length) {
-          const node = queue.shift();
-          if (!node || typeof node !== "object") continue;
-          if (Array.isArray(node)) { queue.push(...node); continue; }
-          if (node["@graph"]) queue.push(...(Array.isArray(node["@graph"]) ? node["@graph"] : [node["@graph"]]));
-          const type = Array.isArray(node["@type"]) ? node["@type"].join(" ") : String(node["@type"] || "");
-          if (/Product|IndividualProduct|ProductGroup/i.test(type) && node.image) {
-            const images = Array.isArray(node.image) ? node.image : [node.image];
-            for (const raw of images) {
-              const candidate = typeof raw === "string" ? raw : raw?.url || raw?.contentUrl;
-              const url = absolute(candidate);
-              if (url && !/(logo|icon|avatar|sprite|tracking|pixel|banner|placeholder)/i.test(url)) return url;
-            }
-          }
-        }
-      } catch (_) {}
-    }
-
-    const imageTags = html.match(/<img\b[^>]*>/gi) || [];
-    const expected = String(expectedTitle || "").toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x.length > 2);
+    // Prefer structured Product data and query-matching image alt text over OG
+    // thumbnails, which can represent document covers or unrelated article art.
+    const jsonLdBlocks = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];    const imageTags = html.match(/<img\b[^>]*>/gi) || [];
+    const expected = expectedWords;
     const candidates = [];
     for (const tag of imageTags) {
       const alt = readAttr(tag, "alt").toLowerCase();
@@ -151,7 +142,17 @@ async function fetchPreviewImage(pageUrl, expectedTitle = "") {
       candidates.push({ url, score: titleScore * 10000 + sizeScore });
     }
     candidates.sort((x, y) => y.score - x.score);
-    return candidates[0]?.url || null;
+    const matchingImage = candidates.find((item) => item.score >= 20000);
+    if (matchingImage) return matchingImage.url;
+
+    // OG images are only fallback when page title clearly matches requested
+    // item and it is not a document, presentation, or generic article page.
+    if (!pageLooksDocumentary && metaCandidates.length && expected.length > 0 &&
+        titleMatches >= Math.min(2, expected.length) &&
+        (pageLooksProduct || titleMatches >= Math.min(3, expected.length))) {
+      return metaCandidates[0];
+    }
+    return null;
   } catch (_) { return null; }
 }
 async function previewImagesFromSources(sources) {
