@@ -461,8 +461,11 @@ class MainActivity : ComponentActivity() {
                     try {
                         speechPlayer?.release()
                         speechPlayer = MediaPlayer().apply {
+                            setAudioStreamType(android.media.AudioManager.STREAM_MUSIC)
+                            setVolume(1.0f, 1.0f)
                             setDataSource(audioFile.absolutePath)
                             setOnPreparedListener {
+                                setVolume(1.0f, 1.0f)
                                 voiceStatus.value = "JARVIS SPEAKING"
                                 it.start()
                             }
@@ -1850,7 +1853,7 @@ private fun JarvisScreen(
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
         onModeChanged(voiceOn)
-        if (voiceOn) onStartListening()
+        // onModeChanged owns the single recognizer start; avoid starting it twice.
     }
 
     LaunchedEffect(listState) {
