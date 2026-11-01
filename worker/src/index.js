@@ -99,7 +99,7 @@ async function serpApiSearch(env, engine, query, options = {}) {
       let results = (data.shopping_results || []).map((item) => ({
         title: String(item.title || "").slice(0, 180), image: safeHttpUrl(item.thumbnail),
         price: String(item.price || ""),
-        extractedPrice: Number.isFinite(Number(item.extracted_price)) ? Number(item.extracted_price) : parsePriceValue(item.price),
+        extractedPrice: item.extracted_price !== null && item.extracted_price !== undefined && Number.isFinite(Number(item.extracted_price)) ? Number(item.extracted_price) : parsePriceValue(item.price),
         source: String(item.source || ""), rating: Number.isFinite(Number(item.rating)) ? Number(item.rating) : null,
         reviews: Number.isFinite(Number(item.reviews)) ? Number(item.reviews) : null,
         link: safeHttpUrl(item.product_link || item.link), delivery: String(item.delivery || ""),
