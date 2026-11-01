@@ -223,6 +223,7 @@ class MainActivity : ComponentActivity() {
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
+    private val listeningRestart = Runnable { startListening() }
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private val liveRms = mutableStateOf(2f)
@@ -287,12 +288,16 @@ class MainActivity : ComponentActivity() {
                     recognitionActive = false
                     recognitionStartPending = false
                     if (geminiSpeechInProgress || clapActivationInProgress) return
-                    voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "NO SPEECH DETECTED · RETRYING"
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
-                        else -> "RECONNECTING VOICE CORE"
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
+                        return
                     }
-                    if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS && voiceModeEnabled) handler.postDelayed({ startListening() }, 900)
+                    // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
+                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · READY FOR JARVIS" else "MIC OFF"
+                    if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 300L else 850L)
+                    }
                 }
                 override fun onResults(results: Bundle?) {
                     recognitionActive = false
@@ -305,8 +310,10 @@ class MainActivity : ComponentActivity() {
                         recognitionLanguage = detectRecognitionLanguage(text)
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
-                        if (voiceModeEnabled) handler.postDelayed({ startListening() }, 450)
-                    } else if (voiceModeEnabled) handler.postDelayed({ startListening() }, 350)
+                        if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, 350L)
+                    } else if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, 300L)
                 }
                 override fun onPartialResults(partialResults: Bundle?) {
                     val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
@@ -504,7 +511,8 @@ class MainActivity : ComponentActivity() {
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
                                 voiceStatus.value = "AUDIO PLAYBACK ERROR"
-                                handler.postDelayed({ startListening() }, 900)
+                                handler.removeCallbacks(listeningRestart)
+                handler.postDelayed(listeningRestart, 850L)
                                 true
                             }
                             prepareAsync()
@@ -571,7 +579,8 @@ class MainActivity : ComponentActivity() {
             recognitionStartPending = false
             recognitionActive = false
             voiceStatus.value = "VOICE CORE RESTARTING"
-            if (voiceModeEnabled) handler.postDelayed({ startListening() }, 1200)
+            if (voiceModeEnabled) handler.removeCallbacks(listeningRestart)
+                handler.postDelayed(listeningRestart, 1000L)
         }
     }
 
