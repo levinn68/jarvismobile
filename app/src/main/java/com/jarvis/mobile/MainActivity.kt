@@ -98,6 +98,8 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.Image
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import java.util.Locale
@@ -644,18 +646,18 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 
 @Composable
 private fun RemoteMarkdownImage(alt: String, url: String) {
-    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-            runCatching { URL(url).openConnection().apply { connectTimeout = 8000; readTimeout = 10000 }.getInputStream().use { BitmapFactory.decodeStream(it) } }.getOrNull()
-        }
-    }
+    val context = LocalContext.current
     Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(11.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(11.dp)).padding(7.dp)) {
-        if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = alt, modifier = Modifier.fillMaxWidth().heightIn(min=110.dp, max=210.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-        else Box(Modifier.fillMaxWidth().height(118.dp).background(Color(0xFF0B2633), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Image, null, tint=Cyan, modifier=Modifier.size(32.dp)) }
-        if (alt.isNotBlank()) Text(alt, color=TextMuted, fontSize=9.sp, modifier=Modifier.padding(top=5.dp))
+        AsyncImage(
+            model = ImageRequest.Builder(context).data(url).crossfade(true)
+                .memoryCacheKey(url).diskCacheKey(url).build(),
+            contentDescription = alt.ifBlank { "Hasil gambar JARVIS" },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 260.dp),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+        )
+        if (alt.isNotBlank()) Text(alt, color=TextMuted, fontSize=11.sp, modifier=Modifier.padding(top=7.dp))
     }
 }
-
 @Composable
 private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextUnit = 10.sp) {
     val image = Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(value)
@@ -834,6 +836,8 @@ private fun JarvisScreen(
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
+    var voiceTranscript by remember { mutableStateOf("") }
+    var voiceAnswer by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -888,11 +892,11 @@ private fun JarvisScreen(
         val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
         val requestText = q + attachmentNote
         if (q.isNotBlank()) lastPrompt = q
-        lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
+        if (voice) { voiceTranscript = q; voiceAnswer = "" } else lines.add(Line(true, q.ifBlank { "Tolong periksa lampiran ini." }, attachments = files))
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
             val greeting = "I'm online. How may I assist?"
-            lines.add(Line(false, greeting))
+            if (voice) voiceAnswer = greeting else lines.add(Line(false, greeting))
             statusText = "JARVIS ONLINE"
             if (voice) onSpeak(greeting)
             return
@@ -902,13 +906,13 @@ private fun JarvisScreen(
         val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
         if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
             val answer = "Baik. Perintah dijalankan."
-            lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
+            if (voice) voiceAnswer = answer else lines.add(Line(false, answer)); statusText = "COMMAND EXECUTED"
             if (voice) onSpeak(answer)
             return
         }
         if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
-            lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
+            if (voice) voiceAnswer = answer else lines.add(Line(false, answer)); statusText = "APP NOT FOUND"
             if (voice) onSpeak(answer)
             return
         }
@@ -918,16 +922,18 @@ private fun JarvisScreen(
         cancelCurrentRequest = onAskGemini(requestText) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
-            val responseLine = Line(false, answer)
-            responseLine.displayText.value = answer
-            responseLine.revealed.value = false
-            lines.add(responseLine)
+            if (voice) { voiceAnswer = answer } else {
+                val responseLine = Line(false, answer)
+                responseLine.displayText.value = answer
+                responseLine.revealed.value = false
+                lines.add(responseLine)
+            }
             busy = false
             cancelCurrentRequest = null
             statusText = "RESPONSE READY"
-            revealScope.launch {
+            if (!voice) revealScope.launch {
                 kotlinx.coroutines.delay(24)
-                responseLine.revealed.value = true
+                lines.lastOrNull()?.revealed?.value = true
             }
             if (voice) onSpeak(answer)
         }
@@ -994,7 +1000,7 @@ private fun JarvisScreen(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 264.dp else 292.dp
+                            val reactorSize = if (compact) 292.dp else 336.dp
                             Canvas(Modifier.size(reactorSize)
                                 .scale(if (voiceListening) breathe else 1f)
                                 .rotate(if (voiceListening) spin * .12f else spin * .025f)
@@ -1105,7 +1111,7 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        val latestVoiceAnswer = lines.lastOrNull { !it.user }?.text.orEmpty()
+                        val latestVoiceAnswer = voiceAnswer
                         Column(Modifier.fillMaxWidth().padding(horizontal=5.dp, vertical=3.dp)
                             .background(Color(0x99071923), RoundedCornerShape(18.dp))
                             .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(18.dp)).padding(horizontal=12.dp, vertical=8.dp),
@@ -1115,8 +1121,8 @@ private fun JarvisScreen(
                                     Icon(Icons.Default.Mic,null,tint=Cyan,modifier=Modifier.size(15.dp))
                                 }
                                 Spacer(Modifier.width(8.dp))
-                                Text(lastPrompt.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
-                                    fontSize=11.sp,maxLines=1,modifier=Modifier.weight(1f))
+                                Text(voiceTranscript.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
+                                    fontSize=13.sp,maxLines=2,modifier=Modifier.weight(1f))
                                 Row(horizontalArrangement=Arrangement.spacedBy(2.dp),verticalAlignment=Alignment.CenterVertically) {
                                     repeat(7) { n ->
                                         val h=4+kotlin.math.abs(kotlin.math.sin(wavePhase+n*.65f))*11
@@ -1126,7 +1132,7 @@ private fun JarvisScreen(
                             }
                             if(latestVoiceAnswer.isNotBlank()) {
                                 Text("J.A.R.V.I.S. / RESPONSE",color=Cyan,fontSize=7.sp,letterSpacing=1.2.sp)
-                                Text(latestVoiceAnswer,color=Color(0xFFC8E8EF),fontSize=9.sp,lineHeight=13.sp,maxLines=2)
+                                Text(latestVoiceAnswer,color=Color(0xFFC8E8EF),fontSize=12.sp,lineHeight=18.sp,maxLines=4)
                             }
                         }
                         // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
