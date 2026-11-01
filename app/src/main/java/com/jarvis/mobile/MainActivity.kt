@@ -533,6 +533,7 @@ private sealed class MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Code(val language: String, val text: String) : MarkdownBlock()
     data class Table(val rows: List<List<String>>) : MarkdownBlock()
+    data class ImageBlock(val alt: String, val url: String) : MarkdownBlock()
     data class Bullet(val text: String, val ordered: Boolean) : MarkdownBlock()
 }
 
@@ -550,6 +551,8 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     while (i < lines.size) {
         val line = lines[i]
         if (line.isBlank()) { i++; continue }
+        val imageMatch = Regex("^\\s*!\\[([^]]*)]\\((https?://[^ )]+)\\)\\s*$").matchEntire(line)
+        if (imageMatch != null) { blocks.add(MarkdownBlock.ImageBlock(imageMatch.groupValues[1], imageMatch.groupValues[2])); i++; continue }
         val heading = Regex("^\\s{0,3}(#{1,3})\\s+(.+)$").matchEntire(line)
             ?: Regex("^\\s*\\*\\*(.{3,72})\\*\\*\\s*$").matchEntire(line)
         if (heading != null) {
@@ -614,7 +617,7 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
     val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
     val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
-    val clean = markdown.replace(Regex("(?m)^#{1,6}\\s*"), "")
+    val clean = markdown.replace(Regex("<(https?://[^>]+)>"), "$1").replace(Regex("(?m)^#{1,6}\\s*"), "")
     val annotated = buildAnnotatedString {
         var cursor = 0
         val matches = (linkPattern.findAll(clean).map { it to "link" } +
@@ -625,8 +628,8 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
             append(clean.substring(cursor, match.range.first))
             if (kind == "link" || kind == "url") {
                 val startOffset = length
-                val label = if (kind == "link") match.groupValues[1] else match.value
                 val target = if (kind == "link") match.groupValues[2] else match.value
+                val label = if (kind == "link") match.groupValues[1] else runCatching { java.net.URI(target).host?.removePrefix("www.") ?: "Buka tautan" }.getOrDefault("Buka tautan")
                 withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(label) }
                 addStringAnnotation("URL", target, startOffset, length)
             } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
@@ -637,6 +640,21 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
     ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = 22.sp), onClick = { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
     })
+}
+
+@Composable
+@Composable
+private fun RemoteMarkdownImage(alt: String, url: String) {
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching { URL(url).openConnection().apply { connectTimeout = 8000; readTimeout = 10000 }.getInputStream().use { BitmapFactory.decodeStream(it) } }.getOrNull()
+        }
+    }
+    Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(11.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(11.dp)).padding(7.dp)) {
+        if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = alt, modifier = Modifier.fillMaxWidth().heightIn(min=110.dp, max=210.dp), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+        else Box(Modifier.fillMaxWidth().height(118.dp).background(Color(0xFF0B2633), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) { Icon(Icons.Default.Image, null, tint=Cyan, modifier=Modifier.size(32.dp)) }
+        if (alt.isNotBlank()) Text(alt, color=TextMuted, fontSize=9.sp, modifier=Modifier.padding(top=5.dp))
+    }
 }
 
 @Composable
@@ -662,6 +680,7 @@ private fun RichMessageText(markdown: String) {
                     while (index < blocks.size && blocks[index] !is MarkdownBlock.Heading) {
                         when (val part=blocks[index]) {
                             is MarkdownBlock.Paragraph -> InlineMarkdownText(part.text, 12.sp)
+                            is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(part.alt, part.url)
                             is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                                 Text(if(part.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
                                 InlineMarkdownText(part.text, 11.sp)
@@ -708,6 +727,7 @@ private fun RichMessageText(markdown: String) {
                         .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(11.dp)).padding(11.dp)) {
                         InlineMarkdownText(block.text, 12.sp)
                     }
+                    is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
                     is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth().padding(horizontal=5.dp), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
                         Text(if(block.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
                         InlineMarkdownText(block.text, 11.sp)
@@ -951,7 +971,7 @@ private fun JarvisScreen(
                             modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 220.dp else 246.dp
+                            val reactorSize = if (compact) 264.dp else 292.dp
                             Canvas(Modifier.size(reactorSize)
                                 .scale(if (voiceListening) breathe else 1f)
                                 .rotate(if (voiceListening) spin * .12f else spin * .025f)
@@ -1002,46 +1022,47 @@ private fun JarvisScreen(
                                     drawArc(cyan.copy(alpha = .22f + pulse * .18f), spin * (if (i % 2 == 0) 1f else -1f) + i * 70f,
                                         48f + i * 13f, false, Offset(cx - rr, cy - rr), androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.2f))
                                 }
-                                // Central wireframe globe, dotted matrix and moving scan beam.
-                                val core = r * .43f
-                                val scanY = cy + kotlin.math.sin(wavePhase.toDouble() * .55).toFloat() * core * .72f
-                                drawLine(Color(0xFF8CF3FF).copy(alpha = .62f), Offset(cx - core * .88f, scanY), Offset(cx + core * .88f, scanY), 1.25f)
-                                drawCircle(Color(0xFF9CF5FF).copy(alpha = .18f), core * .95f, Offset(cx, cy), style = Stroke(.8f))
-                                for (lat in -5..5) {
-                                    val yy = lat / 5f
-                                    val half = core * kotlin.math.sqrt((1f - yy * yy).coerceAtLeast(.02f))
-                                    drawOval(cyan.copy(alpha = .22f), Offset(cx - half, cy + yy * core - core * .055f),
-                                        androidx.compose.ui.geometry.Size(half * 2f, core * .11f), style = Stroke(.8f))
+                                // Bright concentric JARVIS reactor: layered cyan rings, radial ticks and a luminous core.
+                                val core = r * .36f
+                                drawCircle(Brush.radialGradient(listOf(Color(0xAA18CFF0), Color(0x5510A9D0), Color.Transparent), Offset(cx, cy), r * .72f), r * .72f, Offset(cx, cy))
+                                for (ring in 0..7) {
+                                    val rr = r * (.68f - ring * .075f)
+                                    drawCircle(cyan.copy(alpha = .22f + pulse * .16f - ring * .012f), rr, Offset(cx, cy), style = Stroke(if (ring < 2) 2.2f else 1.0f))
+                                    drawCircle(Color(0xFFB8FAFF).copy(alpha = .10f), rr - 2.2f, Offset(cx, cy), style = Stroke(.55f))
                                 }
-                                for (lon in 0..12) {
-                                    val w = core * kotlin.math.abs(kotlin.math.cos(lon * Math.PI / 12.0)).toFloat().coerceAtLeast(.06f)
-                                    drawOval(cyan.copy(alpha = .2f), Offset(cx - w, cy - core),
-                                        androidx.compose.ui.geometry.Size(w * 2f, core * 2f), style = Stroke(.8f))
+                                for (i in 0 until 180) {
+                                    val a = Math.PI * 2.0 * i / 180.0 + spin * Math.PI / 180.0
+                                    val major = i % 15 == 0
+                                    val inner = r * if (major) .69f else .73f
+                                    val outer = r * if (major) .83f else .77f
+                                    drawLine(cyan.copy(alpha = if (major) .88f else .24f),
+                                        Offset(cx + kotlin.math.cos(a).toFloat() * inner, cy + kotlin.math.sin(a).toFloat() * inner),
+                                        Offset(cx + kotlin.math.cos(a).toFloat() * outer, cy + kotlin.math.sin(a).toFloat() * outer),
+                                        if (major) 2.0f else .75f)
                                 }
-                                for (y in -5..5) for (x in -5..5) {
-                                    val distance = kotlin.math.sqrt((x*x + y*y).toFloat())
-                                    if (distance <= 5.5f) {
-                                        val alpha = (.18f + pulse * .34f) * (1f - distance / 7f)
-                                        drawCircle(Color(0xFF9CF5FF).copy(alpha = alpha.coerceAtLeast(.05f)),
-                                            if (x == 0 && y == 0) 2.2f else 1.05f,
-                                            Offset(cx + x * core * .14f, cy + y * core * .14f))
-                                    }
+                                for (i in 0..3) {
+                                    val rr = r * (.48f + i * .105f)
+                                    drawArc(Color(0xFF8CF3FF).copy(alpha = .48f + pulse * .32f),
+                                        spin * (if (i % 2 == 0) 1f else -1f) + i * 83f,
+                                        62f + i * 11f, false, Offset(cx - rr, cy - rr),
+                                        androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(2.0f))
                                 }
-                                // Three linked holographic nodes phase in and out around the core.
-                                val nodeAlpha = (.25f + pulse * .55f)
-                                val points = (0..2).map { index ->
-                                    val a = (spin * .35f + index * 120f - 90f) * Math.PI / 180.0
-                                    Offset(cx + kotlin.math.cos(a).toFloat() * core * .9f, cy + kotlin.math.sin(a).toFloat() * core * .9f)
+                                drawLine(Color(0xFF8CF3FF).copy(alpha = .58f), Offset(cx, cy-r*.98f), Offset(cx, cy-r*.76f), 2f)
+                                drawLine(Color(0xFF8CF3FF).copy(alpha = .58f), Offset(cx, cy+r*.76f), Offset(cx, cy+r*.98f), 2f)
+                                drawLine(Color(0xFF8CF3FF).copy(alpha = .42f), Offset(cx-r*.98f, cy), Offset(cx-r*.76f, cy), 1.5f)
+                                drawLine(Color(0xFF8CF3FF).copy(alpha = .42f), Offset(cx+r*.76f, cy), Offset(cx+r*.98f, cy), 1.5f)
+                                // Dark glass center with luminous inner rings, not a globe.
+                                drawCircle(Color(0xFF03121D).copy(alpha=.94f), core, Offset(cx,cy))
+                                drawCircle(Color(0xFF8CF3FF).copy(alpha=.88f), core*.98f, Offset(cx,cy), style=Stroke(2.2f))
+                                drawCircle(cyan.copy(alpha=.42f), core*.77f, Offset(cx,cy), style=Stroke(1.1f))
+                                drawCircle(Color(0xFF9CF5FF).copy(alpha=.18f), core*.58f, Offset(cx,cy), style=Stroke(.8f))
+                                drawCircle(Color(0xFFBDFBFF).copy(alpha=.95f), 3.2f, Offset(cx,cy))
+                                for (i in 0 until 48) {
+                                    val a = i * Math.PI * 2.0 / 48.0 + spin * .006
+                                    val rr = r * (.86f + .025f * kotlin.math.sin(i * .7 + wavePhase).toFloat())
+                                    val p = Offset(cx + kotlin.math.cos(a).toFloat()*rr, cy + kotlin.math.sin(a).toFloat()*rr)
+                                    drawCircle(cyan.copy(alpha=.22f + pulse*.42f), if (i%6==0) 2.5f else 1.1f, p)
                                 }
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[0], points[1], 1.4f)
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[1], points[2], 1.4f)
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[2], points[0], 1.4f)
-                                points.forEach { point ->
-                                    drawCircle(cyan.copy(alpha = .18f), 13f, point)
-                                    drawCircle(Color(0xFF8CF3FF).copy(alpha = .9f), 5f, point)
-                                    drawCircle(cyan.copy(alpha = .75f), 9f, point, style = Stroke(1.2f))
-                                }
-                                drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
                             }
                             Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
                                 Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
