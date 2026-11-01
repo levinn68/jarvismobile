@@ -673,24 +673,48 @@ private fun MarkdownTable(rows: List<List<String>>) {
     val dataRows = rows.drop(1)
     val productLike = headers.size >= 4
     if (productLike) {
-        Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(12.dp))
-            .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(12.dp)).padding(8.dp),
-            verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            dataRows.forEachIndexed { index, row ->
-                Column(Modifier.fillMaxWidth().background(Color(0xCC0A202B), RoundedCornerShape(10.dp))
-                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(10.dp)).padding(10.dp),
-                    verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Text(row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), ""), color=Color(0xFFEAFBFF),
-                        fontSize=12.sp, fontWeight=FontWeight.SemiBold)
-                    row.drop(1).forEachIndexed { cellIndex, value ->
-                        if (value.isNotBlank()) {
-                            val label = headers.getOrNull(cellIndex+1).orEmpty()
-                            Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.Top) {
-                                Text(label, color=Cyan, fontSize=9.sp, modifier=Modifier.widthIn(min=74.dp, max=94.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Box(Modifier.weight(1f)) { MarkdownCell(value.replace(Regex("\\*\\*"), ""), 10.sp) }
+        Column(Modifier.fillMaxWidth(), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                Text("PRODUCT PICKS", color=Color(0xFF79DCEC), fontSize=8.sp, letterSpacing=1.6.sp, fontWeight=FontWeight.SemiBold)
+                Spacer(Modifier.weight(1f))
+                Text("${dataRows.size} ITEMS  ·  SWIPE", color=TextMuted, fontSize=7.sp, letterSpacing=.8.sp)
+            }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                dataRows.forEachIndexed { index, row ->
+                    val title=row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), "")
+                    val cells=row.drop(1)
+                    val imageCell=cells.firstOrNull { Regex("!\\\\[[^]]*]\\\\(https?://").containsMatchIn(it) }
+                    val priceIndex=headers.indexOfFirst { it.contains("harga",true) || it.contains("price",true) }
+                    val detailIndex=headers.indexOfFirst { it.contains("detail",true) || it.contains("deskripsi",true) }
+                    val linkIndex=headers.indexOfFirst { it.contains("link",true) || it.contains("url",true) }
+                    val price=if(priceIndex>0) row.getOrNull(priceIndex).orEmpty() else ""
+                    val detail=if(detailIndex>0) row.getOrNull(detailIndex).orEmpty() else ""
+                    val link=if(linkIndex>0) row.getOrNull(linkIndex).orEmpty() else ""
+                    Column(Modifier.width(258.dp).background(Color(0xFF0A202B),RoundedCornerShape(15.dp))
+                        .border(1.dp,Color(0x6648BFD4),RoundedCornerShape(15.dp)).padding(10.dp),
+                        verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                        Text("0${index+1}  /  ${dataRows.size.toString().padStart(2,'0')}",color=Color(0xFF62C8DA),
+                            fontSize=7.sp,letterSpacing=1.1.sp)
+                        Text(title,color=Color(0xFFEAFBFF),fontSize=12.sp,lineHeight=17.sp,
+                            fontWeight=FontWeight.SemiBold,minLines=2,maxLines=2)
+                        if(imageCell!=null) {
+                            val match=Regex("!\\\\[([^]]*)]\\\\((https?://[^ )]+)\\)").find(imageCell)
+                            if(match!=null) {
+                                val context=LocalContext.current
+                                AsyncImage(model=ImageRequest.Builder(context).data(match.groupValues[2])
+                                    .memoryCacheKey(match.groupValues[2]).diskCacheKey(match.groupValues[2]).build(),
+                                    contentDescription=match.groupValues[1],
+                                    modifier=Modifier.fillMaxWidth().height(148.dp).background(Color(0xFFF4F7F8),RoundedCornerShape(10.dp)),
+                                    contentScale=androidx.compose.ui.layout.ContentScale.Fit)
                             }
                         }
+                        if(price.isNotBlank()) Text(price.replace(Regex("\\*\\*"), ""),color=Color(0xFF8DEBFA),
+                            fontSize=16.sp,fontWeight=FontWeight.Bold)
+                        if(detail.isNotBlank()) Text(detail.replace(Regex("\\*\\*"), "").take(105),
+                            color=Color(0xFFAAC5CE),fontSize=10.sp,lineHeight=14.sp,maxLines=3)
+                        Spacer(Modifier.weight(1f))
+                        if(link.isNotBlank()) MarkdownCell(link,10.sp)
                     }
                 }
             }
