@@ -281,7 +281,6 @@ async function handleChat(body, env) {
   let visualResults = [];
   // Do not launch background image searches for ordinary questions.
   // Visual search runs only when the user explicitly requests products or images.
-  const illustrationPromise = Promise.resolve({ configured: Boolean(env.SERPAPI_API_KEY), results: [] });
   if (visualKind) {
     if (!env.SERPAPI_API_KEY) {
       events.push({ type: "search_unconfigured", label: "Image/Product Search belum dikonfigurasi" });
@@ -369,15 +368,6 @@ async function handleChat(body, env) {
   events.push({ type: "synthesis_completed", label: "Kesimpulan JARVIS siap" });
   if (visualResults.length) {
     finalAnswer = appendVisualResults(finalAnswer, visualKind, visualResults);
-  } else if (wantsAutoIllustration) {
-    const illustration = await illustrationPromise;
-    if (illustration.results.length) {
-      visualResults = illustration.results.slice(0, 1);
-      finalAnswer += "\n\n## Ilustrasi\n\n" +
-        `![Ilustrasi: ${visualResults[0].title || "Referensi visual"}](${visualResults[0].image})` +
-        (visualResults[0].page ? `\n\n[Sumber gambar](${visualResults[0].page})` : "");
-      events.push({ type: "illustration_added", count: 1, label: "Ilustrasi ditambahkan ke jawaban" });
-    }
   }
 
   return json({
