@@ -234,6 +234,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var geminiSpeechInProgress = false
     private var speechPlayer: MediaPlayer? = null
     private var voiceModeEnabled = false
+    private var recognitionLanguage = "id-ID"
     private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -274,7 +275,10 @@ class MainActivity : ComponentActivity() {
                 override fun onError(error: Int) {
                     if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "LISTENING · STANDBY"
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                            recognitionLanguage = if (recognitionLanguage == "id-ID") "en-US" else "id-ID"
+                            "LISTENING · STANDBY"
+                        }
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
                         else -> "RECONNECTING VOICE CORE"
                     }
@@ -283,6 +287,7 @@ class MainActivity : ComponentActivity() {
                 override fun onResults(results: Bundle?) {
                     val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                     if (text.isNotBlank()) {
+                        recognitionLanguage = detectRecognitionLanguage(text)
                         voiceText.value = text
                         voiceStatus.value = "COMMAND RECEIVED"
                     } else handler.postDelayed({ startListening() }, 600)
@@ -503,7 +508,14 @@ class MainActivity : ComponentActivity() {
         }.start()
     }
 
+    private fun detectRecognitionLanguage(text: String): String {
+        val q = text.lowercase(Locale.ROOT)
+        val englishCue = Regex("\\b(the|and|you|your|what|how|why|please|could|would|hello|thanks|with|from|about|create|build|make|explain)\\b")
+        return if (englishCue.containsMatchIn(q)) "en-US" else "id-ID"
+    }
+
     private fun speakWithAndroid(text: String) {
+        tts?.language = Locale.forLanguageTag(detectRecognitionLanguage(text))
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
     }
 
@@ -523,8 +535,8 @@ class MainActivity : ComponentActivity() {
             speech.cancel()
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "id-ID")
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "id-ID")
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, recognitionLanguage)
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
                 putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
