@@ -232,6 +232,8 @@ class MainActivity : ComponentActivity() {
         }
     }
     @Volatile private var geminiSpeechInProgress = false
+    @Volatile private var recognitionActive = false
+    @Volatile private var recognitionStartPending = false
     private var speechPlayer: MediaPlayer? = null
     private var voiceModeEnabled = false
     private var recognitionLanguage = "id-ID"
@@ -264,7 +266,7 @@ class MainActivity : ComponentActivity() {
         if (SpeechRecognizer.isRecognitionAvailable(this)) {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this)
             recognizer?.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
+                override fun onReadyForSpeech(params: Bundle?) { recognitionStartPending = false; recognitionActive = true; if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
                 override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
                 override fun onRmsChanged(rmsdB: Float) {
                     liveRms.value = rmsdB.coerceIn(0f, 16f)
@@ -274,6 +276,8 @@ class MainActivity : ComponentActivity() {
                 override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
                     if (geminiSpeechInProgress || clapActivationInProgress) return
+                    recognitionActive = false
+                    recognitionStartPending = false
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "NO SPEECH DETECTED · RETRYING"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
@@ -282,6 +286,8 @@ class MainActivity : ComponentActivity() {
                     if (error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS && voiceModeEnabled) handler.postDelayed({ startListening() }, 900)
                 }
                 override fun onResults(results: Bundle?) {
+                    recognitionActive = false
+                    recognitionStartPending = false
                     val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                     val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
                     val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
@@ -312,7 +318,7 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel(); voiceStatus.value = "MIC OFF" }
+                    if (voiceMode) startListening() else { recognitionActive = false; recognitionStartPending = false; clapDetector.reset(); recognizer?.cancel(); voiceStatus.value = "MIC OFF" }
                     voiceStatus.value = if (voiceMode) "MICROPHONE STARTING" else "MIC OFF"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
@@ -434,7 +440,7 @@ class MainActivity : ComponentActivity() {
             .replace(Regex("[#*|>`~_]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
-            .take(550)
+            .take(1800)
         if (cleanSpeech.isBlank()) return
         geminiSpeechInProgress = true
         clapDetector.reset()
@@ -521,7 +527,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startListening() {
         clapActivationInProgress = false
-        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress) return
+        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress || recognitionActive || recognitionStartPending) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
                 permissionAsked = true
@@ -532,6 +538,7 @@ class MainActivity : ComponentActivity() {
         }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
+            recognitionStartPending = true
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
@@ -542,8 +549,10 @@ class MainActivity : ComponentActivity() {
             }
             speech.startListening(intent)
         } catch (_: Exception) {
+            recognitionStartPending = false
+            recognitionActive = false
             voiceStatus.value = "VOICE CORE RESTARTING"
-            handler.postDelayed({ startListening() }, 1200)
+            if (voiceModeEnabled) handler.postDelayed({ startListening() }, 1200)
         }
     }
 
@@ -602,7 +611,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
     }
 
-    override fun onPause() { recognizer?.cancel(); super.onPause() }
+    override fun onPause() { recognitionActive = false; recognitionStartPending = false; recognizer?.cancel(); super.onPause() }
     override fun onResume() { super.onResume(); if (recognizer != null && voiceModeEnabled) handler.postDelayed({ startListening() }, 500) }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
@@ -1782,6 +1791,30 @@ private fun JarvisScreen(
         lines.add(responseLine)
     }
 
+    fun buildSpokenReply(request: String, answer: String, products: List<VisualProduct>): String {
+        val q = request.lowercase(Locale.ROOT)
+        if (products.isNotEmpty()) {
+            val cheapest = products.minByOrNull { product ->
+                product.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE
+            }
+            val lead = listOf(
+                "Saya sudah menemukan beberapa pilihan.",
+                "Baik, saya sudah cek hasil pencariannya.",
+                "Ini beberapa opsi yang berhasil saya temukan."
+            ).random()
+            val detail = cheapest?.let { " Yang paling terjangkau adalah ${it.title}, dengan harga ${it.price} di ${it.source}." }.orEmpty()
+            return (lead + detail).take(900)
+        }
+        val lead = when {
+            Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(q) ->
+                listOf("Baik, saya jalankan sekarang.", "Siap, saya buka aplikasinya.", "Perintah membuka aplikasi sudah saya proses.").random()
+            Regex("\\b(cari|carikan|harga|rekomendasi|search|find)\\b").containsMatchIn(q) ->
+                listOf("Saya sudah memeriksa informasinya.", "Baik, ini yang berhasil saya temukan.", "Saya sudah menelusuri permintaan tersebut.").random()
+            else -> listOf("Baik, saya jelaskan.", "Tentu. Berikut penjelasannya.", "Saya sudah memeriksanya.").random()
+        }
+        return if (answer.isBlank()) lead else "$lead $answer".take(1800)
+    }
+
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
         val files = pendingAttachments.toList()
@@ -1811,13 +1844,13 @@ private fun JarvisScreen(
         if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
             val answer = "Baik, membuka aplikasi yang diminta."
             if (voice) voiceAnswer = answer else showJarvis(answer)
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak("Baik, saya sudah membuka " + q.replace(Regex("(?i)^(tolong|please|buka(kan)?|open|launch|run|jalankan|aplikasi)\\s+"), "") + ".")
             return
         }
         if (files.isEmpty() && openIntent) {
             val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
             if (voice) voiceAnswer = answer else showJarvis(answer)
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak("Saya belum menemukan aplikasi yang cocok dengan perintah " + q + ". Coba sebutkan nama aplikasinya.")
             return
         }
 
@@ -1842,7 +1875,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 lines.lastOrNull()?.revealed?.value = true
             }
-            if (voice) onSpeak(answer)
+            if (voice) onSpeak(buildSpokenReply(q, answer, payload.products))
         }
     }
 
@@ -1903,7 +1936,7 @@ private fun JarvisScreen(
     val clock12 = SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
 
     val hologramShift by animateFloatAsState(
-        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) -86f else 0f,
+        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) -68f else 0f,
         animationSpec = tween(520),
         label = "hologramPosition"
     )
@@ -2103,14 +2136,14 @@ private fun JarvisScreen(
                                     .fillMaxWidth()
                                     .weight(1f)
                                     .animateContentSize(animationSpec = tween(420)),
-                                contentAlignment = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) Alignment.TopCenter else Alignment.Center
+                                contentAlignment = Alignment.Center
                             ) {
                                 Column(
                                     modifier = Modifier.offset(y = hologramShift.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     VoiceHudReactor(
-                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 142.dp else if (compact) 170.dp else 210.dp),
+                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 126.dp else if (compact) 170.dp else 210.dp),
                                         phase = phase,
                                         spin = spin,
                                         breathe = breathe
@@ -2312,21 +2345,23 @@ private fun JarvisScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceEvenly
                             ) {
-                                // MIC OFF
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(
-                                        Modifier
-                                            .size(46.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF081523))
-                                            .border(1.dp, if (!voiceListening) AlertRed.copy(alpha = 0.7f) else Cyan.copy(alpha = 0.3f), CircleShape)
-                                            .clickable { voiceListening = false },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.MicOff, contentDescription = "Mic Off", tint = if (!voiceListening) AlertRed else Ice, modifier = Modifier.size(20.dp))
+                                // MIC OFF appears only while microphone is disabled.
+                                if (!voiceListening) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(
+                                            Modifier
+                                                .size(46.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF081523))
+                                                .border(1.dp, AlertRed.copy(alpha = 0.7f), CircleShape)
+                                                .clickable { voiceListening = false },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.MicOff, contentDescription = "Mic Off", tint = AlertRed, modifier = Modifier.size(20.dp))
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("MIC OFF", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
                                     }
-                                    Spacer(Modifier.height(4.dp))
-                                    Text("MIC OFF", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
                                 }
 
                                 // CENTER GLOWING MIC (LISTENING)
@@ -2343,7 +2378,7 @@ private fun JarvisScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(Icons.Default.Mic, contentDescription = "Listening", tint = Ice, modifier = Modifier.size(30.dp))
+                                        Icon(Icons.Default.Mic, contentDescription = if (voiceListening) "Microphone active" else "Turn microphone on", tint = Ice, modifier = Modifier.size(30.dp))
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
