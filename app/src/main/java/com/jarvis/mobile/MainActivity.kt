@@ -2196,7 +2196,7 @@ private fun JarvisScreen(
                                     decorationBox = { inner ->
                                         if (command.isEmpty()) {
                                             Text(
-                                                text = voiceTranscript.ifBlank { "coba carikan bantal 30 ribuan..." },
+                                                text = voiceTranscript.ifBlank { "Ucapkan perintah atau ketik di sini..." },
                                                 color = if (voiceTranscript.isBlank()) TextMuted else Ice,
                                                 fontSize = 13.5.sp,
                                                 maxLines = 1,
