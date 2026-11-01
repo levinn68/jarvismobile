@@ -937,7 +937,7 @@ private fun JarvisScreen(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
-                        Text("CORE 01 / " + page, color = TextMuted, fontSize = 7.sp)
+                        Text("CORE 01 / " + if (page == "COMMAND") "HOME" else page, color = TextMuted, fontSize = 7.sp)
                     }
                     IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.Settings, null, tint = Cyan, modifier = Modifier.size(23.dp)) }
                 }
@@ -1122,33 +1122,66 @@ private fun JarvisScreen(
                     }
                } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                        Text("CHAT CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         if (lines.isEmpty()) item {
-                            Column(Modifier.fillMaxWidth().padding(top=34.dp, bottom=22.dp),
-                                horizontalAlignment=Alignment.CenterHorizontally) {
-                                Box(Modifier.size(104.dp).background(Color(0xFF0B2430), CircleShape)
-                                    .border(1.dp, Color(0x6652DFF2), CircleShape), contentAlignment=Alignment.Center) {
-                                    Text("J", color=Cyan, fontSize=48.sp, fontWeight=FontWeight.Light)
+                            Column(Modifier.fillMaxWidth().padding(top=13.dp, bottom=14.dp),
+                                horizontalAlignment=Alignment.CenterHorizontally, verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                Box(Modifier.size(88.dp).background(Brush.radialGradient(listOf(Color(0xFF14566A), Color(0xFF06131D))), CircleShape)
+                                    .border(1.5.dp, Color(0xAA52DFF2), CircleShape), contentAlignment=Alignment.Center) {
+                                    Canvas(Modifier.size(76.dp)) {
+                                        drawCircle(Cyan.copy(alpha=.24f), style=Stroke(1.dp.toPx()))
+                                        drawCircle(Cyan.copy(alpha=.5f), radius=size.minDimension*.37f, style=Stroke(1.dp.toPx()))
+                                        drawCircle(Cyan, radius=size.minDimension*.29f, style=Stroke(1.5.dp.toPx()))
+                                    }
+                                    Text("J", color=Cyan, fontSize=42.sp, fontWeight=FontWeight.Light)
                                 }
-                                Spacer(Modifier.height(18.dp))
-                                Text("GOOD DAY. I'M JARVIS.", color=Color(0xFFBDEFFA), fontSize=13.sp,
+                                Text("GOOD DAY. I'M JARVIS.", color=Color(0xFFD7F7FF), fontSize=12.sp,
                                     letterSpacing=2.sp, fontWeight=FontWeight.Medium)
-                                Spacer(Modifier.height(8.dp))
-                                Text("Your personal intelligence system is ready.",
-                                    color=TextMuted, fontSize=12.sp, textAlign=TextAlign.Center)
-                                Spacer(Modifier.height(18.dp))
-                                Column(Modifier.fillMaxWidth().background(Color(0x99081721), RoundedCornerShape(14.dp))
-                                    .border(1.dp, Color(0x4449B8CB), RoundedCornerShape(14.dp)).padding(15.dp)) {
-                                    Text("TRY A COMMAND", color=Cyan, fontSize=8.sp, letterSpacing=1.8.sp)
-                                    Spacer(Modifier.height(10.dp))
-                                    Text("“Carikan rekomendasi HP terbaik.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Bandingkan dua pilihan laptop.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Buka YouTube.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
+                                Text("Your personal intelligence system is ready.", color=TextMuted, fontSize=9.sp)
+                                Spacer(Modifier.height(4.dp))
+                                val categories=listOf(
+                                    Triple("▣","Teknologi","HP · Laptop · Gadget"),
+                                    Triple("◇","Belajar","Materi · Rangkuman"),
+                                    Triple("▤","Produktivitas","To-do · Rencana"),
+                                    Triple("✎","Kreativitas","Gambar · Desain · AI"),
+                                    Triple("</>","Coding","Kode · Debug · Project"),
+                                    Triple("▷","Hiburan","Film · Game · Musik"),
+                                    Triple("⌖","Travel","Destinasi · Itinerary"),
+                                    Triple("▱","Keuangan","Anggaran · Investasi"),
+                                    Triple("✧","Lainnya","Tanya apa saja")
+                                )
+                                categories.chunked(3).forEachIndexed { rowIndex,row ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                        row.forEachIndexed { colIndex,item ->
+                                            val idx=rowIndex*3+colIndex
+                                            Column(Modifier.weight(1f).height(77.dp)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF0C2A38),Color(0xFF071923))),RoundedCornerShape(12.dp))
+                                                .border(1.dp, listOf(Color(0x7752DFF2),Color(0x776A9DFF),Color(0x7771D9C2))[idx%3],RoundedCornerShape(12.dp))
+                                                .clickable { command="Bantu saya tentang ${item.second.lowercase()}." }
+                                                .padding(horizontal=4.dp,vertical=7.dp), horizontalAlignment=Alignment.CenterHorizontally,
+                                                verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                                                Text(item.first,color=listOf(Cyan,Color(0xFF8AB8FF),Color(0xFF68E4C4))[idx%3],fontSize=17.sp,fontWeight=FontWeight.Bold)
+                                                Text(item.second,color=Color(0xFFE3F7FB),fontSize=9.sp,fontWeight=FontWeight.SemiBold)
+                                                Text(item.third,color=TextMuted,fontSize=6.sp,maxLines=1)
+                                            }
+                                        }
+                                        repeat(3-row.size) { Spacer(Modifier.weight(1f)) }
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text("QUICK COMMANDS", modifier=Modifier.fillMaxWidth(), color=Cyan, fontSize=8.sp, letterSpacing=1.4.sp)
+                                listOf("Cari rekomendasi HP","Bandingkan dua laptop","Buat itinerary liburan").forEach { suggestion ->
+                                    Row(Modifier.fillMaxWidth().height(31.dp)
+                                        .background(Color(0xAA09202C),RoundedCornerShape(9.dp))
+                                        .border(1.dp,Color(0x5549B8CB),RoundedCornerShape(9.dp))
+                                        .clickable { send(suggestion) }.padding(horizontal=10.dp),
+                                        verticalAlignment=Alignment.CenterVertically) {
+                                        Text("▣",color=Cyan,fontSize=10.sp); Spacer(Modifier.width(9.dp))
+                                        Text(suggestion,color=Color(0xFFD9EDF2),fontSize=9.sp)
+                                    }
                                 }
                             }
                         }
@@ -1300,7 +1333,7 @@ private fun JarvisScreen(
                         listOf("COMMAND", "VOICE").forEach { tab ->
                             TextButton(onClick = { if (tab == "COMMAND") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
+                                Text(if (tab == "VOICE") "◉  VOICE" else "▣  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
                             }
                         }
                     }
