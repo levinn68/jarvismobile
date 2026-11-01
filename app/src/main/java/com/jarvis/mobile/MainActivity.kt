@@ -1843,22 +1843,8 @@ private fun JarvisScreen(
             if (voice) onSpeak(greeting)
             return
         }
-        val openIntent = Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(norm)
-        val questionIntent = Regex("\\b(apa|siapa|kapan|kenapa|mengapa|bagaimana|jelaskan|cari|carikan|harga|bandingkan|buatkan|rangkum|what|who|when|why|how|search|find|explain|price)\\b").containsMatchIn(norm)
-        val simpleApp = norm.split(" ").size <= 2 && !questionIntent && !openIntent && norm !in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")
-        if (files.isEmpty() && (openIntent || simpleApp) && onOpenApp(q)) {
-            val answer = "Baik, membuka aplikasi yang diminta."
-            if (voice) voiceAnswer = answer else showJarvis(answer)
-            if (voice) onSpeak("Baik, saya sudah membuka " + q.replace(Regex("(?i)^(tolong|please|buka(kan)?|open|launch|run|jalankan|aplikasi)\\s+"), "") + ".")
-            return
-        }
-        if (files.isEmpty() && openIntent) {
-            val answer = "Aplikasi tersebut tidak ditemukan di perangkat ini."
-            if (voice) voiceAnswer = answer else showJarvis(answer)
-            if (voice) onSpeak("Saya belum menemukan aplikasi yang cocok dengan perintah " + q + ". Coba sebutkan nama aplikasinya.")
-            return
-        }
-
+        // Do not infer app-launch actions from ordinary words such as "open" or short utterances.
+        // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
         busy = true
         onSearch(q)
         cancelCurrentRequest = onAskGemini(requestText) { payload ->
