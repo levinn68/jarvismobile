@@ -12,5 +12,23 @@ The Android source project is provided in `JarvisMobile-source.zip`. The workflo
 
 Firebase AI features require your own Firebase project configuration. Do not commit private API keys or credentials.
 
+## Cloudflare Worker
 
-<!-- Trigger signed J.A.R.V.I.S build after signing secret refresh. -->
+The JARVIS API runs from `worker/src/index.js`. Existing AI providers and Fish Audio TTS remain supported.
+
+### Optional visual search provider
+
+The Worker supports real product and image search through SerpApi. Configure the key as a **Worker Secret** named `SERPAPI_API_KEY` in the Cloudflare dashboard (Workers & Pages → your JARVIS Worker → Settings → Variables and Secrets). Do not put this key in Android, source code, or this repository.
+
+After the secret is configured, these endpoints are available:
+
+- `POST /v1/search/products` with JSON `{"query":"bola basket size 7","limit":6}`
+- `POST /v1/search/images` with JSON `{"query":"gunung bromo sunrise","limit":6}`
+
+Both return normalized JSON results with image URLs and source links. Product/image intents sent to `POST /v1/chat` are automatically enriched with search results when the secret is configured. The chat response includes a `visuals` object and a Markdown-compatible visual section for the current Android renderer.
+
+If `SERPAPI_API_KEY` is absent, chat and all existing AI/TTS features continue working; visual search endpoints return HTTP 503 with a configuration hint.
+
+### Health check
+
+`GET /health` reports whether visual search is configured without exposing the secret value.
