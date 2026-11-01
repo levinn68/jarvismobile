@@ -2,10 +2,10 @@
     <style name="Theme.Jarvis" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowBackground">@drawable/jarvis_splash</item>
-        <item name="android:colorAccent">#00D9FF</item>
+        <item name="android:colorAccent">#00E5FF</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#050A12</item>
-        <item name="android:navigationBarColor">#050A12</item>
+        <item name="android:statusBarColor">#01060C</item>
+        <item name="android:navigationBarColor">#01060C</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

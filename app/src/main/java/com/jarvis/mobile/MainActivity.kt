@@ -115,10 +115,15 @@ import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
-private val Background = Color(0xFF050912)
-private val Panel = Color(0xFF0D1726)
-private val Cyan = Color(0xFF64E8FF)
-private val TextMuted = Color(0xFF8FA6BD)
+private val Background = Color(0xFF01060C)
+private val Panel = Color(0xFF07131C)
+private val Cyan = Color(0xFF00E5FF)
+private val TextMuted = Color(0xFF7C98A6)
+private val Ice = Color(0xFFE7F6FF)
+private val WarnAmber = Color(0xFFFFB14A)
+private val AlertRed = Color(0xFFFF5D6C)
+private val OkGreen = Color(0xFF3EE0A2)
+private val HudShape = RoundedCornerShape(2.dp)
 
 /**
  * Lightweight clap-pattern detector fed by SpeechRecognizer's live RMS callback.
@@ -665,7 +670,7 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 @Composable
 private fun RemoteMarkdownImage(alt: String, url: String) {
     val context = LocalContext.current
-    Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(11.dp)).border(1.dp, Color(0x7752DFF2), RoundedCornerShape(11.dp)).padding(7.dp)) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF07131C), HudShape).border(1.dp, Color(0x7752DFF2), HudShape).padding(7.dp)) {
         AsyncImage(
             model = ImageRequest.Builder(context).data(url)
                 .memoryCacheKey(url).diskCacheKey(url).build(),
@@ -708,8 +713,8 @@ private fun MarkdownTable(rows: List<List<String>>) {
                     val price=if(priceIndex>0) row.getOrNull(priceIndex).orEmpty() else ""
                     val detail=if(detailIndex>0) row.getOrNull(detailIndex).orEmpty() else ""
                     val link=if(linkIndex>0) row.getOrNull(linkIndex).orEmpty() else ""
-                    Column(Modifier.width(258.dp).background(Color(0xFF0A202B),RoundedCornerShape(15.dp))
-                        .border(1.dp,Color(0x6648BFD4),RoundedCornerShape(15.dp)).padding(10.dp),
+                    Column(Modifier.width(258.dp).background(Color(0xFF07141C),HudShape)
+                        .border(1.dp,Color(0x6648BFD4),HudShape).padding(10.dp),
                         verticalArrangement=Arrangement.spacedBy(8.dp)) {
                         Text("0${index+1}  /  ${dataRows.size.toString().padStart(2,'0')}",color=Color(0xFF62C8DA),
                             fontSize=7.sp,letterSpacing=1.1.sp)
@@ -722,7 +727,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                                 AsyncImage(model=ImageRequest.Builder(context).data(match.groupValues[2])
                                     .memoryCacheKey(match.groupValues[2]).diskCacheKey(match.groupValues[2]).build(),
                                     contentDescription=match.groupValues[1],
-                                    modifier=Modifier.fillMaxWidth().height(148.dp).background(Color(0xFFF4F7F8),RoundedCornerShape(10.dp)),
+                                    modifier=Modifier.fillMaxWidth().height(148.dp).background(Color(0xFF041018),HudShape),
                                     contentScale=androidx.compose.ui.layout.ContentScale.Fit)
                             }
                         }
@@ -737,8 +742,8 @@ private fun MarkdownTable(rows: List<List<String>>) {
             }
         }
     } else {
-        Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
-            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
+        Column(Modifier.fillMaxWidth().background(Color(0xFF07131C), HudShape)
+            .border(1.dp, Color(0x6652DFF2), HudShape).padding(5.dp)) {
             rows.forEachIndexed { ri, row ->
                 Row(Modifier.fillMaxWidth()) {
                     row.forEach { cell ->
@@ -763,11 +768,11 @@ private fun RichMessageText(markdown: String) {
             val block = blocks[index]
             if (block is MarkdownBlock.Heading) {
                 Column(Modifier.fillMaxWidth()
-                    .background(Color(0xB907202B), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(12.dp))
+                    .background(Color(0xE6061018), HudShape)
+                    .border(1.dp, Color(0x8852DFF2), HudShape)
                     .padding(11.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment=Alignment.CenterVertically) {
-                        Box(Modifier.size(22.dp).background(Color(0xFF0E3A4A), RoundedCornerShape(6.dp)), contentAlignment=Alignment.Center) {
+                        Box(Modifier.size(22.dp).background(Color(0xFF0A2430), HudShape), contentAlignment=Alignment.Center) {
                             Icon(Icons.Default.AutoAwesome, null, tint=Cyan, modifier=Modifier.size(14.dp))
                         }
                         Spacer(Modifier.width(8.dp))
@@ -782,8 +787,8 @@ private fun RichMessageText(markdown: String) {
                                 Text(if(part.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
                                 InlineMarkdownText(part.text, 11.sp)
                             }
-                            is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
-                                .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
+                            is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF040C12), HudShape)
+                                .border(1.dp, Color(0x7752DFF2), HudShape).padding(10.dp)) {
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
                                     Text(part.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
                                     Text("CODE BLOCK", color=TextMuted, fontSize=7.sp)
@@ -803,8 +808,8 @@ private fun RichMessageText(markdown: String) {
                 when (block) {
                     is MarkdownBlock.Heading -> Unit
                     is MarkdownBlock.Paragraph -> Column(Modifier.fillMaxWidth()
-                        .background(Color(0xA907202B), RoundedCornerShape(11.dp))
-                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(11.dp)).padding(11.dp)) {
+                        .background(Color(0xE6061018), HudShape)
+                        .border(1.dp, Color(0x5549B8CB), HudShape).padding(11.dp)) {
                         InlineMarkdownText(block.text, 12.sp)
                     }
                     is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
@@ -812,8 +817,8 @@ private fun RichMessageText(markdown: String) {
                         Text(if(block.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
                         InlineMarkdownText(block.text, 11.sp)
                     }
-                    is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
-                        .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
+                    is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF040C12), HudShape)
+                        .border(1.dp, Color(0x7752DFF2), HudShape).padding(10.dp)) {
                         Text(block.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
                         Spacer(Modifier.height(6.dp))
                         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
@@ -857,6 +862,25 @@ private fun SourceStrip(markdown: String) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) { links.forEach { SourceLogo(it) } }
     }
 }
+@Composable
+private fun HudTicks(modifier: Modifier = Modifier, color: Color = Cyan.copy(alpha = .72f)) {
+    Canvas(modifier) {
+        val arm = 9.dp.toPx()
+        val stroke = 1.15.dp.toPx()
+        val w = size.width
+        val h = size.height
+        drawLine(color, Offset(0f, arm), Offset(0f, 0f), stroke)
+        drawLine(color, Offset(0f, 0f), Offset(arm, 0f), stroke)
+        drawLine(color, Offset(w - arm, 0f), Offset(w, 0f), stroke)
+        drawLine(color, Offset(w, 0f), Offset(w, arm), stroke)
+        drawLine(color, Offset(0f, h - arm), Offset(0f, h), stroke)
+        drawLine(color, Offset(0f, h), Offset(arm, h), stroke)
+        drawLine(color, Offset(w - arm, h), Offset(w, h), stroke)
+        drawLine(color, Offset(w, h - arm), Offset(w, h), stroke)
+    }
+}
+
+
 @Composable
 private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
@@ -924,6 +948,7 @@ private fun JarvisScreen(
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
     val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
+    val scan by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(6400, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "scan")
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
@@ -1015,460 +1040,434 @@ private fun JarvisScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val inputFocus = remember { FocusRequester() }
+    val clock = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
-            .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
+            .background(Background)) {
             val compact = maxHeight < 700.dp
-            val ambienceTarget = if (page == "CHAT" && lines.isEmpty()) 1f else 0.20f
-            val ambienceAlpha by animateFloatAsState(
-                targetValue = ambienceTarget,
-                animationSpec = tween(durationMillis = 1050, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                label = "chatAmbienceTransition"
-            )
-            // Persistent HUD layer: it morphs from the full idle hologram into a subdued
-            // conversation backdrop instead of disappearing when the first message arrives.
-            // Calm, low-contrast backdrop. UI surfaces carry the hierarchy; no oversized HUD overlay.
             Canvas(Modifier.fillMaxSize()) {
-                val w=size.width; val h=size.height
-                drawRect(Brush.verticalGradient(listOf(Color(0xFF050B11),Color(0xFF091923),Color(0xFF050C12))))
-                val center=Offset(w*.5f,h*.38f)
-                drawCircle(Brush.radialGradient(listOf(Color(0x1429AFC5),Color.Transparent),center,w*.62f),w*.62f,center)
-                val unit=48.dp.toPx()
-                for(x in 0..(w/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.018f),Offset(x*unit,0f),Offset(x*unit,h),.5f)
-                for(y in 0..(h/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.016f),Offset(0f,y*unit),Offset(w,y*unit),.5f)
+                val w = size.width
+                val h = size.height
+                drawRect(Brush.verticalGradient(listOf(Color(0xFF01060C), Color(0xFF041018), Color(0xFF01060C))))
+                val core = Offset(w * .5f, h * .34f)
+                drawCircle(Brush.radialGradient(listOf(Color(0x2200E5FF), Color.Transparent), core, w * .72f), w * .72f, core)
+                val unit = 28.dp.toPx()
+                for (x in 0..(w / unit).toInt()) drawLine(Cyan.copy(alpha = .035f), Offset(x * unit, 0f), Offset(x * unit, h), .6f)
+                for (y in 0..(h / unit).toInt()) drawLine(Cyan.copy(alpha = .028f), Offset(0f, y * unit), Offset(w, y * unit), .6f)
+                val scanLine = h * scan
+                drawLine(Cyan.copy(alpha = .16f), Offset(0f, scanLine), Offset(w, scanLine), 1.1f)
+                val arm = 18.dp.toPx()
+                val inset = 7.dp.toPx()
+                val stroke = 1.1.dp.toPx()
+                val frame = Cyan.copy(alpha = .45f)
+                drawLine(frame, Offset(inset, inset + arm), Offset(inset, inset), stroke)
+                drawLine(frame, Offset(inset, inset), Offset(inset + arm, inset), stroke)
+                drawLine(frame, Offset(w - inset - arm, inset), Offset(w - inset, inset), stroke)
+                drawLine(frame, Offset(w - inset, inset), Offset(w - inset, inset + arm), stroke)
+                drawLine(frame, Offset(inset, h - inset - arm), Offset(inset, h - inset), stroke)
+                drawLine(frame, Offset(inset, h - inset), Offset(inset + arm, h - inset), stroke)
+                drawLine(frame, Offset(w - inset - arm, h - inset), Offset(w - inset, h - inset), stroke)
+                drawLine(frame, Offset(w - inset, h - inset - arm), Offset(w - inset, h - inset), stroke)
             }
-            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    Box(Modifier.size(38.dp).background(Color(0xFF123442),RoundedCornerShape(12.dp))
-                        .border(1.dp,Color(0x6659CFE1),RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center) {
-                        Text("J",color=Color(0xFFB8F6FF),fontSize=23.sp,fontWeight=FontWeight.Light)
+            Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                        Canvas(Modifier.fillMaxSize().rotate(spin * .15f)) {
+                            drawCircle(Cyan.copy(alpha = .85f), size.minDimension * .46f, style = Stroke(1.dp.toPx()))
+                            drawCircle(Cyan.copy(alpha = .35f), size.minDimension * .30f, style = Stroke(.7.dp.toPx()))
+                            drawArc(Cyan, -20f + spin * .2f, 70f, false, style = Stroke(1.6.dp.toPx()))
+                        }
+                        Text("J", color = Ice, fontSize = 13.sp, fontWeight = FontWeight.Light)
                     }
                     Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                        Text("J.A.R.V.I.S.",color=Color(0xFFF0FAFC),fontSize=17.sp,fontWeight=FontWeight.SemiBold,letterSpacing=1.5.sp)
-                        Text("PERSONAL AI ASSISTANT",color=Color(0xFF7699A4),fontSize=7.sp,letterSpacing=1.25.sp)
+                    Column(Modifier.weight(1f)) {
+                        Text("J.A.R.V.I.S.", color = Ice, fontSize = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 2.4.sp)
+                        Text("PERSONAL INTELLIGENCE  //  MOBILE", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.1.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                     }
-                    Row(Modifier.background(Color(0xFF102A31),CircleShape).padding(horizontal=9.dp,vertical=6.dp),
-                        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.size(6.dp).background(if(busy) Color(0xFFFFC66D) else Color(0xFF63DDAE),CircleShape))
-                        Text(if(busy) "THINKING" else "ONLINE",color=Color(0xFFB8D9DF),fontSize=8.sp,letterSpacing=.6.sp)
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(clock, color = Cyan, fontSize = 11.sp, letterSpacing = 1.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Box(Modifier.size(5.dp).background(if (busy) WarnAmber else OkGreen, CircleShape))
+                            Text(if (busy) "THINKING" else "ONLINE", color = if (busy) WarnAmber else OkGreen,
+                                fontSize = 8.sp, letterSpacing = 1.2.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                        }
                     }
-                    IconButton(onClick={keyDraft="";settings=true},modifier=Modifier.size(38.dp)) {
-                        Icon(Icons.Default.Settings,null,tint=Color(0xFF9BBBC4),modifier=Modifier.size(20.dp))
+                    IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Settings, "Settings", tint = TextMuted, modifier = Modifier.size(18.dp))
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
+                Spacer(Modifier.height(6.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("SYS", color = Cyan.copy(alpha = .7f), fontSize = 8.sp, letterSpacing = 1.4.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (busy) processStage.uppercase(Locale.ROOT) else statusText, color = TextMuted, fontSize = 8.sp,
+                        letterSpacing = .6.sp, maxLines = 1, modifier = Modifier.weight(1f),
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    Text(if (page == "VOICE") "MODE  VOICE" else "MODE  CHAT", color = Cyan.copy(alpha = .8f),
+                        fontSize = 8.sp, letterSpacing = 1.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                }
+                Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(1.dp).background(Cyan.copy(alpha = .22f)))
                 if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
-                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-                        Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                            val reactorSize = if (compact) 292.dp else 336.dp
-                            Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f)
-                                .clickable(enabled=voiceListening){onStartListening()},
-                                contentAlignment=Alignment.Center) {
-                                Canvas(Modifier.fillMaxSize()) {
-                                    val c=Color(0xFF55D7E9)
-                                    val r=size.minDimension*.43f
-                                    val pulse=.5f+.5f*kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                    drawCircle(Brush.radialGradient(listOf(Color(0x4437DDF5),Color(0x1621AFCB),Color.Transparent),center,r*1.65f),r*1.65f,center)
-                                    drawCircle(c.copy(alpha=.16f+pulse*.08f),r*1.04f,center,style=Stroke(1.dp.toPx()))
-                                    drawCircle(c.copy(alpha=.32f),r*.88f,center,style=Stroke(1.2.dp.toPx()))
-                                    drawCircle(c.copy(alpha=.12f),r*.70f,center,style=Stroke(.8.dp.toPx()))
-                                    for(i in 0 until 48) {
-                                        val angle=i*Math.PI*2/48+spin*Math.PI/180.0
-                                        val major=i%4==0
-                                        val inner=r*(if(major).91f else .95f)
-                                        val outer=r*(if(major)1.06f else 1.0f)
-                                        drawLine(c.copy(alpha=if(major).7f else .22f),
-                                            Offset(center.x+kotlin.math.cos(angle).toFloat()*inner,center.y+kotlin.math.sin(angle).toFloat()*inner),
-                                            Offset(center.x+kotlin.math.cos(angle).toFloat()*outer,center.y+kotlin.math.sin(angle).toFloat()*outer),
-                                            if(major)1.2.dp.toPx() else .6.dp.toPx())
+                            val reactorSize = if (compact) 248.dp else 300.dp
+                            Box(Modifier.size(reactorSize).scale(if (voiceListening || busy) breathe else 1f), contentAlignment = Alignment.Center) {
+                                Canvas(Modifier.fillMaxSize().rotate(spin)) {
+                                    val c = Cyan
+                                    val r = size.minDimension * .42f
+                                    drawCircle(Brush.radialGradient(listOf(Color(0x5500E5FF), Color(0x1400A8C4), Color.Transparent), center, r * 1.35f), r * 1.35f, center)
+                                    drawCircle(c.copy(alpha = .22f), r * 1.02f, center, style = Stroke(.8.dp.toPx()))
+                                    drawCircle(c.copy(alpha = .55f), r * .84f, center, style = Stroke(1.2.dp.toPx()))
+                                    drawCircle(c.copy(alpha = .18f), r * .62f, center, style = Stroke(.7.dp.toPx()))
+                                    for (i in 0 until 72) {
+                                        val angle = i * Math.PI * 2 / 72
+                                        val major = i % 6 == 0
+                                        val inner = r * (if (major) .90f else .96f)
+                                        val outer = r * (if (major) 1.08f else 1.0f)
+                                        drawLine(c.copy(alpha = if (major) .75f else .22f),
+                                            Offset(center.x + kotlin.math.cos(angle).toFloat() * inner, center.y + kotlin.math.sin(angle).toFloat() * inner),
+                                            Offset(center.x + kotlin.math.cos(angle).toFloat() * outer, center.y + kotlin.math.sin(angle).toFloat() * outer),
+                                            if (major) 1.3.dp.toPx() else .5.dp.toPx())
                                     }
-                                    drawCircle(Brush.radialGradient(listOf(Color(0xFF1C7C8D),Color(0xFF0A2B39),Color(0xFF06131D)),center,r*.68f),r*.68f,center)
-                                    drawCircle(c.copy(alpha=.7f),r*.68f,center,style=Stroke(1.dp.toPx()))
-                                    drawCircle(Color(0xFF9CF4FF).copy(alpha=.12f+pulse*.1f),r*.48f,center)
+                                    drawArc(c.copy(alpha = .9f), 200f, 80f, false, style = Stroke(2.dp.toPx()))
+                                    drawCircle(Brush.radialGradient(listOf(Color(0xFF123F4C), Color(0xFF061018)), center, r * .48f), r * .48f, center)
+                                    drawCircle(Color.White.copy(alpha = .9f), r * .07f, center)
                                 }
-                                Text("J",color=Color(0xFFD9FAFF),fontSize=if(compact) 72.sp else 82.sp,
-                                    fontWeight=FontWeight.ExtraLight)
+                                Text(if (voiceListening) "LIVE" else "IDLE", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp,
+                                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 18.dp),
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                             }
-                            Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
-                                Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
-                                    color = Color(0xFF6FCFE0), fontSize = 10.sp, letterSpacing = 1.4.sp)
-                                Text(if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO INPUT STANDBY",
-                                    color = if (voiceListening) Cyan else TextMuted, fontSize = 6.sp, letterSpacing = 1.sp)
-                            }
-                            Column(Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(if (busy) "NEURAL PROCESSING" else statusText, color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
-                                Spacer(Modifier.height(7.dp))
-                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    repeat(31) { bar ->
-                                        val level = kotlin.math.abs(kotlin.math.sin(wavePhase + bar * .42f))
-                                        Box(Modifier.width(2.dp).height((4 + level * (if (busy) 18 else 11)).dp)
-                                            .background(Cyan.copy(alpha = .35f + level * .55f), RoundedCornerShape(2.dp)))
-                                    }
-                                }
+                            Column(Modifier.align(Alignment.TopStart).padding(top = 4.dp)) {
+                                Text("REACTOR", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.4.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                Text(if (voiceListening) "AUDIO LOCK" else "STANDBY", color = Cyan, fontSize = 10.sp, letterSpacing = 1.2.sp)
                             }
                         }
-                        val latestVoiceAnswer = voiceAnswer
-                        Column(Modifier.fillMaxWidth().padding(horizontal=5.dp, vertical=3.dp)
-                            .background(Color(0x99071923), RoundedCornerShape(18.dp))
-                            .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(18.dp)).padding(horizontal=12.dp, vertical=8.dp),
-                            verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                            Row(verticalAlignment=Alignment.CenterVertically) {
-                                Box(Modifier.size(25.dp).background(Color(0xFF0D3C4C),CircleShape),contentAlignment=Alignment.Center) {
-                                    Icon(Icons.Default.Mic,null,tint=Cyan,modifier=Modifier.size(15.dp))
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text(voiceTranscript.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
-                                    fontSize=13.sp,maxLines=2,modifier=Modifier.weight(1f))
-                                Row(horizontalArrangement=Arrangement.spacedBy(2.dp),verticalAlignment=Alignment.CenterVertically) {
-                                    repeat(7) { n ->
-                                        val h=4+kotlin.math.abs(kotlin.math.sin(wavePhase+n*.65f))*11
-                                        Box(Modifier.width(2.dp).height(h.dp).background(Cyan.copy(alpha=.8f),RoundedCornerShape(2.dp)))
-                                    }
-                                }
-                            }
-                            if(latestVoiceAnswer.isNotBlank()) {
-                                Text("J.A.R.V.I.S. / RESPONSE",color=Cyan,fontSize=7.sp,letterSpacing=1.2.sp)
-                                Text(latestVoiceAnswer,color=Color(0xFFC8E8EF),fontSize=12.sp,lineHeight=18.sp,maxLines=4)
-                            }
-                        }
-                        // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
-                        Box(Modifier.fillMaxWidth().height(if (compact) 116.dp else 132.dp), contentAlignment = Alignment.Center) {
-                            Canvas(Modifier.fillMaxWidth().height(78.dp)) {
-                                val centerY = size.height / 2f
-                                val path = androidx.compose.ui.graphics.Path()
-                                for (i in 0..180) {
-                                    val x = size.width * i / 180f
-                                    val wave = kotlin.math.sin(i * .19f + wavePhase * 1.4f) * (5f + 2f * kotlin.math.sin(i * .07f))
-                                    if (i == 0) path.moveTo(x, centerY + wave) else path.lineTo(x, centerY + wave)
-                                }
-                                drawPath(path, Cyan.copy(alpha = .42f), style = Stroke(1.4f))
-                                drawPath(path, Cyan.copy(alpha = .14f), style = Stroke(5f))
-                            }
-                            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
-                                    Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
-                                        .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
-                                            voiceListening = false
-                                            statusText = "MICROPHONE OFF"
-                                        }, contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.MicOff, "Matikan mikrofon", tint = if (voiceListening) TextMuted else Color(0xFFFF8A8A), modifier = Modifier.size(25.dp))
-                                    }
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("MIC OFF", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
-                                }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(116.dp)) {
-                                    Box(Modifier.size(if (compact) 88.dp else 100.dp)
-                                        .scale(if (voiceListening) breathe else 1f)
-                                        .background(Brush.radialGradient(listOf(Color(0xFF12485A), Color(0xFF06131D))), CircleShape)
-                                        .border(2.dp, Cyan.copy(alpha = .88f), CircleShape)
-                                        .clickable {
-                                            voiceListening = !voiceListening
-                                            if (voiceListening) onStartListening()
-                                            statusText = if (voiceListening) "VOICE MODE · LISTENING" else "MICROPHONE OFF"
-                                        }, contentAlignment = Alignment.Center) {
-                                        Box(Modifier.size(if (compact) 72.dp else 82.dp).border(1.dp, Cyan.copy(alpha = .38f), CircleShape), contentAlignment = Alignment.Center) {
-                                            Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
-                                                "Toggle microphone", tint = Cyan, modifier = Modifier.size(39.dp))
+                        Box(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().border(1.dp, Cyan.copy(alpha = .35f), HudShape)
+                                .background(Color(0xCC041018), HudShape).padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("COMMAND LOG  //  SECURE", color = Cyan, fontSize = 8.sp, letterSpacing = 1.3.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        repeat(9) { n ->
+                                            val h = 3 + kotlin.math.abs(kotlin.math.sin(wavePhase + n * .55f)) * (if (voiceListening) 12f else 4f)
+                                            Box(Modifier.width(2.dp).height(h.dp).background(Cyan.copy(alpha = if (voiceListening) .85f else .3f)))
                                         }
                                     }
-                                    Spacer(Modifier.height(7.dp))
-                                    Text(if (voiceListening) "LISTENING" else "MIC OFF", color = Cyan, fontSize = 8.sp, letterSpacing = 1.5.sp)
                                 }
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
-                                    Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
-                                        .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
-                                            voiceListening = false
-                                            page = "CHAT"
-                                        }, contentAlignment = Alignment.Center) {
-                                        Icon(Icons.Default.Language, "Buka chat", tint = Cyan, modifier = Modifier.size(25.dp))
-                                    }
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("CHAT", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
+                                Text(voiceTranscript.ifBlank { "Awaiting wake word. Say “JARVIS”, then the request." },
+                                    color = Ice, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 2)
+                                if (voiceAnswer.isNotBlank()) {
+                                    Box(Modifier.fillMaxWidth().height(1.dp).background(Cyan.copy(alpha = .2f)))
+                                    Text("J.A.R.V.I.S.", color = Cyan, fontSize = 8.sp, letterSpacing = 1.4.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                    Text(voiceAnswer, color = Color(0xFFC5E4EE), fontSize = 12.sp, lineHeight = 17.sp, maxLines = 4)
                                 }
                             }
+                            HudTicks(Modifier.matchParentSize(), Cyan.copy(alpha = .8f))
                         }
-                        Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
-                            color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.2.sp,
-                            modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
-                    }
-               } else {
-                    Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("LIVE CONVERSATION", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
-                        Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
-                    }
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                        if (lines.isEmpty()) item {
-                            // Designed empty-chat welcome state: editorial hierarchy, restrained core, useful starters.
-                            Column(
-                                Modifier.fillMaxWidth().fillParentMaxHeight(.84f).padding(horizontal=8.dp),
-                                horizontalAlignment=Alignment.CenterHorizontally,
-                                verticalArrangement=Arrangement.Center
-                            ) {
-                                Spacer(Modifier.height(8.dp))
-                                Row(Modifier.background(Color(0xFF0B2631),CircleShape)
-                                    .border(1.dp,Color(0x5548C8DA),CircleShape)
-                                    .padding(horizontal=12.dp,vertical=6.dp),
-                                    verticalAlignment=Alignment.CenterVertically,
-                                    horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                    Box(Modifier.size(6.dp).background(Color(0xFF55E5B0),CircleShape))
-                                    Text("JARVIS IS READY",color=Color(0xFF9BDCE5),fontSize=8.sp,
-                                        letterSpacing=1.4.sp,fontWeight=FontWeight.Medium)
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceEvenly) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(52.dp).border(1.dp, if (voiceListening) TextMuted else AlertRed, CircleShape)
+                                    .clickable {
+                                        voiceListening = false
+                                        statusText = "MICROPHONE OFF"
+                                    }, contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.MicOff, "Matikan mikrofon", tint = if (voiceListening) TextMuted else AlertRed, modifier = Modifier.size(22.dp))
                                 }
-                                Spacer(Modifier.height(22.dp))
-                                Box(Modifier.size(if(compact) 142.dp else 158.dp),contentAlignment=Alignment.Center) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("MIC OFF", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.1.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(if (compact) 78.dp else 88.dp).scale(if (voiceListening) breathe else 1f)
+                                    .border(1.4.dp, Cyan, CircleShape)
+                                    .clickable {
+                                        voiceListening = !voiceListening
+                                        if (voiceListening) onStartListening()
+                                        statusText = if (voiceListening) "VOICE MODE · LISTENING" else "MICROPHONE OFF"
+                                    }, contentAlignment = Alignment.Center) {
                                     Canvas(Modifier.fillMaxSize()) {
-                                        val r=size.minDimension*.47f
-                                        drawCircle(Brush.radialGradient(listOf(Color(0x333BD7EF),Color(0x1121AFC8),Color.Transparent),center,r*1.2f),r*1.2f,center)
-                                        drawCircle(Color(0x665DEBFF),r*.88f,center,style=Stroke(1.dp.toPx()))
-                                        drawCircle(Color(0x333FE0F5),r*.72f,center,style=Stroke(.7.dp.toPx()))
-                                        drawArc(Color(0xAA68E9FA),215f,105f,false,Offset(center.x-r*.98f,center.y-r*.98f),
-                                            androidx.compose.ui.geometry.Size(r*1.96f,r*1.96f),style=Stroke(1.8.dp.toPx()))
-                                        drawArc(Color(0x8868E9FA),35f,105f,false,Offset(center.x-r*.98f,center.y-r*.98f),
-                                            androidx.compose.ui.geometry.Size(r*1.96f,r*1.96f),style=Stroke(1.8.dp.toPx()))
-                                        drawCircle(Color(0x445FEAFF),r*.52f,center,style=Stroke(.7.dp.toPx()))
+                                        drawCircle(Cyan.copy(alpha = .18f), size.minDimension * .38f, style = Stroke(1.dp.toPx()))
                                     }
-                                    Box(Modifier.size(if(compact) 88.dp else 98.dp)
-                                        .background(Brush.radialGradient(listOf(Color(0xFF1B6072),Color(0xFF0A2B38),Color(0xFF061721))),CircleShape)
-                                        .border(1.dp,Color(0x8879EFFF),CircleShape),
-                                        contentAlignment=Alignment.Center) {
-                                        Text("J",color=Color(0xFFE0FBFF),fontSize=58.sp,fontWeight=FontWeight.ExtraLight)
-                                    }
+                                    Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff, "Toggle microphone", tint = Cyan, modifier = Modifier.size(32.dp))
                                 }
-                                Spacer(Modifier.height(22.dp))
-                                Text("Good to see you.",color=Color(0xFF8CCBD6),fontSize=13.sp,
-                                    fontWeight=FontWeight.Normal,letterSpacing=.4.sp)
-                                Spacer(Modifier.height(4.dp))
-                                Text("How can I help?",color=Color(0xFFF0FBFD),fontSize=27.sp,
-                                    fontWeight=FontWeight.Light,letterSpacing=.2.sp)
-                                Spacer(Modifier.height(9.dp))
-                                Text("Ask anything. I’ll take it from here.",color=Color(0xFF7D9FA9),
-                                    fontSize=11.sp,textAlign=TextAlign.Center)
-                                Spacer(Modifier.height(25.dp))
-                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                                    Text("GET STARTED",color=Color(0xFF78C8D6),fontSize=8.sp,
-                                        letterSpacing=1.5.sp,fontWeight=FontWeight.SemiBold)
+                                Spacer(Modifier.height(6.dp))
+                                Text(if (voiceListening) "LISTENING" else "TAP MIC", color = Cyan, fontSize = 8.sp, letterSpacing = 1.4.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Box(Modifier.size(52.dp).border(1.dp, Cyan.copy(alpha = .55f), CircleShape)
+                                    .clickable { voiceListening = false; page = "CHAT" }, contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.Language, "Buka chat", tint = Cyan, modifier = Modifier.size(22.dp))
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text("COMMS", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.1.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            }
+                        }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("SECURE CHANNEL", color = Cyan, fontSize = 8.sp, letterSpacing = 1.6.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.weight(1f))
+                        Text(lines.size.toString().padStart(2, '0') + "  ENTRIES", color = TextMuted, fontSize = 8.sp, letterSpacing = .8.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    }
+                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState,
+                        contentPadding = PaddingValues(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (lines.isEmpty()) item {
+                            Column(Modifier.fillMaxWidth().fillParentMaxHeight(.92f),
+                                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                Box(Modifier.size(if (compact) 132.dp else 150.dp), contentAlignment = Alignment.Center) {
+                                    Canvas(Modifier.fillMaxSize()) {
+                                        val r = size.minDimension * .42f
+                                        drawCircle(Brush.radialGradient(listOf(Color(0x3300E5FF), Color.Transparent), center, r * 1.25f), r * 1.25f, center)
+                                        drawCircle(Cyan.copy(alpha = .55f), r, center, style = Stroke(1.dp.toPx()))
+                                        drawCircle(Cyan.copy(alpha = .22f), r * .72f, center, style = Stroke(.7.dp.toPx()))
+                                        drawArc(Cyan, 210f + spin * .05f, 90f, false, style = Stroke(1.8.dp.toPx()))
+                                        drawCircle(Color.White.copy(alpha = .85f), r * .08f, center)
+                                    }
+                                    Text("REACTOR\nONLINE", color = Cyan.copy(alpha = .8f), fontSize = 7.sp, letterSpacing = 1.2.sp,
+                                        textAlign = TextAlign.Center, lineHeight = 10.sp,
+                                        modifier = Modifier.padding(top = 36.dp),
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                }
+                                Text("At your service.", color = TextMuted, fontSize = 12.sp, letterSpacing = .4.sp)
+                                Spacer(Modifier.height(2.dp))
+                                Text("How may I assist?", color = Ice, fontSize = 26.sp, fontWeight = FontWeight.Light)
+                                Spacer(Modifier.height(6.dp))
+                                Text("Voice, search, or a direct command.", color = TextMuted, fontSize = 11.sp)
+                                Spacer(Modifier.height(18.dp))
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("MISSION DECK", color = Cyan, fontSize = 8.sp, letterSpacing = 1.5.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                                     Spacer(Modifier.weight(1f))
-                                    Text("QUICK ACTIONS",color=Color(0xFF547B87),fontSize=7.sp,letterSpacing=1.sp)
+                                    Text("04 TASKS", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                                 }
-                                Spacer(Modifier.height(10.dp))
-                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement=Arrangement.spacedBy(9.dp)) {
-                                    val actions=listOf(
-                                        Triple("⌘","Explore GitHub","Repositories & code"),
-                                        Triple("⌁","Build something","Code & debugging"),
-                                        Triple("◈","Plan a project","Ideas & workflow"),
-                                        Triple("✧","Discover tools","AI & automation")
-                                    )
-                                    actions.forEachIndexed { index,item ->
-                                        Column(Modifier.width(150.dp).height(88.dp)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF102D39),Color(0xFF091B25))),RoundedCornerShape(13.dp))
-                                            .border(1.dp,Color(0x444EC4D8),RoundedCornerShape(13.dp))
-                                            .clickable {
-                                                command=when(index) {
-                                                    0 -> "Help me explore my GitHub repositories"
-                                                    1 -> "Help me build something or debug code"
-                                                    2 -> "Help me plan a project"
-                                                    else -> "Show me the available JARVIS tools"
-                                                }
-                                                inputFocus.requestFocus()
-                                            }.padding(11.dp),
-                                            verticalArrangement=Arrangement.SpaceBetween) {
-                                            Text(item.first,color=Color(0xFF76E7F5),fontSize=19.sp)
-                                            Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
-                                                Text(item.second,color=Color(0xFFE5F7FA),fontSize=10.sp,fontWeight=FontWeight.SemiBold)
-                                                Text(item.third,color=Color(0xFF789BA5),fontSize=8.sp)
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    listOf(
+                                        Triple("01", "Explore GitHub", "Repositories & code"),
+                                        Triple("02", "Build something", "Code & debugging"),
+                                        Triple("03", "Plan a project", "Ideas & workflow"),
+                                        Triple("04", "Discover tools", "AI & automation")
+                                    ).forEachIndexed { index, item ->
+                                        Box(Modifier.width(148.dp).height(86.dp).clickable {
+                                            command = when (index) {
+                                                0 -> "Help me explore my GitHub repositories"
+                                                1 -> "Help me build something or debug code"
+                                                2 -> "Help me plan a project"
+                                                else -> "Show me the available JARVIS tools"
                                             }
+                                            inputFocus.requestFocus()
+                                        }) {
+                                            Column(Modifier.fillMaxSize().background(Color(0xCC061018), HudShape)
+                                                .border(1.dp, Cyan.copy(alpha = .28f), HudShape).padding(10.dp),
+                                                verticalArrangement = Arrangement.SpaceBetween) {
+                                                Text(item.first, color = Cyan, fontSize = 9.sp, letterSpacing = 1.2.sp,
+                                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                                Column {
+                                                    Text(item.second, color = Ice, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                                    Text(item.third, color = TextMuted, fontSize = 9.sp)
+                                                }
+                                            }
+                                            HudTicks(Modifier.matchParentSize())
                                         }
                                     }
                                 }
                             }
                         }
                         items(lines.size) { i ->
-                            val line=lines[i]
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = fadeIn(animationSpec = tween(180)) +
-                                    expandVertically(
-                                        expandFrom = Alignment.Top,
-                                        animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                    )
-                            ) {
-                            if (line.user) {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) {
-                                    Column(Modifier.widthIn(max = 292.dp)
-                                        .background(Brush.linearGradient(listOf(Color(0xFF104B76), Color(0xFF092B49))), RoundedCornerShape(15.dp))
-                                        .border(1.dp, Color(0xAA39BFF0), RoundedCornerShape(15.dp))
-                                        .padding(horizontal=13.dp, vertical=10.dp)) {
-                                        Text(line.text, color=Color(0xFFF0FAFF), fontSize=13.sp, lineHeight=18.sp)
-                                        Text(line.time, color=Color(0xFF8CB7CE), fontSize=8.sp, modifier=Modifier.align(Alignment.End).padding(top=4.dp))
-                                        line.attachments.forEach { file ->
-                                            Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
-                                                Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
-                                                Text(file.name, color=Color(0xFFB8DCE8), fontSize=9.sp, maxLines=1)
+                            val line = lines[i]
+                            AnimatedVisibility(visible = true, enter = fadeIn(tween(180)) + expandVertically(expandFrom = Alignment.Top, animationSpec = tween(520))) {
+                                if (line.user) {
+                                    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                                        Text("OPERATOR   " + line.time, color = TextMuted, fontSize = 7.sp, letterSpacing = 1.1.sp,
+                                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                            modifier = Modifier.padding(bottom = 4.dp, end = 2.dp))
+                                        Column(Modifier.widthIn(max = 300.dp).background(Color(0x3300E5FF), HudShape)
+                                            .border(1.dp, Cyan.copy(alpha = .55f), HudShape).padding(horizontal = 12.dp, vertical = 9.dp)) {
+                                            Text(line.text, color = Ice, fontSize = 13.sp, lineHeight = 18.sp)
+                                            line.attachments.forEach { file ->
+                                                Row(Modifier.fillMaxWidth().padding(top = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Default.AttachFile, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                                                    Spacer(Modifier.width(4.dp))
+                                                    Text(file.name, color = Color(0xFFB7DCE8), fontSize = 9.sp, maxLines = 1)
+                                                }
                                             }
+                                        }
+                                    }
+                                } else {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text("J.A.R.V.I.S.  //  RESPONSE", color = Cyan, fontSize = 7.sp, letterSpacing = 1.2.sp,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, modifier = Modifier.weight(1f))
+                                            Text(line.time, color = TextMuted, fontSize = 7.sp,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                        }
+                                        Box(Modifier.fillMaxWidth()) {
+                                            Column(Modifier.fillMaxWidth().background(Color(0xE6061018), HudShape)
+                                                .border(1.dp, Cyan.copy(alpha = .28f), HudShape).padding(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                AnimatedVisibility(visible = line.revealed.value, enter = fadeIn(tween(180)) + expandVertically(expandFrom = Alignment.Top, animationSpec = tween(420))) {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                        RichMessageText(line.displayText.value)
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                                                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                                                                Spacer(Modifier.width(3.dp)); Text("SALIN", color = TextMuted, fontSize = 8.sp, letterSpacing = .8.sp)
+                                                            }
+                                                            TextButton(onClick = {
+                                                                val shareIntent = Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_TEXT, line.text) }
+                                                                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
+                                                            }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)) {
+                                                                Icon(Icons.Default.Share, null, tint = TextMuted, modifier = Modifier.size(12.dp))
+                                                                Spacer(Modifier.width(3.dp)); Text("BAGIKAN", color = TextMuted, fontSize = 8.sp, letterSpacing = .8.sp)
+                                                            }
+                                                        }
+                                                        SourceStrip(line.text)
+                                                    }
+                                                }
+                                            }
+                                            HudTicks(Modifier.matchParentSize())
                                         }
                                     }
                                 }
-                            } else {
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.Start, verticalAlignment=Alignment.Top) {
-                                    Box(Modifier.padding(top=2.dp, end=8.dp).size(31.dp)
-                                        .background(Color(0xFF073447), CircleShape)
-                                        .border(1.dp, Color(0xFF27CDEB), CircleShape), contentAlignment=Alignment.Center) {
-                                        Canvas(Modifier.size(19.dp)) {
-                                            drawCircle(Cyan.copy(alpha=.22f), style=Stroke(2.dp.toPx()))
-                                            drawCircle(Cyan, radius=size.minDimension*.22f)
-                                            for (n in 0..3) {
-                                                val a=n*Math.PI/2
-                                                val p=Offset(center.x+kotlin.math.cos(a).toFloat()*size.minDimension*.38f, center.y+kotlin.math.sin(a).toFloat()*size.minDimension*.38f)
-                                                drawCircle(Cyan, radius=1.6.dp.toPx(), center=p)
-                                            }
-                                        }
-                                    }
-                                    Column(Modifier.weight(1f)
-                                        .background(Color(0xB90C1B25),RoundedCornerShape(16.dp))
-                                        .border(1.dp,Color(0x334D9EAD),RoundedCornerShape(16.dp))
-                                        .padding(horizontal=12.dp,vertical=10.dp),
-                                        verticalArrangement=Arrangement.spacedBy(7.dp)) {
-                                        AnimatedVisibility(visible=line.revealed.value,
-                                            enter=fadeIn(tween(180))+expandVertically(expandFrom=Alignment.Top, animationSpec=tween(520))) {
-                                            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                                                Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-                                                    Box(Modifier.size(20.dp).background(Color(0xFF0B3A49), RoundedCornerShape(6.dp))
-                                                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(6.dp)),
-                                                        contentAlignment=Alignment.Center) {
-                                                        Icon(Icons.Default.AutoAwesome, null, tint=Cyan, modifier=Modifier.size(12.dp))
-                                                    }
-                                                    Spacer(Modifier.width(7.dp))
-                                                    Text("J.A.R.V.I.S.  /  RESPONSE", color=Color(0xFF78C9D7),
-                                                        fontSize=8.sp, letterSpacing=1.15.sp, fontWeight=FontWeight.SemiBold)
-                                                    Spacer(Modifier.weight(1f))
-                                                    Box(Modifier.width(26.dp).height(1.dp).background(Color(0x6652DFF2)))
-                                                }
-                                                RichMessageText(line.displayText.value)
-                                                Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
-                                                    TextButton(onClick={clipboard.setText(AnnotatedString(line.text))}, contentPadding=PaddingValues(horizontal=6.dp, vertical=1.dp)) {
-                                                        Icon(Icons.Default.ContentCopy,null,tint=TextMuted,modifier=Modifier.size(12.dp))
-                                                        Spacer(Modifier.width(3.dp)); Text("Salin",color=TextMuted,fontSize=9.sp)
-                                                    }
-                                                    TextButton(onClick={
-                                                        val shareIntent=Intent(Intent.ACTION_SEND).apply { type="text/plain"; putExtra(Intent.EXTRA_TEXT,line.text) }
-                                                        runCatching { context.startActivity(Intent.createChooser(shareIntent,"Bagikan jawaban JARVIS")) }
-                                                    },contentPadding=PaddingValues(horizontal=6.dp,vertical=1.dp)) {
-                                                        Icon(Icons.Default.Share,null,tint=TextMuted,modifier=Modifier.size(12.dp))
-                                                        Spacer(Modifier.width(3.dp)); Text("Bagikan",color=TextMuted,fontSize=9.sp)
-                                                    }
-                                                    Spacer(Modifier.weight(1f))
-                                                    Text(line.time,color=TextMuted,fontSize=8.sp)
-                                                }
-                                                SourceStrip(line.text)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
                             }
                         }
-                        if(busy) item {
-                            val pulse by rememberInfiniteTransition(label="thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label="thinkingAlpha")
-                            Row(Modifier.wrapContentWidth().padding(start = 5.dp, top = 2.dp, bottom = 4.dp),
-                                verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Box(Modifier.size(6.dp).background(Cyan.copy(alpha=pulse), CircleShape))
-                                Text(processStage, color=TextMuted, fontSize=10.sp)
-                                repeat(3) { index -> Box(Modifier.size(4.dp).background(Cyan.copy(alpha=if (index == 1) pulse else .45f), CircleShape)) }
+                        if (busy) item {
+                            val pulse by rememberInfiniteTransition(label = "thinkingPulse").animateFloat(.3f, 1f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "thinkingAlpha")
+                            Column(Modifier.fillMaxWidth().border(1.dp, Cyan.copy(alpha = .25f), HudShape).padding(10.dp)) {
+                                Text("NEURAL LINK  //  ANALYSING", color = Cyan, fontSize = 8.sp, letterSpacing = 1.3.sp,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                Spacer(Modifier.height(6.dp))
+                                Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFF0C2430))) {
+                                    Box(Modifier.fillMaxWidth(pulse).height(2.dp).background(Cyan))
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Text(processStage, color = TextMuted, fontSize = 11.sp)
                             }
                         }
                     }
                     if (pendingAttachments.isNotEmpty()) {
-                        Row(Modifier.fillMaxWidth().padding(top=5.dp), horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                        Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             pendingAttachments.toList().forEach { file ->
-                                Row(Modifier.weight(1f, fill=false).background(Color(0xFF102B38), RoundedCornerShape(16.dp)).padding(start=8.dp, end=2.dp), verticalAlignment=Alignment.CenterVertically) {
-                                    Text(file.name, color=Color(0xFFD7F3F8), fontSize=9.sp, maxLines=1, modifier=Modifier.widthIn(max=115.dp))
-                                    IconButton(onClick={ pendingAttachments.remove(file) }, modifier=Modifier.size(22.dp)) { Icon(Icons.Default.Close, "Hapus lampiran", tint=TextMuted, modifier=Modifier.size(12.dp)) }
+                                Row(Modifier.background(Color(0xFF07141C), HudShape).border(1.dp, Cyan.copy(alpha = .3f), HudShape)
+                                    .padding(start = 8.dp, end = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(file.name, color = Ice, fontSize = 9.sp, maxLines = 1, modifier = Modifier.widthIn(max = 120.dp))
+                                    IconButton(onClick = { pendingAttachments.remove(file) }, modifier = Modifier.size(22.dp)) {
+                                        Icon(Icons.Default.Close, "Hapus lampiran", tint = TextMuted, modifier = Modifier.size(12.dp))
+                                    }
                                 }
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=2.dp)
-                        .background(Color(0xFF0B1822), RoundedCornerShape(22.dp))
-                        .border(1.dp, Color(0x334E9EAE), RoundedCornerShape(22.dp))
-                        .padding(start=7.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp).background(Color(0xFF061018), HudShape)
+                        .border(1.dp, Cyan.copy(alpha = if (command.isNotEmpty()) .7f else .32f), HudShape)
+                        .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box {
-                            Box(
-                                Modifier.size(36.dp)
-                                    .background(Color(0xFF142C37), CircleShape)
-                                    .border(1.dp, Color(0x4452DFF2), CircleShape)
-                                    .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
-                                contentAlignment = Alignment.Center
-                            ) {
+                            Box(Modifier.size(36.dp).clickable(enabled = !busy) { attachmentMenu = !attachmentMenu }, contentAlignment = Alignment.Center) {
                                 Icon(if (attachmentMenu) Icons.Default.Close else Icons.Default.Add,
-                                    if (attachmentMenu) "Tutup menu lampiran" else "Tambah lampiran",
-                                    tint = Cyan, modifier = Modifier.size(21.dp))
+                                    if (attachmentMenu) "Tutup menu lampiran" else "Tambah lampiran", tint = Cyan, modifier = Modifier.size(20.dp))
                             }
-                            DropdownMenu(expanded=attachmentMenu, onDismissRequest={ attachmentMenu=false },
-                                properties = PopupProperties(focusable = false),
-                                modifier=Modifier.background(Color(0xFF102632))) {
-                                DropdownMenuItem(text={ Text("File / Dokumen", color=Color.White) },
-                                    onClick={ attachmentMenu=false; attachmentPicker.launch(arrayOf("*/*")) },
-                                    leadingIcon={ Icon(Icons.Default.AttachFile, null, tint=Cyan) })
-                                DropdownMenuItem(text={ Text("Kamera", color=Color.White) },
-                                    onClick={ attachmentMenu=false; cameraPicker.launch(null) },
-                                    leadingIcon={ Icon(Icons.Default.CameraAlt, null, tint=Cyan) })
-                                DropdownMenuItem(text={ Text("Foto dari galeri", color=Color.White) },
-                                    onClick={ attachmentMenu=false; photoPicker.launch("image/*") },
-                                    leadingIcon={ Icon(Icons.Default.Image, null, tint=Cyan) })
+                            DropdownMenu(expanded = attachmentMenu, onDismissRequest = { attachmentMenu = false },
+                                properties = PopupProperties(focusable = false), modifier = Modifier.background(Color(0xFF071018))) {
+                                DropdownMenuItem(text = { Text("File / Dokumen", color = Ice, fontSize = 13.sp) },
+                                    onClick = { attachmentMenu = false; attachmentPicker.launch(arrayOf("*/*")) },
+                                    leadingIcon = { Icon(Icons.Default.AttachFile, null, tint = Cyan) })
+                                DropdownMenuItem(text = { Text("Kamera", color = Ice, fontSize = 13.sp) },
+                                    onClick = { attachmentMenu = false; cameraPicker.launch(null) },
+                                    leadingIcon = { Icon(Icons.Default.CameraAlt, null, tint = Cyan) })
+                                DropdownMenuItem(text = { Text("Foto dari galeri", color = Ice, fontSize = 13.sp) },
+                                    onClick = { attachmentMenu = false; photoPicker.launch("image/*") },
+                                    leadingIcon = { Icon(Icons.Default.Image, null, tint = Cyan) })
                             }
                         }
-                        BasicTextField(value=command,onValueChange={command=it},
-                            modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
-                            singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
-                            keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
-                            keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
-                            decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
+                        Text(">", color = Cyan, fontSize = 16.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            modifier = Modifier.padding(end = 4.dp))
+                        BasicTextField(value = command, onValueChange = { command = it },
+                            modifier = Modifier.weight(1f).focusRequester(inputFocus).padding(vertical = 10.dp),
+                            singleLine = false, minLines = 1, maxLines = 4,
+                            textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 15.sp),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                                if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) }
+                            }),
+                            decorationBox = { inner ->
+                                if (command.isEmpty()) Text("State a command…", color = TextMuted, fontSize = 13.sp)
+                                inner()
+                            })
                         if (busy) {
-                            IconButton(onClick = {
+                            Box(Modifier.size(36.dp).border(1.dp, AlertRed.copy(alpha = .8f), HudShape).clickable {
                                 cancelCurrentRequest?.invoke()
                                 cancelCurrentRequest = null
                                 busy = false
                                 statusText = "REQUEST STOPPED"
                                 lines.add(Line(false, "Permintaan dihentikan."))
-                            }) {
-                                Icon(Icons.Default.Stop, "Stop response", tint = Color(0xFFFF8A8A))
+                            }, contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Stop, "Stop response", tint = AlertRed, modifier = Modifier.size(16.dp))
                             }
                         } else {
-                            IconButton(onClick={ keyboard?.hide(); focusManager.clearFocus(); send(command) },modifier=Modifier.size(42.dp).background(Color(0xFF73DCEB),CircleShape)) {
-                                Icon(Icons.Default.Send,"Send command",tint=Color(0xFF07131B),modifier=Modifier.size(18.dp))
+                            val armed = command.isNotBlank() || pendingAttachments.isNotEmpty()
+                            Box(Modifier.size(36.dp).background(if (armed) Cyan else Color.Transparent, HudShape)
+                                .border(1.dp, Cyan, HudShape).clickable {
+                                    keyboard?.hide(); focusManager.clearFocus(); send(command)
+                                }, contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Send, "Send command", tint = if (armed) Color(0xFF041018) else Cyan, modifier = Modifier.size(16.dp))
                             }
                         }
                     }
                 }
-                    Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
-                        .background(Color(0xFF071923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("CHAT", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "CHAT") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "▣  CHAT", fontSize = 9.sp, letterSpacing = 1.1.sp)
-                            }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    listOf("CHAT" to "01   COMMS", "VOICE" to "02   VOICE").forEach { (tab, label) ->
+                        val active = page == tab
+                        Column(Modifier.weight(1f).clickable {
+                            if (tab == "CHAT") voiceListening = false
+                            page = tab
+                        }.padding(top = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(label, color = if (active) Cyan else TextMuted, fontSize = 9.sp, letterSpacing = 1.5.sp,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                            Spacer(Modifier.height(6.dp))
+                            Box(Modifier.fillMaxWidth().height(if (active) 2.dp else 1.dp).background(if (active) Cyan else Cyan.copy(alpha = .18f)))
                         }
                     }
-                if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
+                }
             }
-            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
-                title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
-                text={Column {
-                    Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
-                    OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
-                    Spacer(Modifier.height(14.dp))
-
-                }},
-                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
-                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
+            if (settings) AlertDialog(
+                onDismissRequest = { settings = false },
+                containerColor = Color(0xFF071018),
+                title = {
+                    Column {
+                        Text("SYSTEM CONFIG", color = Ice, letterSpacing = 1.4.sp, fontSize = 14.sp)
+                        Text("GEMINI VOICE KEY", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.3.sp,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    }
+                },
+                text = {
+                    Column {
+                        Text("Stored only on this device.", color = TextMuted, fontSize = 11.sp)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = keyDraft, onValueChange = { keyDraft = it }, singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            placeholder = { Text("API key", color = TextMuted, fontSize = 12.sp) })
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { if (keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim()); settings = false; keyDraft = "" }) {
+                        Text("COMMIT", color = Cyan, letterSpacing = 1.sp)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { settings = false }) { Text("ABORT", color = TextMuted, letterSpacing = 1.sp) } }
+            )
         }
     }
 }
