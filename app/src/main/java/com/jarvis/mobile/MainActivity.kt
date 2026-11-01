@@ -275,10 +275,7 @@ class MainActivity : ComponentActivity() {
                 override fun onError(error: Int) {
                     if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                            recognitionLanguage = if (recognitionLanguage == "id-ID") "en-US" else "id-ID"
-                            "LISTENING · STANDBY"
-                        }
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "NO SPEECH DETECTED · RETRYING"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
                         else -> "RECONNECTING VOICE CORE"
                     }
@@ -555,7 +552,7 @@ class MainActivity : ComponentActivity() {
         if (requestCode == 700) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
                 voiceStatus.value = "MICROPHONE READY"
-                if (voiceModeEnabled) speak("Good day. JARVIS is online. I am listening.")
+                if (voiceModeEnabled) handler.post { startListening() }
             } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
         }
     }
@@ -2334,7 +2331,6 @@ private fun JarvisScreen(
                                             .border(2.dp, Cyan, CircleShape)
                                             .clickable {
                                                 voiceListening = !voiceListening
-                                                if (voiceListening) onStartListening()
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
