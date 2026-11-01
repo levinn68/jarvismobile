@@ -435,9 +435,10 @@ async function handleChat(body, env) {
   // Keep verified preview images from the grounded search results even if the
   // final synthesis model omits visual Markdown while summarizing.
   const imagePattern = new RegExp("!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)", "g");
-  const imageMarkdown = discussion.flatMap((item) =>
-    [...String(item.message || "").matchAll(imagePattern)].map((match) => match[0])
-  );
+  // Only use images explicitly present in the final synthesized answer or
+  // verified page previews. Reviewer drafts are context, not display payload.
+  const imageMarkdown = [...String(finalAnswer || "").matchAll(imagePattern)]
+    .map((match) => match[0]);
   let uniqueImages = [...new Set([...imageMarkdown, ...linkedImageMarkdown])].slice(0, 4);
   const shoppingRequest = /(produk|belanja|harga|termurah|rekomendasi|marketplace|tokopedia|shopee|lazada|product|shopping|buy|price|cheapest)/i.test(prompt);
   if (!uniqueImages.length && !shoppingRequest) {
