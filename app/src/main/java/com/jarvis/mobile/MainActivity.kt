@@ -2735,7 +2735,7 @@ private fun JarvisScreen(
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(
                                     if (isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Color.Transparent
+                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                                 )
                                 .border(
                                     width = 1.dp,
@@ -2774,7 +2774,7 @@ private fun JarvisScreen(
                                 .clip(RoundedCornerShape(999.dp))
                                 .background(
                                     if (!isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Color.Transparent
+                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                                 )
                                 .border(
                                     width = 1.dp,
