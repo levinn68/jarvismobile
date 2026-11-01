@@ -275,9 +275,9 @@ class MainActivity : ComponentActivity() {
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
                 override fun onError(error: Int) {
-                    if (geminiSpeechInProgress || clapActivationInProgress) return
                     recognitionActive = false
                     recognitionStartPending = false
+                    if (geminiSpeechInProgress || clapActivationInProgress) return
                     voiceStatus.value = when (error) {
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "NO SPEECH DETECTED · RETRYING"
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "MICROPHONE PERMISSION REQUIRED"
