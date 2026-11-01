@@ -510,9 +510,9 @@ class MainActivity : ComponentActivity() {
                                 player.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                voiceStatus.value = "AUDIO PLAYBACK ERROR"
-                                handler.removeCallbacks(listeningRestart)
-                handler.postDelayed(listeningRestart, 850L)
+                                voiceStatus.value = "AUDIO PLAYBACK ERROR · USING ANDROID TTS"
+                                geminiSpeechInProgress = false
+                                speakWithAndroid(cleanSpeech)
                                 true
                             }
                             prepareAsync()
@@ -521,7 +521,8 @@ class MainActivity : ComponentActivity() {
                         speechPlayer?.release()
                         speechPlayer = null
                         geminiSpeechInProgress = false
-                        voiceStatus.value = "VOICE PLAYBACK ERROR"
+                        voiceStatus.value = "VOICE PLAYBACK ERROR · USING ANDROID TTS"
+                        speakWithAndroid(cleanSpeech)
                     }
                 }
             } catch (_: Exception) {
