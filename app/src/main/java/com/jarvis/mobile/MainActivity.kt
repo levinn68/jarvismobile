@@ -750,16 +750,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                     }
                 }
             }
-            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
-                title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
-                text={Column {
-                    Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
-                    OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
-                    Spacer(Modifier.height(14.dp))
 
-                }},
-                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
-                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
 }
@@ -1084,6 +1075,7 @@ private fun JarvisScreen(
                     }
                     IconButton(onClick={keyDraft="";settings=true},modifier=Modifier.size(38.dp)) {
                         Icon(Icons.Default.Settings,null,tint=Color(0xFF9BBBC4),modifier=Modifier.size(20.dp))
+                    }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
                 if (page == "VOICE") {
@@ -1474,6 +1466,16 @@ private fun JarvisScreen(
                     }
                 if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
+            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
+                title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
+                text={Column {
+                    Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
+                    OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    Spacer(Modifier.height(14.dp))
+
+                }},
+                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
+                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
 }
