@@ -32,3 +32,14 @@ If `SERPAPI_API_KEY` is absent, chat and all existing AI/TTS features continue w
 ### Health check
 
 `GET /health` reports whether visual search is configured without exposing the secret value.
+
+
+## JARVIS intelligence layer
+
+The Worker includes a built-in Personality Core and dynamic Skill Router. Five reusable skill specifications are maintained in `worker/skills/`: personality, cognitive reasoning, research, software engineering, and executive/creative operations. The router selects relevant skills per request and injects them into every participating AI agent and the final synthesis prompt.
+
+### Bilingual Fish Audio voice
+
+The `POST /v1/tts` endpoint detects Indonesian or English text and selects a matching Fish Audio reference voice when configured. Optional Worker variables: `FISH_VOICE_ID_ID` and `FISH_VOICE_ID_EN`. If either is absent, the existing `FISH_VOICE_ID` remains the fallback. The Fish API key stays in Worker Secrets and is never committed.
+
+The existing AI providers, visual search, API routes, Android client contract and default Fish voice remain compatible.
