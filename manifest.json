@@ -1,0 +1,154 @@
+{
+  "name": "JARVIS Skill System",
+  "version": "1.0.0",
+  "skill_count": 29,
+  "router": "JARVIS_SKILL_ROUTER.md",
+  "skills": [
+    {
+      "name": "jarvis-persona",
+      "path": "skills/jarvis-persona/SKILL.md",
+      "description": "Maintain JARVIS's stable personality, natural bilingual communication, conversational timing, and voice-ready responses."
+    },
+    {
+      "name": "reasoning-and-decision-making",
+      "path": "skills/reasoning-and-decision-making/SKILL.md",
+      "description": "Analyze ambiguous tasks, compare options, reason from evidence, and provide defensible decisions without exposing private chain-of-thought."
+    },
+    {
+      "name": "task-orchestration",
+      "path": "skills/task-orchestration/SKILL.md",
+      "description": "Convert multi-step requests into dependency-aware plans, use tools safely, track execution, and verify completion."
+    },
+    {
+      "name": "web-research",
+      "path": "skills/web-research/SKILL.md",
+      "description": "Conduct current web research, compare source quality, verify claims, and provide source-backed answers."
+    },
+    {
+      "name": "memory-and-context",
+      "path": "skills/memory-and-context/SKILL.md",
+      "description": "Use conversation history and approved memory to maintain continuity while respecting privacy, uncertainty, and user corrections."
+    },
+    {
+      "name": "software-architecture",
+      "path": "skills/software-architecture/SKILL.md",
+      "description": "Design maintainable systems, map integration boundaries, choose appropriate abstractions, and avoid unnecessary complexity."
+    },
+    {
+      "name": "coding-and-implementation",
+      "path": "skills/coding-and-implementation/SKILL.md",
+      "description": "Implement software changes incrementally with readable code, compatibility awareness, validation, and maintainable structure."
+    },
+    {
+      "name": "test-driven-development",
+      "path": "skills/test-driven-development/SKILL.md",
+      "description": "Use a disciplined red-green-refactor workflow and meaningful regression tests when implementing behavior changes."
+    },
+    {
+      "name": "systematic-debugging",
+      "path": "skills/systematic-debugging/SKILL.md",
+      "description": "Diagnose bugs using evidence, reproduction, root-cause analysis, targeted fixes, and regression prevention."
+    },
+    {
+      "name": "code-review",
+      "path": "skills/code-review/SKILL.md",
+      "description": "Review code for correctness, regressions, security, performance, readability, and compatibility with severity-ranked findings."
+    },
+    {
+      "name": "security-and-privacy",
+      "path": "skills/security-and-privacy/SKILL.md",
+      "description": "Apply secure-by-default practices to prompts, tools, APIs, credentials, data handling, and software changes."
+    },
+    {
+      "name": "api-integration",
+      "path": "skills/api-integration/SKILL.md",
+      "description": "Integrate third-party APIs with robust authentication, schemas, retries, quotas, timeouts, and observability."
+    },
+    {
+      "name": "browser-and-tool-use",
+      "path": "skills/browser-and-tool-use/SKILL.md",
+      "description": "Use browser and external tools deliberately, safely, and efficiently with state verification and prompt-injection resistance."
+    },
+    {
+      "name": "git-and-release-management",
+      "path": "skills/git-and-release-management/SKILL.md",
+      "description": "Manage Git changes, branches, commits, pull requests, releases, and rollback with safe repository hygiene."
+    },
+    {
+      "name": "cloudflare-workers",
+      "path": "skills/cloudflare-workers/SKILL.md",
+      "description": "Build and maintain Cloudflare Workers integrations with correct bindings, secrets, routing, runtime constraints, and deployment verification."
+    },
+    {
+      "name": "android-mobile-engineering",
+      "path": "skills/android-mobile-engineering/SKILL.md",
+      "description": "Diagnose and implement Android application behavior, Kotlin, lifecycle, permissions, audio, networking, and UI integration."
+    },
+    {
+      "name": "voice-and-audio",
+      "path": "skills/voice-and-audio/SKILL.md",
+      "description": "Design reliable voice interaction including speech recognition, turn-taking, TTS, language matching, latency, and audio failure recovery."
+    },
+    {
+      "name": "multimodal-understanding",
+      "path": "skills/multimodal-understanding/SKILL.md",
+      "description": "Interpret images, documents, and audio with explicit uncertainty and modality-specific validation."
+    },
+    {
+      "name": "data-analysis",
+      "path": "skills/data-analysis/SKILL.md",
+      "description": "Analyze structured data, spreadsheets, logs, and metrics with reproducible calculations and careful interpretation."
+    },
+    {
+      "name": "documentation-and-writing",
+      "path": "skills/documentation-and-writing/SKILL.md",
+      "description": "Produce clear technical documentation, specifications, runbooks, release notes, and user-facing writing."
+    },
+    {
+      "name": "ui-ux-and-accessibility",
+      "path": "skills/ui-ux-and-accessibility/SKILL.md",
+      "description": "Evaluate and improve interface usability, visual hierarchy, interaction states, responsive behavior, and accessibility."
+    },
+    {
+      "name": "performance-optimization",
+      "path": "skills/performance-optimization/SKILL.md",
+      "description": "Find and fix measurable performance bottlenecks across app, backend, network, model, and media pipelines."
+    },
+    {
+      "name": "automation-and-scheduling",
+      "path": "skills/automation-and-scheduling/SKILL.md",
+      "description": "Design dependable scheduled and event-driven automations with idempotency, monitoring, retries, and clear controls."
+    },
+    {
+      "name": "agent-tool-design",
+      "path": "skills/agent-tool-design/SKILL.md",
+      "description": "Design tool-using agents with clear tool contracts, least privilege, routing, state, and safe execution."
+    },
+    {
+      "name": "prompt-injection-defense",
+      "path": "skills/prompt-injection-defense/SKILL.md",
+      "description": "Detect and contain prompt injection and instruction-conflict attacks in retrieved content, tool results, files, and user-supplied data."
+    },
+    {
+      "name": "productivity-and-personal-assistant",
+      "path": "skills/productivity-and-personal-assistant/SKILL.md",
+      "description": "Support everyday planning, reminders, prioritization, note organization, and decision follow-through."
+    },
+    {
+      "name": "quality-assurance",
+      "path": "skills/quality-assurance/SKILL.md",
+      "description": "Create practical test plans, acceptance criteria, regression matrices, and release-readiness checks."
+    },
+    {
+      "name": "incident-response",
+      "path": "skills/incident-response/SKILL.md",
+      "description": "Handle outages and production incidents with triage, containment, evidence preservation, recovery, and postmortem discipline."
+    },
+    {
+      "name": "skill-authoring",
+      "path": "skills/skill-authoring/SKILL.md",
+      "description": "Create, validate, version, and maintain modular agent skills with clear metadata and safe progressive disclosure."
+    }
+  ],
+  "activation": "selective"
+}
