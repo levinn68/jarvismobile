@@ -1199,7 +1199,7 @@ private fun JarvisScreen(
                     }
                } else {
                     Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("CHAT CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                        Text("LIVE CONVERSATION", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
                         Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -1338,6 +1338,18 @@ private fun JarvisScreen(
                                         AnimatedVisibility(visible=line.revealed.value,
                                             enter=fadeIn(tween(180))+expandVertically(expandFrom=Alignment.Top, animationSpec=tween(520))) {
                                             Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                                                    Box(Modifier.size(20.dp).background(Color(0xFF0B3A49), RoundedCornerShape(6.dp))
+                                                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(6.dp)),
+                                                        contentAlignment=Alignment.Center) {
+                                                        Icon(Icons.Default.AutoAwesome, null, tint=Cyan, modifier=Modifier.size(12.dp))
+                                                    }
+                                                    Spacer(Modifier.width(7.dp))
+                                                    Text("J.A.R.V.I.S.  /  RESPONSE", color=Color(0xFF78C9D7),
+                                                        fontSize=8.sp, letterSpacing=1.15.sp, fontWeight=FontWeight.SemiBold)
+                                                    Spacer(Modifier.weight(1f))
+                                                    Box(Modifier.width(26.dp).height(1.dp).background(Color(0x6652DFF2)))
+                                                }
                                                 RichMessageText(line.displayText.value)
                                                 Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
                                                     TextButton(onClick={clipboard.setText(AnnotatedString(line.text))}, contentPadding=PaddingValues(horizontal=6.dp, vertical=1.dp)) {
