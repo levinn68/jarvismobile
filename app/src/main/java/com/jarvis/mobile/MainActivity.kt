@@ -2105,7 +2105,12 @@ private fun JarvisScreen(
                                         fontFamily = FontFamily.Monospace
                                     )
                                     Text(
-                                        text = if (voiceListening) "AUDIO INPUT ACTIVE" else "AUDIO STANDBY",
+                                        text = when {
+                                            !voiceListening -> "AUDIO STANDBY"
+                                            phase == "THINK" -> "VOICE PROCESSING"
+                                            phase == "SPEAK" -> "AUDIO OUTPUT ACTIVE"
+                                            else -> "AUDIO INPUT ACTIVE"
+                                        },
                                         color = TextMuted,
                                         fontSize = 8.sp,
                                         letterSpacing = 1.sp,
@@ -2382,7 +2387,12 @@ private fun JarvisScreen(
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = if (voiceListening) "LISTENING" else "MIC OFF",
+                                        text = when (phase) {
+                                            "THINK" -> "PROCESSING"
+                                            "SPEAK" -> "SPEAKING"
+                                            "LISTEN" -> "LISTENING"
+                                            else -> "MIC OFF"
+                                        },
                                         color = Cyan,
                                         fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Bold,
