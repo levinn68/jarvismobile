@@ -1061,6 +1061,30 @@ private fun JarvisScreen(
                                 }
                             }
                         }
+                        val latestVoiceAnswer = lines.lastOrNull { !it.user }?.text.orEmpty()
+                        Column(Modifier.fillMaxWidth().padding(horizontal=5.dp, vertical=3.dp)
+                            .background(Color(0x99071923), RoundedCornerShape(18.dp))
+                            .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(18.dp)).padding(horizontal=12.dp, vertical=8.dp),
+                            verticalArrangement=Arrangement.spacedBy(5.dp)) {
+                            Row(verticalAlignment=Alignment.CenterVertically) {
+                                Box(Modifier.size(25.dp).background(Color(0xFF0D3C4C),CircleShape),contentAlignment=Alignment.Center) {
+                                    Icon(Icons.Default.Mic,null,tint=Cyan,modifier=Modifier.size(15.dp))
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                Text(lastPrompt.ifBlank { "Menunggu perintah suara JARVIS…" },color=Color(0xFFE4F8FC),
+                                    fontSize=11.sp,maxLines=1,modifier=Modifier.weight(1f))
+                                Row(horizontalArrangement=Arrangement.spacedBy(2.dp),verticalAlignment=Alignment.CenterVertically) {
+                                    repeat(7) { n ->
+                                        val h=4+kotlin.math.abs(kotlin.math.sin(wavePhase+n*.65f))*11
+                                        Box(Modifier.width(2.dp).height(h.dp).background(Cyan.copy(alpha=.8f),RoundedCornerShape(2.dp)))
+                                    }
+                                }
+                            }
+                            if(latestVoiceAnswer.isNotBlank()) {
+                                Text("J.A.R.V.I.S. / RESPONSE",color=Cyan,fontSize=7.sp,letterSpacing=1.2.sp)
+                                Text(latestVoiceAnswer,color=Color(0xFFC8E8EF),fontSize=9.sp,lineHeight=13.sp,maxLines=2)
+                            }
+                        }
                         // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
                         Box(Modifier.fillMaxWidth().height(if (compact) 116.dp else 132.dp), contentAlignment = Alignment.Center) {
                             Canvas(Modifier.fillMaxWidth().height(78.dp)) {
