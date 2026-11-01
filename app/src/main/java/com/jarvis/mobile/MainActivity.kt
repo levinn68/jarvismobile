@@ -527,6 +527,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private sealed class MarkdownBlock {
+    data class Heading(val text: String) : MarkdownBlock()
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Code(val language: String, val text: String) : MarkdownBlock()
     data class Table(val rows: List<List<String>>) : MarkdownBlock()
@@ -547,6 +548,13 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
     while (i < lines.size) {
         val line = lines[i]
         if (line.isBlank()) { i++; continue }
+        val heading = Regex("^\\s{0,3}(#{1,3})\\s+(.+)$").matchEntire(line)
+            ?: Regex("^\\s*\\*\\*(.{3,72})\\*\\*\\s*$").matchEntire(line)
+        if (heading != null) {
+            blocks.add(MarkdownBlock.Heading(heading.groupValues[2].ifBlank { heading.groupValues[1] }))
+            i++
+            continue
+        }
         if (line.trimStart().startsWith("```")) {
             val language = line.trim().removePrefix("```").trim()
             i++
@@ -631,43 +639,101 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 
 @Composable
 private fun RichMessageText(markdown: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        parseMarkdownBlocks(markdown).forEach { block ->
-            when (block) {
-                is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text)
-                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text(if (block.ordered) "1." else "•", color = Cyan, fontSize = 14.sp)
-                    InlineMarkdownText(block.text)
-                }
-                is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF06111A), RoundedCornerShape(9.dp))
-                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(9.dp)).padding(10.dp)) {
-                    if (block.language.isNotBlank()) Text(block.language.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        SelectionContainer { Text(block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp, lineHeight = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+    val blocks = parseMarkdownBlocks(markdown)
+    var index = 0
+    Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        while (index < blocks.size) {
+            val block = blocks[index]
+            if (block is MarkdownBlock.Heading) {
+                Column(Modifier.fillMaxWidth()
+                    .background(Color(0xB907202B), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(12.dp))
+                    .padding(11.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment=Alignment.CenterVertically) {
+                        Box(Modifier.size(22.dp).background(Color(0xFF0E3A4A), RoundedCornerShape(6.dp)), contentAlignment=Alignment.Center) {
+                            Icon(Icons.Default.AutoAwesome, null, tint=Cyan, modifier=Modifier.size(14.dp))
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Text(block.text, color=Color(0xFFE9FAFF), fontSize=13.sp, fontWeight=FontWeight.SemiBold)
+                    }
+                    index++
+                    while (index < blocks.size && blocks[index] !is MarkdownBlock.Heading) {
+                        when (val part=blocks[index]) {
+                            is MarkdownBlock.Paragraph -> InlineMarkdownText(part.text, 12.sp)
+                            is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                Text(if(part.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
+                                InlineMarkdownText(part.text, 11.sp)
+                            }
+                            is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
+                                .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.SpaceBetween) {
+                                    Text(part.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
+                                    Text("CODE BLOCK", color=TextMuted, fontSize=7.sp)
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                                    SelectionContainer { Text(part.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
+                                }
+                            }
+                            is MarkdownBlock.Table -> {
+                                val count=part.rows.maxOfOrNull { it.size } ?: 0
+                                Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
+                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
+                                    part.rows.forEachIndexed { ri,row ->
+                                        Row(Modifier.fillMaxWidth()) {
+                                            repeat(count) { ci ->
+                                                Box(Modifier.weight(1f).heightIn(min=31.dp)
+                                                    .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
+                                                    .border(.4.dp,Color(0x3349B8CB)).padding(5.dp), contentAlignment=Alignment.CenterStart) {
+                                                    Text(row.getOrNull(ci).orEmpty(), color=if(ri==0) Cyan else Color(0xFFE2F5F8),
+                                                        fontSize=9.sp, lineHeight=12.sp, fontWeight=if(ri==0) FontWeight.Bold else FontWeight.Normal)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            is MarkdownBlock.Heading -> Unit
+                        }
+                        index++
                     }
                 }
-                is MarkdownBlock.Table -> {
-                    val columnCount = block.rows.maxOfOrNull { it.size } ?: 0
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        Column(Modifier.border(1.dp, Color(0x5549B8CB), RoundedCornerShape(7.dp))) {
-                            block.rows.forEachIndexed { rowIndex, row ->
-                                Row(Modifier.height(IntrinsicSize.Min)) {
-                                    repeat(columnCount) { columnIndex ->
-                                        val longest = block.rows.maxOfOrNull { it.getOrNull(columnIndex)?.length ?: 0 } ?: 8
-                                        val cellWidth = (longest * 7 + 22).coerceIn(88, 180).dp
-                                        Box(Modifier.width(cellWidth).heightIn(min = 36.dp)
-                                            .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
-                                            .border(.5.dp, Color(0x5549B8CB)).padding(horizontal = 8.dp, vertical = 6.dp),
-                                            contentAlignment = Alignment.CenterStart) {
-                                            Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
-                                                fontSize = 11.sp, lineHeight = 15.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
-                                        }
+            } else {
+                when (block) {
+                    is MarkdownBlock.Heading -> Unit
+                    is MarkdownBlock.Paragraph -> Column(Modifier.fillMaxWidth()
+                        .background(Color(0xA907202B), RoundedCornerShape(11.dp))
+                        .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(11.dp)).padding(11.dp)) {
+                        InlineMarkdownText(block.text, 12.sp)
+                    }
+                    is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth().padding(horizontal=5.dp), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                        Text(if(block.ordered) "•" else "◆", color=Cyan, fontSize=9.sp, modifier=Modifier.padding(top=4.dp))
+                        InlineMarkdownText(block.text, 11.sp)
+                    }
+                    is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF04111A), RoundedCornerShape(9.dp))
+                        .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(9.dp)).padding(10.dp)) {
+                        Text(block.language.ifBlank { "CODE" }.uppercase(), color=Cyan, fontSize=8.sp, letterSpacing=1.sp)
+                        Spacer(Modifier.height(6.dp))
+                        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                            SelectionContainer { Text(block.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
+                        }
+                    }
+                    is MarkdownBlock.Table -> Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
+                        block.rows.forEachIndexed { ri,row ->
+                            Row(Modifier.fillMaxWidth()) {
+                                row.forEach { cell ->
+                                    Box(Modifier.weight(1f).heightIn(min=31.dp)
+                                        .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
+                                        .border(.4.dp,Color(0x3349B8CB)).padding(5.dp)) {
+                                        Text(cell,color=if(ri==0) Cyan else Color(0xFFE2F5F8),fontSize=9.sp,lineHeight=12.sp)
                                     }
                                 }
                             }
                         }
                     }
                 }
+                index++
             }
         }
     }
