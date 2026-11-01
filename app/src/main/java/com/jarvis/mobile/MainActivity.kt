@@ -1381,14 +1381,14 @@ private fun JarvisScreen(
                         }
                     }
                     Row(Modifier.fillMaxWidth().padding(top=5.dp,bottom=2.dp)
-                        .background(Color(0xFF081923), RoundedCornerShape(24.dp))
-                        .border(1.dp, Color(0x8852DFF2), RoundedCornerShape(28.dp))
-                        .padding(start=7.dp,end=5.dp,top=3.dp,bottom=3.dp), verticalAlignment=Alignment.CenterVertically) {
+                        .background(Color(0xFF0B1822), RoundedCornerShape(22.dp))
+                        .border(1.dp, Color(0x334E9EAE), RoundedCornerShape(22.dp))
+                        .padding(start=7.dp,end=5.dp,top=4.dp,bottom=4.dp), verticalAlignment=Alignment.CenterVertically) {
                         Box {
                             Box(
                                 Modifier.size(36.dp)
-                                    .background(Color(0xFF103442), CircleShape)
-                                    .border(1.dp, Color(0x8852DFF2), CircleShape)
+                                    .background(Color(0xFF142C37), CircleShape)
+                                    .border(1.dp, Color(0x4452DFF2), CircleShape)
                                     .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -1427,8 +1427,8 @@ private fun JarvisScreen(
                                 Icon(Icons.Default.Stop, "Stop response", tint = Color(0xFFFF8A8A))
                             }
                         } else {
-                            IconButton(onClick={ keyboard?.hide(); focusManager.clearFocus(); send(command) }) {
-                                Icon(Icons.Default.Send,"Send command",tint=Cyan)
+                            IconButton(onClick={ keyboard?.hide(); focusManager.clearFocus(); send(command) },modifier=Modifier.size(42.dp).background(Color(0xFF73DCEB),CircleShape)) {
+                                Icon(Icons.Default.Send,"Send command",tint=Color(0xFF07131B),modifier=Modifier.size(18.dp))
                             }
                         }
                     }
