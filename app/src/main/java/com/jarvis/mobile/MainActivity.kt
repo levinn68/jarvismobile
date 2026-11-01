@@ -643,7 +643,6 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
 }
 
 @Composable
-@Composable
 private fun RemoteMarkdownImage(alt: String, url: String) {
     val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
