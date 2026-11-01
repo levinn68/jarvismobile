@@ -4,8 +4,8 @@
         <item name="android:windowBackground">@drawable/jarvis_splash</item>
         <item name="android:colorAccent">#00E5FF</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:statusBarColor">#01060C</item>
-        <item name="android:navigationBarColor">#01060C</item>
+        <item name="android:statusBarColor">#05070C</item>
+        <item name="android:navigationBarColor">#05070C</item>
         <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
