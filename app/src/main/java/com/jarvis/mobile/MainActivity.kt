@@ -36,6 +36,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
@@ -1191,6 +1193,15 @@ private fun RichMessageText(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         sections.forEachIndexed { idx, section ->
+            val staggerDelay = idx * 135
+            AnimatedVisibility(
+                visible = true,
+                enter = slideInVertically(
+                    initialOffsetY = { fullHeight -> -fullHeight / 5 },
+                    animationSpec = tween(durationMillis = 520, delayMillis = staggerDelay)
+                ) + fadeIn(animationSpec = tween(durationMillis = 520, delayMillis = staggerDelay)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 180))
+            ) {
             val isIntroOnly = idx == 0 && section.title == null && section.blocks.size == 1 && section.blocks.first() is MarkdownBlock.Paragraph
             if (isIntroOnly) {
                 val p = (section.blocks.first() as MarkdownBlock.Paragraph).text
@@ -1260,6 +1271,7 @@ private fun RichMessageText(
                         }
                     }
                 }
+            }
             }
         }
 
