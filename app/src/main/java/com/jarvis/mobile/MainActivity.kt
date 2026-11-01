@@ -1184,7 +1184,7 @@ private fun JarvisScreen(
                                     Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
                                         .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
                                             voiceListening = false
-                                            page = "COMMAND"
+                                            page = "CHAT"
                                         }, contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Language, "Buka chat", tint = Cyan, modifier = Modifier.size(25.dp))
                                     }
