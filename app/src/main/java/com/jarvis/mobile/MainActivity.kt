@@ -1097,10 +1097,10 @@ private fun JarvisScreen(
                                     )
                             ) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
+                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 354.dp)
                                     .wrapContentWidth(Alignment.Start)
-                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
-                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
+                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xE6081B26), RoundedCornerShape(14.dp))
+                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x6652DFF2), RoundedCornerShape(14.dp)).padding(if (line.user) 11.dp else 13.dp)) {
                                     Row(verticalAlignment=Alignment.CenterVertically) {
                                         Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
                                         Text(line.time, color=TextMuted, fontSize=8.sp)
