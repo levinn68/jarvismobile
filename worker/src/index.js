@@ -279,16 +279,9 @@ async function handleChat(body, env) {
   const events = [{ type: "classified", level, label: `Tingkat permintaan: ${level}` }];
   const visualKind = searchKind(prompt);
   let visualResults = [];
-  // Automatically attach one relevant illustration to substantive answers.
-  // Keep explicit product/image searches unchanged and make this best-effort only.
-  const wantsAutoIllustration = !visualKind && prompt.trim().length >= 12;
-  const illustrationPromise = wantsAutoIllustration && env.SERPAPI_API_KEY
-    ? serpApiSearch(env, "google_images", prompt.slice(0, 180), { limit: 1 })
-        .catch((error) => {
-          events.push({ type: "illustration_failed", label: "Ilustrasi tidak tersedia", detail: String(error.message || error).slice(0, 120) });
-          return { configured: true, results: [] };
-        })
-    : Promise.resolve({ configured: Boolean(env.SERPAPI_API_KEY), results: [] });
+  // Do not launch background image searches for ordinary questions.
+  // Visual search runs only when the user explicitly requests products or images.
+  const illustrationPromise = Promise.resolve({ configured: Boolean(env.SERPAPI_API_KEY), results: [] });
   if (visualKind) {
     if (!env.SERPAPI_API_KEY) {
       events.push({ type: "search_unconfigured", label: "Image/Product Search belum dikonfigurasi" });
