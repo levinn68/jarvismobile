@@ -320,7 +320,22 @@ class MainActivity : ComponentActivity() {
                 connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                if (stream == null) throw IllegalStateException("Server tidak mengirim response body.")
+                // Bound response memory to protect lower-memory Android devices from oversized AI payloads.
+                val rawBytes = stream.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 1_500_000) throw IllegalStateException("Jawaban terlalu besar untuk ditampilkan. Coba persempit permintaan.")
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                }
+                val raw = String(rawBytes, Charsets.UTF_8)
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok", false)) {
                     val diagnostics = json.optJSONArray("diagnostics")
@@ -1011,51 +1026,37 @@ private fun JarvisScreen(
             )
             // Persistent HUD layer: it morphs from the full idle hologram into a subdued
             // conversation backdrop instead of disappearing when the first message arrives.
+            // Calm, low-contrast backdrop. UI surfaces carry the hierarchy; no oversized HUD overlay.
             Canvas(Modifier.fillMaxSize()) {
                 val w=size.width; val h=size.height
-                val cx=w*.5f; val grid=Color(0xFF38CFE8)
-                val unit=42.dp.toPx()
-                // Restrained technical texture; the center stays readable.
-                for(x in 0..(w/unit).toInt()) drawLine(grid.copy(alpha=.025f*ambienceAlpha),Offset(x*unit,0f),Offset(x*unit,h),.5f)
-                for(y in 0..(h/unit).toInt()) drawLine(grid.copy(alpha=.022f*ambienceAlpha),Offset(0f,y*unit),Offset(w,y*unit),.5f)
-                val inset=15.dp.toPx(); val len=23.dp.toPx()
-                listOf(Offset(inset,inset),Offset(w-inset,inset),Offset(inset,h-inset),Offset(w-inset,h-inset)).forEachIndexed { i,p ->
-                    val sx=if(i%2==0) 1f else -1f; val sy=if(i<2) 1f else -1f
-                    drawLine(grid.copy(alpha=.38f*ambienceAlpha),p,Offset(p.x+sx*len,p.y),1.dp.toPx())
-                    drawLine(grid.copy(alpha=.38f*ambienceAlpha),p,Offset(p.x,p.y+sy*len),1.dp.toPx())
-                }
-                // Soft light pool behind the core, not a full-screen neon wash.
-                val haloCenter=Offset(cx,h*.385f); val halo=w*.48f
-                drawCircle(Brush.radialGradient(listOf(Color(0x2636D8F0).copy(alpha=ambienceAlpha),
-                    Color(0x1020AFC8).copy(alpha=ambienceAlpha),Color.Transparent),haloCenter,halo),
-                    halo,haloCenter)
-                // Projection floor: thin elliptical scan rings, no rectangular beam.
-                val floorY=h*.835f
-                drawCircle(Brush.radialGradient(listOf(Color(0x1835D8ED).copy(alpha=ambienceAlpha),Color.Transparent),
-                    Offset(cx,floorY),w*.36f),w*.36f,Offset(cx,floorY))
-                for(i in 0..4) {
-                    val ovalW=w*(.31f+i*.09f); val ovalH=h*(.012f+i*.004f)
-                    drawOval(grid.copy(alpha=(.25f-i*.04f)*ambienceAlpha),
-                        Offset(cx-ovalW/2f,floorY-ovalH/2f),androidx.compose.ui.geometry.Size(ovalW,ovalH),
-                        style=Stroke(if(i==0) 1.2.dp.toPx() else .65.dp.toPx()))
-                }
+                drawRect(Brush.verticalGradient(listOf(Color(0xFF050B11),Color(0xFF091923),Color(0xFF050C12))))
+                val center=Offset(w*.5f,h*.38f)
+                drawCircle(Brush.radialGradient(listOf(Color(0x1429AFC5),Color.Transparent),center,w*.62f),w*.62f,center)
+                val unit=48.dp.toPx()
+                for(x in 0..(w/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.018f),Offset(x*unit,0f),Offset(x*unit,h),.5f)
+                for(y in 0..(h/unit).toInt()) drawLine(Color(0xFF65D9EA).copy(alpha=.016f),Offset(0f,y*unit),Offset(w,y*unit),.5f)
             }
-            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Column(Modifier.weight(1f).padding(end = 5.dp)) {
-                        Text("J.A.R.V.I.S.", color = Color(0xFFE4FAFF), fontSize = 23.sp, fontWeight = FontWeight.Light, letterSpacing = 4.2.sp)
-                        Spacer(Modifier.height(4.dp))
-                        Text("JUST A RATHER VERY INTELLIGENT SYSTEM", color = Color(0xFF5E9BA9), fontSize = 8.sp, letterSpacing = 1.35.sp)
+            Column(Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(Modifier.fillMaxWidth().padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Box(Modifier.size(38.dp).background(Color(0xFF123442),RoundedCornerShape(12.dp))
+                        .border(1.dp,Color(0x6659CFE1),RoundedCornerShape(12.dp)),contentAlignment=Alignment.Center) {
+                        Text("J",color=Color(0xFFB8F6FF),fontSize=23.sp,fontWeight=FontWeight.Light)
                     }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
-                        Text("CORE 01 / " + if (page == "CHAT") "CHAT" else page, color = TextMuted, fontSize = 7.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                        Text("J.A.R.V.I.S.",color=Color(0xFFF0FAFC),fontSize=17.sp,fontWeight=FontWeight.SemiBold,letterSpacing=1.5.sp)
+                        Text("PERSONAL AI ASSISTANT",color=Color(0xFF7699A4),fontSize=7.sp,letterSpacing=1.25.sp)
                     }
-                    IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.Settings, null, tint = Cyan, modifier = Modifier.size(23.dp)) }
+                    Row(Modifier.background(Color(0xFF102A31),CircleShape).padding(horizontal=9.dp,vertical=6.dp),
+                        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Box(Modifier.size(6.dp).background(if(busy) Color(0xFFFFC66D) else Color(0xFF63DDAE),CircleShape))
+                        Text(if(busy) "THINKING" else "ONLINE",color=Color(0xFFB8D9DF),fontSize=8.sp,letterSpacing=.6.sp)
+                    }
+                    IconButton(onClick={keyDraft="";settings=true},modifier=Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Settings,null,tint=Color(0xFF9BBBC4),modifier=Modifier.size(20.dp))
+                    }
                 }
-                Spacer(Modifier.height(9.dp))
-                Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
+                Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
                 if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("JARVIS", color = Color(0xFF8DEEFF), fontSize = 11.sp, letterSpacing = 4.sp,
