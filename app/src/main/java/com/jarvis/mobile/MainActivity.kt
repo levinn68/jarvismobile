@@ -354,19 +354,26 @@ class MainActivity : ComponentActivity() {
                     }
                     output.toByteArray()
                 }
-                val raw = String(rawBytes, Charsets.UTF_8)
-                val json = JSONObject(raw)
-                if (code !in 200..299 || !json.optBoolean("ok", false)) {
+                val raw = String(rawBytes, Charsets.UTF_8).trim()
+                val json = try { JSONObject(raw) } catch (_: Exception) { null }
+                if (json == null) {
+                    if (code in 200..299 && raw.isNotBlank()) ChatResponsePayload(raw)
+                    else ChatResponsePayload("JARVIS API mengirim respons yang tidak valid (HTTP $code).")
+                } else if (code !in 200..299 || !json.optBoolean("ok", json.has("answer") || json.has("reply") || json.has("response"))) {
                     val diagnostics = json.optJSONArray("diagnostics")
                     val detail = if (diagnostics != null) (0 until diagnostics.length()).mapNotNull { i ->
                         val item = diagnostics.optJSONObject(i) ?: return@mapNotNull null
                         item.optString("provider") + ": " + item.optString("detail", item.optString("status"))
                     }.joinToString("\n") else ""
-                    val errText = json.optString("error").ifBlank { "JARVIS API error ($code)." } +
-                        if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
+                    val errText = json.optString("error").ifBlank {
+                        json.optString("detail").ifBlank { "JARVIS API error ($code)." }
+                    } + if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
                     ChatResponsePayload(errText)
                 } else {
-                    val answer = json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
+                    val answer = sequenceOf("answer", "reply", "response", "message", "text", "output")
+                        .map { json.optString(it).trim() }
+                        .firstOrNull { it.isNotBlank() }
+                        ?: "JARVIS tidak menerima jawaban akhir."
                     val visualsObj = json.optJSONObject("visuals")
                     val kind = visualsObj?.optString("kind").orEmpty()
                     val resultsArr = visualsObj?.optJSONArray("results")
