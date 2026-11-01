@@ -129,15 +129,15 @@ function searchKind(prompt) {
   const q = prompt.toLowerCase();
   if (/(cari|carikan|rekomendasi|bandingkan|termurah|harga|beli|belikan|produk|marketplace|toko online)/i.test(q) &&
       /(hp|handphone|smartphone|laptop|tablet|bantal|sepatu|tas|bola|basket|headphone|earphone|keyboard|mouse|monitor|kamera|produk|barang|jam tangan|charger|case|kursi|meja|tv|televisi|kaca|glass|cermin|akrilik|plexiglass|layar|baju|kaos|celana|sepeda|motor|mobil)/i.test(q)) return "products";
-  if (/(cari|carikan|tampilkan|lihatkan|temukan|referensi|contoh).{0,35}(gambar|foto|visual)|\\b(gambar|foto)\\b.{0,35}\\b(referensi|contoh|asli|produk)\\b/i.test(q)) return "images";
+  if (/(cari|carikan|tampilkan|lihatkan|temukan|referensi|contoh).{0,35}(gambar|foto|visual)|\b(gambar|foto)\b.{0,35}\b(referensi|contoh|asli|produk)\b/i.test(q)) return "images";
   if (/(pengertian|apa itu|jelaskan|terangkan|fungsi|proses|mekanisme|struktur|jenis|ciri.?ciri|sejarah|siklus|tahapan|how does|what is|explain|definition|history|function|process|structure|types of)/i.test(q)) return "images";
   return "";
 }
 
 function visualSearchQuery(prompt) {
   return String(prompt || "")
-    .replace(/\\b(tolong|please|jelaskan|terangkan|pengertian|apa itu|carikan|cari|tampilkan|lihatkan|temukan|gambar|foto|visual|referensi|contoh|fungsi|proses|mekanisme|struktur|jenis|ciri.?ciri|sejarah|siklus|tahapan|how does|what is|explain|definition|history|function|process|structure|types of)\\b/gi, " ")
-    .replace(/[?!.,:;]+/g, " ").replace(/\\s+/g, " ").trim() || String(prompt || "").trim();
+    .replace(/\b(tolong|please|jelaskan|terangkan|pengertian|apa itu|carikan|cari|tampilkan|lihatkan|temukan|gambar|foto|visual|referensi|contoh|fungsi|proses|mekanisme|struktur|jenis|ciri.?ciri|sejarah|siklus|tahapan|how does|what is|explain|definition|history|function|process|structure|types of)\b/gi, " ")
+    .replace(/[?!.,:;]+/g, " ").replace(/\s+/g, " ").trim() || String(prompt || "").trim();
 }
 
 function appendVisualResults(answer, kind, results) {
@@ -156,7 +156,7 @@ function appendVisualResults(answer, kind, results) {
   const gallery = results.slice(0, 5).map((item, index) => {
     const title = item.title || `Referensi visual ${index + 1}`;
     const source = item.page ? `[Lihat sumber gambar: ${item.source || "halaman asli"}](${item.page})` : (item.source || "Sumber gambar tidak tersedia");
-    return `### ${index + 1}. ${title}\\n\\n![${title.replace(/[\\[\\]]/g, "")}](${item.image})\\n\\n${source}`;
+    return `### ${index + 1}. ${title}\n\n![${title.replace(/[\[\]]/g, "")}](${item.image})\n\n${source}`;
   });
   return answer + "\n\n## Referensi Gambar\n\n" + gallery.join("\n\n");
 }
