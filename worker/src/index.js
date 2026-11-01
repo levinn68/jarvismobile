@@ -166,24 +166,23 @@ async function previewImagesFromSources(sources) {
 
 async function commonsImagePreviews(prompt) {
   try {
-    const query = prompt
-      .replace(/\b(cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
-      .replace(/\b\d+(?:[.,]\d+)?\s*(?:rb|ribu|jt|juta|k|idr|rp|usd|dollar)?\b/gi, " ")
-      .replace(/\bhp\b/gi, "smartphone")
-      .replace(/\bponsel\b/gi, "smartphone")
-      .replace(/\bhandphone\b/gi, "smartphone")
+    const normalized = String(prompt || "")
+      .replace(/\bip\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
+      .replace(/\biphone\s*(11|12|13|14|15|16|17)\b/gi, "iPhone $1")
+      .replace(/\b(hp|handphone|ponsel)\b/gi, "smartphone")
+      .replace(/\b(bandingkan|perbandingan|antara|dengan|dan|vs|versus|cari(kan)?|tolong|rekomendasi|gambar|foto|jelaskan|tentang|informasi|apa itu|please|find|search|show me|pictures of|images of|explain)\b/gi, " ")
       .replace(/\s+/g, " ").trim();
-    if (!query) return [];
-    const searchTerms = [...new Set([
-      query,
-      query.split(" ").slice(0, 4).join(" "),
-    ].map((value) => value.trim()).filter(Boolean))];
-    for (const terms of searchTerms) {
+    if (!normalized) return [];
+    const models = [...normalized.matchAll(/\b(iPhone\s*\d+|Samsung\s+[A-Za-z0-9+ -]+|Galaxy\s+[A-Za-z0-9+ -]+|Pixel\s+\d+[A-Za-z]?)\b/gi)]
+      .map((match) => match[0].trim());
+    const terms = [...new Set(models.length ? models : [normalized])].slice(0, 4);
+    const results = [];
+    for (const term of terms) {
       const api = new URL("https://commons.wikimedia.org/w/api.php");
       api.search = new URLSearchParams({
-        action: "query", generator: "search", gsrsearch: terms,
-        gsrnamespace: "6", gsrwhat: "text", gsrlimit: "10",
-        prop: "imageinfo", iiprop: "url", iiurlwidth: "900",
+        action: "query", generator: "search", gsrsearch: '"' + term + '"',
+        gsrnamespace: "6", gsrwhat: "text", gsrlimit: "20",
+        prop: "imageinfo", iiprop: "url", iiurlwidth: "1000",
         format: "json", formatversion: "2",
       }).toString();
       const response = await fetch(api.toString(), {
@@ -192,16 +191,20 @@ async function commonsImagePreviews(prompt) {
       });
       if (!response.ok) continue;
       const data = await response.json();
-      const images = (data.query?.pages || []).map((page) => ({
-        title: String(page.title || "Visual reference").replace(/^File:/, "").replace(/\\.[^.]+$/, "").slice(0, 90),
-        url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "",
-      })).filter((item) => item.url.startsWith("https://") || item.url.startsWith("http://"));
-      if (images.length) return images.slice(0, 4);
+      const wanted = term.toLowerCase().replace(/\s+/g, " ");
+      const pages = (data.query?.pages || []).map((page) => {
+        const title = String(page.title || "").replace(/^File:/, "").replace(/\.[^.]+$/, "");
+        return { title, lower: title.toLowerCase().replace(/[_-]+/g, " "), url: page.imageinfo?.[0]?.thumburl || page.imageinfo?.[0]?.url || "" };
+      });
+      const exact = pages.filter((item) => item.url.startsWith("https://") &&
+        item.lower.includes(wanted) &&
+        !/(logo|icon|screenshot|manual|brochure|poster|diagram|cover|wikipedia|flag|map)/i.test(item.lower));
+      for (const item of exact.slice(0, 2)) {
+        if (!results.some((existing) => existing.url === item.url)) results.push({ title: item.title.slice(0, 90), url: item.url });
+      }
     }
-    return [];
-  } catch (_) {
-    return [];
-  }
+    return results.slice(0, 4);
+  } catch (_) { return []; }
 }
 
 async function callGemini(env, prompt, system, keyName) {
@@ -427,6 +430,7 @@ async function handleChat(body, env) {
   const uniqueLinks = sourceLinks
     .filter((item, index, all) => all.findIndex((other) => other.uri === item.uri) === index)
     .filter((item) => !/\.(pdf|docx?|xlsx?|pptx?)(?:[?#]|$)/i.test(item.uri))
+    .filter((item) => !/\b(pdf|ebook|e-book|document|modul|makalah|laporan|slide|presentation|powerpoint)\b/i.test(item.title))
     .slice(0, 8);
   const linkedPreviews = await previewImagesFromSources(uniqueLinks);
   const linkedImageMarkdown = linkedPreviews.map((item) =>
@@ -438,13 +442,14 @@ async function handleChat(body, env) {
   const imagePattern = new RegExp("!\\[([^\\]]*)\\]\\((https?://[^ )]+)\\)", "g");
   // Only use images explicitly present in the final synthesized answer or
   // verified page previews. Reviewer drafts are context, not display payload.
-  const imageMarkdown = [...String(finalAnswer || "").matchAll(imagePattern)]
-    .map((match) => match[0]);
+  // Ignore model-authored image URLs: they can be unrelated file attachments.
+  const imageMarkdown = [];
   let uniqueImages = [...new Set([...imageMarkdown, ...linkedImageMarkdown])].slice(0, 4);
   const shoppingRequest = /(produk|belanja|harga|termurah|rekomendasi|marketplace|tokopedia|shopee|lazada|product|shopping|buy|price|cheapest)/i.test(prompt);
-  if (!uniqueImages.length && !shoppingRequest) {
+  if (needsVisualResults(prompt) && uniqueImages.length < 2) {
     const commonsPreviews = await commonsImagePreviews(prompt);
-    uniqueImages = commonsPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")").slice(0, 3);
+    const additional = commonsPreviews.map((item) => "![ " + item.title + " ](" + item.url + ")");
+    uniqueImages = [...new Set([...uniqueImages, ...additional])].slice(0, 4);
   }
   // Route image bytes through the Worker so Android does not hit marketplace
   // hotlink/CORS restrictions. The original URL is retained as the proxy target.
