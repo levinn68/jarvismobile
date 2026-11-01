@@ -993,30 +993,61 @@ private fun JarvisScreen(
                                 }
                             }
                         }
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)
-                            .background(Color(0x5520AFC4), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { voiceListening = !voiceListening }, modifier = Modifier.size(38.dp)) {
-                                    Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
-                                        contentDescription = if (voiceListening) "Matikan mikrofon" else "Aktifkan mikrofon",
-                                        tint = if (voiceListening) Cyan else Color(0xFFFF8A8A), modifier = Modifier.size(20.dp))
+                        // Reference-aligned voice dock: mic-off, large central mic, and chat switch.
+                        Box(Modifier.fillMaxWidth().height(if (compact) 116.dp else 132.dp), contentAlignment = Alignment.Center) {
+                            Canvas(Modifier.fillMaxWidth().height(78.dp)) {
+                                val centerY = size.height / 2f
+                                val path = androidx.compose.ui.graphics.Path()
+                                for (i in 0..180) {
+                                    val x = size.width * i / 180f
+                                    val wave = kotlin.math.sin(i * .19f + wavePhase * 1.4f) * (5f + 2f * kotlin.math.sin(i * .07f))
+                                    if (i == 0) path.moveTo(x, centerY + wave) else path.lineTo(x, centerY + wave)
                                 }
-                                Text(if (voiceListening) "MIC ON" else "MIC OFF",
-                                    color = if (voiceListening) Cyan else Color(0xFFFF8A8A), fontSize = 7.sp, letterSpacing = 1.sp)
+                                drawPath(path, Cyan.copy(alpha = .42f), style = Stroke(1.4f))
+                                drawPath(path, Cyan.copy(alpha = .14f), style = Stroke(5f))
                             }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { voiceListening = false; page = "COMMAND" }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
+                                    Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
+                                        .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
+                                            voiceListening = false
+                                            statusText = "MICROPHONE OFF"
+                                        }, contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.MicOff, "Matikan mikrofon", tint = if (voiceListening) TextMuted else Color(0xFFFF8A8A), modifier = Modifier.size(25.dp))
+                                    }
+                                    Spacer(Modifier.height(7.dp))
+                                    Text("MIC OFF", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
                                 }
-                                Text("CHAT", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                IconButton(onClick = { if (!voiceListening) voiceListening = true else onStartListening() }, modifier = Modifier.size(38.dp)) {
-                                    Icon(Icons.Default.SettingsVoice, null, tint = Cyan, modifier = Modifier.size(20.dp))
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(116.dp)) {
+                                    Box(Modifier.size(if (compact) 88.dp else 100.dp)
+                                        .scale(if (voiceListening) breathe else 1f)
+                                        .background(Brush.radialGradient(listOf(Color(0xFF12485A), Color(0xFF06131D))), CircleShape)
+                                        .border(2.dp, Cyan.copy(alpha = .88f), CircleShape)
+                                        .clickable {
+                                            voiceListening = !voiceListening
+                                            if (voiceListening) onStartListening()
+                                            statusText = if (voiceListening) "VOICE MODE · LISTENING" else "MICROPHONE OFF"
+                                        }, contentAlignment = Alignment.Center) {
+                                        Box(Modifier.size(if (compact) 72.dp else 82.dp).border(1.dp, Cyan.copy(alpha = .38f), CircleShape), contentAlignment = Alignment.Center) {
+                                            Icon(if (voiceListening) Icons.Default.Mic else Icons.Default.MicOff,
+                                                "Toggle microphone", tint = Cyan, modifier = Modifier.size(39.dp))
+                                        }
+                                    }
+                                    Spacer(Modifier.height(7.dp))
+                                    Text(if (voiceListening) "LISTENING" else "MIC OFF", color = Cyan, fontSize = 8.sp, letterSpacing = 1.5.sp)
                                 }
-                                Text("LISTEN", color = TextMuted, fontSize = 7.sp, letterSpacing = 1.sp)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(72.dp)) {
+                                    Box(Modifier.size(58.dp).background(Color(0xFF06131D), CircleShape)
+                                        .border(1.dp, Color(0x8852DFF2), CircleShape).clickable {
+                                            voiceListening = false
+                                            page = "COMMAND"
+                                        }, contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Language, "Buka chat", tint = Cyan, modifier = Modifier.size(25.dp))
+                                    }
+                                    Spacer(Modifier.height(7.dp))
+                                    Text("CHAT", color = TextMuted, fontSize = 8.sp, letterSpacing = 1.2.sp)
+                                }
                             }
                         }
                         Text(if (voiceListening) "SAY “JARVIS” TO ACTIVATE" else "ENABLE MIC TO START VOICE CONTROL",
