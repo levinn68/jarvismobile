@@ -577,7 +577,7 @@ export default {
             format: "mp3",
             mp3_bitrate: 192,
             normalize: true,
-            prosody: { speed: 1.0, volume: 20, normalize_loudness: true },
+            prosody: { speed: 1.0, volume: 20 },
             latency: "balanced",
           }),
         });
