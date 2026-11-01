@@ -8,10 +8,13 @@
         <package android:name="com.google.android.youtube" />
         <package android:name="com.whatsapp" />
         <package android:name="com.android.chrome" />
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
     </queries>
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application android:allowBackup="false" android:icon="@drawable/ic_jarvis" android:roundIcon="@drawable/ic_jarvis" android:label="J.A.R.V.I.S" android:theme="@style/Theme.Jarvis" android:supportsRtl="true">
         <activity android:name=".MainActivity" android:exported="true">
