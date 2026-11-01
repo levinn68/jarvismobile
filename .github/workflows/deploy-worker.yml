@@ -29,6 +29,14 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID"
           test -n "$FISH_API_KEY"
           printf '%s' "$FISH_API_KEY" | wrangler secret put FISH_API_KEY --name jarvis-api
+      - name: Configure optional SerpApi visual search
+        if: ${{ secrets.SERPAPI_API_KEY != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+        run: |
+          printf '%s' "$SERPAPI_API_KEY" | wrangler secret put SERPAPI_API_KEY --name jarvis-api
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
