@@ -9,7 +9,10 @@ const POOLS = {
     "I'm listening.",
     "Ready when you are, Sir.",
     "Good to have you back.",
-    "There you are, Sir. Everything is standing by."
+    "There you are, Sir. Everything is standing by.",
+    "At your service, Boss.",
+    "Siap, Tuan. Saya mendengarkan.",
+    "Siap membantu, Bos."
   ],
   morning: [
     "Good morning, Sir. I trust you slept well.",
