@@ -1942,6 +1942,7 @@ private fun JarvisScreen(
     }
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
+        if (!voiceOn) wakeAcknowledged = false
         onModeChanged(voiceOn)
         // onModeChanged owns the single recognizer start; avoid starting it twice.
     }
