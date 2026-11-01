@@ -1772,6 +1772,7 @@ private fun JarvisScreen(
     var voiceTranscript by remember { mutableStateOf("") }
     var voiceAnswer by remember { mutableStateOf("") }
     var voiceStatusNote by remember { mutableStateOf("") }
+    var wakeAcknowledged by remember { mutableStateOf(false) }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
 
     val context = LocalContext.current
@@ -1907,15 +1908,22 @@ private fun JarvisScreen(
             val request = heard.replaceFirst(wake, "").trim()
             if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
-                val readyReply = if (detectEnglishContent(heard)) {
-                    "Yes, Sir. J.A.R.V.I.S. is online and ready for your commands."
-                } else {
-                    "Siap, Sir. J.A.R.V.I.S. sudah aktif dan siap menerima perintah."
+                // Acknowledge activation once. Repeated short wake detections must not
+                // replace a real task with another generic "I'm ready" announcement.
+                if (!wakeAcknowledged) {
+                    wakeAcknowledged = true
+                    val readyReply = if (detectEnglishContent(heard)) {
+                        "Ready, Sir. I'm listening for your command."
+                    } else {
+                        "Siap, Sir. Saya sudah aktif dan siap menerima perintah."
+                    }
+                    onSpeak(readyReply)
                 }
-                onSpeak(readyReply)
                 return@LaunchedEffect
             }
+            wakeAcknowledged = true
             if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby)$").matches(request)) {
+                wakeAcknowledged = false
                 voiceListening = false
                 return@LaunchedEffect
             }
