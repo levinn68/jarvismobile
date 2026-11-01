@@ -1815,29 +1815,26 @@ private fun JarvisScreen(
     }
 
     fun buildSpokenReply(request: String, answer: String, products: List<VisualProduct>): String {
-        val q = request.lowercase(Locale.ROOT)
+        val english = isEnglishText(request)
         if (products.isNotEmpty()) {
-            val cheapest = products.minByOrNull { product ->
-                product.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE
-            }
-            val lead = listOf(
-                "Saya sudah menemukan beberapa pilihan.",
-                "Baik, saya sudah cek hasil pencariannya.",
-                "Ini beberapa opsi yang berhasil saya temukan."
-            ).random()
-            val detail = cheapest?.let { " Yang paling terjangkau adalah ${it.title}, dengan harga ${it.price} di ${it.source}." }.orEmpty()
+            val cheapest = products.minByOrNull { it.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE }
+            val lead = if (english) listOf("Certainly, Sir. I found a few options.", "I checked the available listings, Boss.", "Here are the closest matches I found.").random()
+                else listOf("Baik, Sir. Saya sudah menemukan beberapa pilihan.", "Sudah saya periksa, Boss. Ini hasil terbaiknya.", "Saya menemukan beberapa opsi yang sesuai.").random()
+            val detail = cheapest?.let { if (english) " The most affordable is ${it.title}, priced at ${it.price} from ${it.source}." else " Yang paling terjangkau adalah ${it.title}, seharga ${it.price} dari ${it.source}." }.orEmpty()
             return (lead + detail).take(900)
         }
-        val lead = when {
-            Regex("\\b(buka|bukakan|jalankan|open|launch|run|start)\\b").containsMatchIn(q) ->
-                listOf("Baik, saya jalankan sekarang.", "Siap, saya buka aplikasinya.", "Perintah membuka aplikasi sudah saya proses.").random()
-            Regex("\\b(cari|carikan|harga|rekomendasi|search|find)\\b").containsMatchIn(q) ->
-                listOf("Saya sudah memeriksa informasinya.", "Baik, ini yang berhasil saya temukan.", "Saya sudah menelusuri permintaan tersebut.").random()
-            else -> listOf("Baik, saya jelaskan.", "Tentu. Berikut penjelasannya.", "Saya sudah memeriksanya.").random()
+        val q = request.lowercase(Locale.ROOT)
+        val lead = if (english) when {
+            Regex("\\b(open|launch|run|start)\\b").containsMatchIn(q) -> listOf("Right away, Sir.", "Certainly, Boss.").random()
+            Regex("\\b(find|search|look for)\\b").containsMatchIn(q) -> listOf("Certainly, Sir. I have looked into it.", "I checked that for you, Boss.").random()
+            else -> listOf("Certainly, Sir. Here is what I found.", "Of course, Boss.").random()
+        } else when {
+            Regex("\\b(buka|bukakan|jalankan)\\b").containsMatchIn(q) -> listOf("Baik, Sir. Saya jalankan.", "Siap, Boss.").random()
+            Regex("\\b(cari|carikan|harga|rekomendasi)\\b").containsMatchIn(q) -> listOf("Baik, Sir. Saya sudah menelusurinya.", "Sudah saya periksa, Boss.").random()
+            else -> listOf("Tentu, Sir. Berikut hasilnya.", "Baik, Boss.").random()
         }
         return if (answer.isBlank()) lead else "$lead $answer".take(1800)
     }
-
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
         val files = pendingAttachments.toList()
