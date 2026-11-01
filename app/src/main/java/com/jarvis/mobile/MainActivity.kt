@@ -284,7 +284,7 @@ class MainActivity : ComponentActivity() {
                 onStartListening = { startListening() },
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
-                    if (voiceMode) startListening() else { clapDetector.reset(); recognizer?.cancel() }
+                    if (!voiceMode) { clapDetector.reset(); recognizer?.cancel() }
                     voiceStatus.value = if (voiceMode) "VOICE MODE · LISTENING" else "CHAT MODE · READY TO TYPE"
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
@@ -913,17 +913,33 @@ private fun JarvisScreen(
     var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
-    var settings by remember { mutableStateOf(false) }
-    var keyDraft by remember { mutableStateOf("") }
+    // Only Chat and Voice are exposed in the current app navigation.
     val lines = remember { mutableStateListOf<Line>() }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
     val transition = rememberInfiniteTransition(label = "reactor")
-    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
-    val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
-    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
+    // Stop continuous HUD animation while Chat is active to reduce unnecessary frame work.
+    val voiceActive = page == "VOICE"
+    val spin by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (voiceActive) 360f else 0f,
+        animationSpec = if (voiceActive) infiniteRepeatable(tween(16000), RepeatMode.Restart) else tween(0),
+        label = "spin"
+    )
+    val breathe by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (voiceActive) 1.06f else 1f,
+        animationSpec = if (voiceActive) infiniteRepeatable(tween(950), RepeatMode.Reverse) else tween(0),
+        label = "breathe"
+    )
+    val wavePhase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = if (voiceActive) 6.28318f else 0f,
+        animationSpec = if (voiceActive) infiniteRepeatable(tween(1100), RepeatMode.Restart) else tween(0),
+        label = "wavePhase"
+    )
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
@@ -962,8 +978,12 @@ private fun JarvisScreen(
         statusText = "ANALYSING REQUEST"
         onSearch(q)
         cancelCurrentRequest = onAskGemini(requestText) { response ->
-            val answer = response.substringAfter("KESIMPULAN JARVIS", response)
+            val fullAnswer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
+            // Keep pathological model output from creating thousands of Compose nodes at once.
+            val answer = if (fullAnswer.length > 16000) {
+                fullAnswer.take(16000) + "\n\n[Jawaban dipotong agar aplikasi tetap responsif.]"
+            } else fullAnswer
             if (voice) { voiceAnswer = answer } else {
                 val responseLine = Line(false, answer)
                 responseLine.displayText.value = answer
@@ -1053,9 +1073,6 @@ private fun JarvisScreen(
                         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                         Box(Modifier.size(6.dp).background(if(busy) Color(0xFFFFC66D) else Color(0xFF63DDAE),CircleShape))
                         Text(if(busy) "THINKING" else "ONLINE",color=Color(0xFFB8D9DF),fontSize=8.sp,letterSpacing=.6.sp)
-                    }
-                    IconButton(onClick={keyDraft="";settings=true},modifier=Modifier.size(38.dp)) {
-                        Icon(Icons.Default.Settings,null,tint=Color(0xFF9BBBC4),modifier=Modifier.size(20.dp))
                     }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
@@ -1447,16 +1464,6 @@ private fun JarvisScreen(
                     }
                 if (page == "VOICE") Text("J.A.R.V.I.S. / PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF355C68), fontSize=6.sp, letterSpacing=1.3.sp, modifier=Modifier.align(Alignment.CenterHorizontally).padding(bottom=3.dp))
             }
-            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
-                title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
-                text={Column {
-                    Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
-                    OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
-                    Spacer(Modifier.height(14.dp))
-
-                }},
-                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
-                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
 }
