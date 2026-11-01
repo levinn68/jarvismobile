@@ -948,7 +948,7 @@ private fun JarvisScreen(
         val displayText: MutableState<String> = mutableStateOf(text),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
-    var page by remember { mutableStateOf("CHAT") }
+    var page by remember { mutableStateOf("HOME") }
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
     var lastPrompt by remember { mutableStateOf("") }
@@ -1177,7 +1177,46 @@ private fun JarvisScreen(
                 }
                 Spacer(Modifier.height(9.dp))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha=.6f), Color.Transparent))))
-                if (page == "VOICE") {
+                if (page == "HOME") {
+                    Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(Modifier.height(24.dp))
+                        Box(Modifier.size(126.dp).background(Color(0xFF071923), CircleShape).border(1.dp, Color(0x8852DFF2), CircleShape), contentAlignment = Alignment.Center) { Text("J", color = Color(0xFFBDF8FF), fontSize = 52.sp, fontWeight = FontWeight.Light) }
+                        Spacer(Modifier.height(17.dp))
+                        Text("GOOD DAY. I'M JARVIS.", color = Color(0xFFBDEFFA), fontSize = 15.sp, letterSpacing = 2.1.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Your personal intelligence system is ready.", color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(28.dp))
+                        val categories = listOf(Triple("Teknologi", "HP, Laptop, Gadget", Icons.Default.Language), Triple("Belajar", "Materi, Rangkuman", Icons.Default.Image), Triple("Produktivitas", "To-Do, Rencana", Icons.Default.Refresh), Triple("Kreativitas", "Gambar, Desain, AI", Icons.Default.Image), Triple("Coding", "Kode, Debug, Project", Icons.Default.Settings), Triple("Hiburan", "Film, Game, Musik", Icons.Default.VolumeUp), Triple("Travel", "Destinasi, Itinerary", Icons.Default.Language), Triple("Keuangan", "Anggaran, Investasi", Icons.Default.Refresh), Triple("Lainnya", "Tanya apa saja", Icons.Default.Add))
+                        val accents = listOf(Color(0xFF2EDCF5), Color(0xFF7BAAFF), Color(0xFF45D8B0), Color(0xFFB58BFF), Color(0xFF49D7F0), Color(0xFFD38BFF), Color(0xFF43CDEB), Color(0xFF46D6A2), Color(0xFF8FA7FF))
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            categories.chunked(3).forEachIndexed { rowIndex, rowItems ->
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    rowItems.forEachIndexed { colIndex, item ->
+                                        val accent = accents[rowIndex * 3 + colIndex]
+                                        Column(Modifier.weight(1f).height(104.dp).background(Brush.verticalGradient(listOf(accent.copy(alpha = .20f), Color(0xFF081923))), RoundedCornerShape(18.dp)).border(1.dp, accent.copy(alpha = .68f), RoundedCornerShape(18.dp)).clickable { page = "CHAT"; voiceListening = false; voiceArmed = false; command = when (item.first) { "Teknologi" -> "Carikan rekomendasi teknologi terbaru"; "Belajar" -> "Bantu saya belajar dan rangkum materi"; "Produktivitas" -> "Bantu saya membuat rencana produktivitas"; "Kreativitas" -> "Bantu saya membuat ide gambar dan desain"; "Coding" -> "Bantu saya coding dan debugging"; "Hiburan" -> "Rekomendasikan hiburan"; "Travel" -> "Buatkan itinerary perjalanan"; "Keuangan" -> "Bantu saya membuat anggaran keuangan"; else -> "" } }.padding(horizontal = 5.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                            Icon(item.third, null, tint = accent, modifier = Modifier.size(25.dp))
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(item.first, color = Color(0xFFE2F6FA), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            Spacer(Modifier.height(4.dp))
+                                            Text(item.second, color = TextMuted, fontSize = 8.sp, textAlign = TextAlign.Center, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(22.dp))
+                        Text("QUICK COMMANDS", color = Cyan, fontSize = 9.sp, letterSpacing = 1.7.sp, modifier = Modifier.align(Alignment.Start))
+                        Spacer(Modifier.height(8.dp))
+                        listOf("Cari rekomendasi HP", "Bandingkan dua laptop", "Buat itinerary liburan").forEach { suggestion ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp).background(Color(0xFF081923), RoundedCornerShape(11.dp)).border(1.dp, Color(0x553DDCF2), RoundedCornerShape(11.dp)).clickable { page = "CHAT"; voiceListening = false; voiceArmed = false; send(suggestion) }.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(16.dp))
+                                Text(suggestion, color = Color(0xFFDCEFF4), fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.Send, null, tint = Cyan, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                    }
+                } else if (page == "VOICE") {
                     Column(Modifier.fillMaxWidth().weight(1f).animateContentSize(animationSpec = tween(650)), horizontalAlignment = Alignment.CenterHorizontally) {
                         val latestVoiceRequest = lines.lastOrNull { it.user }?.text.orEmpty()
                         val latestVisualAnswer = lines.lastOrNull { !it.user && it.revealed.value }
@@ -1669,16 +1708,16 @@ private fun JarvisScreen(
                         .height(44.dp)
                         .background(Color(0xFF071923), RoundedCornerShape(20.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(20.dp)).padding(2.dp)) {
-                        listOf("CHAT", "VOICE").forEach { tab ->
-                            val selected = if (tab == "VOICE") page == "VOICE" else page == "CHAT"
+                        listOf("HOME", "CHAT", "VOICE").forEach { tab ->
+                            val selected = page == tab
                             Box(Modifier.weight(1f).fillMaxHeight()
                                 .background(if (selected) Color(0x3320BFD8) else Color.Transparent, RoundedCornerShape(17.dp))
                                 .clickable {
-                                    page = if (tab == "VOICE") "VOICE" else "CHAT"
+                                    page = tab
                                     voiceListening = tab == "VOICE"
                                     voiceArmed = false
                                 }, contentAlignment = Alignment.Center) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "⌂  CHAT",
+                                Text(when (tab) { "HOME" -> "⌂  HOME"; "CHAT" -> "▢  CHAT"; else -> "◉  VOICE" },
                                     color = if (selected) Cyan else TextMuted, fontSize = 8.sp,
                                     letterSpacing = 1.05.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
