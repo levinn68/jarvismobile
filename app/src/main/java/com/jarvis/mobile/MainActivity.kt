@@ -658,6 +658,53 @@ private fun RemoteMarkdownImage(alt: String, url: String) {
 }
 
 @Composable
+private fun MarkdownTable(rows: List<List<String>>) {
+    if (rows.isEmpty()) return
+    val headers = rows.first()
+    val dataRows = rows.drop(1)
+    val productLike = headers.size >= 4
+    if (productLike) {
+        Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(12.dp))
+            .border(1.dp, Color(0x7752DFF2), RoundedCornerShape(12.dp)).padding(8.dp),
+            verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            dataRows.forEachIndexed { index, row ->
+                Column(Modifier.fillMaxWidth().background(Color(0xCC0A202B), RoundedCornerShape(10.dp))
+                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(10.dp)).padding(10.dp),
+                    verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Text(row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), ""), color=Color(0xFFEAFBFF),
+                        fontSize=12.sp, fontWeight=FontWeight.SemiBold)
+                    row.drop(1).forEachIndexed { cellIndex, value ->
+                        if (value.isNotBlank()) {
+                            val label = headers.getOrNull(cellIndex+1).orEmpty()
+                            Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.Top) {
+                                Text(label, color=Cyan, fontSize=9.sp, modifier=Modifier.widthIn(min=74.dp, max=94.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Box(Modifier.weight(1f)) { InlineMarkdownText(value.replace(Regex("\\*\\*"), ""), 10.sp) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
+            .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
+            rows.forEachIndexed { ri, row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { cell ->
+                        Box(Modifier.weight(1f).heightIn(min=31.dp)
+                            .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
+                            .border(.4.dp,Color(0x3349B8CB)).padding(5.dp)) {
+                            InlineMarkdownText(cell, 9.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun RichMessageText(markdown: String) {
     val blocks = parseMarkdownBlocks(markdown)
     var index = 0
@@ -696,24 +743,7 @@ private fun RichMessageText(markdown: String) {
                                     SelectionContainer { Text(part.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
                                 }
                             }
-                            is MarkdownBlock.Table -> {
-                                val count=part.rows.maxOfOrNull { it.size } ?: 0
-                                Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
-                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
-                                    part.rows.forEachIndexed { ri,row ->
-                                        Row(Modifier.fillMaxWidth()) {
-                                            repeat(count) { ci ->
-                                                Box(Modifier.weight(1f).heightIn(min=31.dp)
-                                                    .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
-                                                    .border(.4.dp,Color(0x3349B8CB)).padding(5.dp), contentAlignment=Alignment.CenterStart) {
-                                                    Text(row.getOrNull(ci).orEmpty(), color=if(ri==0) Cyan else Color(0xFFE2F5F8),
-                                                        fontSize=9.sp, lineHeight=12.sp, fontWeight=if(ri==0) FontWeight.Bold else FontWeight.Normal)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            is MarkdownBlock.Table -> MarkdownTable(part.rows)
                             is MarkdownBlock.Heading -> Unit
                         }
                         index++
@@ -740,20 +770,7 @@ private fun RichMessageText(markdown: String) {
                             SelectionContainer { Text(block.text, color=Color(0xFFD2E8EF), fontSize=10.sp, lineHeight=15.sp, fontFamily=androidx.compose.ui.text.font.FontFamily.Monospace) }
                         }
                     }
-                    is MarkdownBlock.Table -> Column(Modifier.fillMaxWidth().background(Color(0xFF061923), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(8.dp)).padding(5.dp)) {
-                        block.rows.forEachIndexed { ri,row ->
-                            Row(Modifier.fillMaxWidth()) {
-                                row.forEach { cell ->
-                                    Box(Modifier.weight(1f).heightIn(min=31.dp)
-                                        .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
-                                        .border(.4.dp,Color(0x3349B8CB)).padding(5.dp)) {
-                                        Text(cell,color=if(ri==0) Cyan else Color(0xFFE2F5F8),fontSize=9.sp,lineHeight=12.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    is MarkdownBlock.Table -> MarkdownTable(block.rows)
                 }
                 index++
             }
