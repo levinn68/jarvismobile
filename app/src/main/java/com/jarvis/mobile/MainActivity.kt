@@ -1265,82 +1265,85 @@ private fun JarvisScreen(
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         if (lines.isEmpty()) item {
-                            // First launch is an empty CHAT CONSOLE, never a separate HOME/dashboard.
+                            // Designed empty-chat welcome state: editorial hierarchy, restrained core, useful starters.
                             Column(
-                                Modifier.fillMaxWidth().fillParentMaxHeight(.82f).padding(horizontal = 10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
+                                Modifier.fillMaxWidth().fillParentMaxHeight(.84f).padding(horizontal=8.dp),
+                                horizontalAlignment=Alignment.CenterHorizontally,
+                                verticalArrangement=Arrangement.Center
                             ) {
-                                Box(Modifier.size(if(compact) 174.dp else 198.dp),contentAlignment=Alignment.Center) {
-                                    // Outer orbital assembly: clean segmented arcs instead of a solid dial.
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.background(Color(0xFF0B2631),CircleShape)
+                                    .border(1.dp,Color(0x5548C8DA),CircleShape)
+                                    .padding(horizontal=12.dp,vertical=6.dp),
+                                    verticalAlignment=Alignment.CenterVertically,
+                                    horizontalArrangement=Arrangement.spacedBy(7.dp)) {
+                                    Box(Modifier.size(6.dp).background(Color(0xFF55E5B0),CircleShape))
+                                    Text("JARVIS IS READY",color=Color(0xFF9BDCE5),fontSize=8.sp,
+                                        letterSpacing=1.4.sp,fontWeight=FontWeight.Medium)
+                                }
+                                Spacer(Modifier.height(22.dp))
+                                Box(Modifier.size(if(compact) 142.dp else 158.dp),contentAlignment=Alignment.Center) {
                                     Canvas(Modifier.fillMaxSize()) {
-                                        val c=Cyan; val cx=center.x; val cy=center.y; val r=size.minDimension*.47f
-                                        drawCircle(Brush.radialGradient(listOf(Color(0x4437DDF5),Color(0x1420AFC8),Color.Transparent),center,r*1.15f),r*1.15f,center)
-                                        drawCircle(c.copy(alpha=.34f),r*.91f,center,style=Stroke(1.dp.toPx()))
-                                        drawCircle(c.copy(alpha=.16f),r*.79f,center,style=Stroke(.7.dp.toPx()))
-                                        // Broken outer arcs with breathing room.
-                                        for(i in 0..3) {
-                                            val rr=r*(.98f-i*.105f)
-                                            drawArc(c.copy(alpha=.58f-i*.09f),i*90f+22f,49f,false,
-                                                Offset(cx-rr,cy-rr),androidx.compose.ui.geometry.Size(rr*2,rr*2),
-                                                style=Stroke(if(i==0) 1.6.dp.toPx() else .9.dp.toPx()))
-                                        }
-                                        for(i in 0 until 60) {
-                                            val a=i*Math.PI*2/60
-                                            val major=i%5==0
-                                            val r1=r*(if(major) .82f else .86f)
-                                            val r2=r*(if(major) .91f else .88f)
-                                            drawLine(c.copy(alpha=if(major) .72f else .2f),
-                                                Offset(cx+kotlin.math.cos(a).toFloat()*r1,cy+kotlin.math.sin(a).toFloat()*r1),
-                                                Offset(cx+kotlin.math.cos(a).toFloat()*r2,cy+kotlin.math.sin(a).toFloat()*r2),
-                                                if(major) 1.15.dp.toPx() else .55.dp.toPx())
-                                        }
-                                        // Three small orbital nodes.
-                                        for(i in 0..2) {
-                                            val a=(i*120-90)*Math.PI/180.0
-                                            val p=Offset(cx+kotlin.math.cos(a).toFloat()*r*.99f,cy+kotlin.math.sin(a).toFloat()*r*.99f)
-                                            drawCircle(c.copy(alpha=.9f),2.dp.toPx(),p)
-                                        }
+                                        val r=size.minDimension*.47f
+                                        drawCircle(Brush.radialGradient(listOf(Color(0x333BD7EF),Color(0x1121AFC8),Color.Transparent),center,r*1.2f),r*1.2f,center)
+                                        drawCircle(Color(0x665DEBFF),r*.88f,center,style=Stroke(1.dp.toPx()))
+                                        drawCircle(Color(0x333FE0F5),r*.72f,center,style=Stroke(.7.dp.toPx()))
+                                        drawArc(Color(0xAA68E9FA),215f,105f,false,Offset(center.x-r*.98f,center.y-r*.98f),
+                                            androidx.compose.ui.geometry.Size(r*1.96f,r*1.96f),style=Stroke(1.8.dp.toPx()))
+                                        drawArc(Color(0x8868E9FA),35f,105f,false,Offset(center.x-r*.98f,center.y-r*.98f),
+                                            androidx.compose.ui.geometry.Size(r*1.96f,r*1.96f),style=Stroke(1.8.dp.toPx()))
+                                        drawCircle(Color(0x445FEAFF),r*.52f,center,style=Stroke(.7.dp.toPx()))
                                     }
-                                    // Floating reactor core with restrained glass depth.
-                                    Box(Modifier.size(if(compact) 104.dp else 116.dp)
-                                        .background(Brush.radialGradient(listOf(Color(0xFF237D91),Color(0xFF0B3443),Color(0xDD061923))),CircleShape)
-                                        .border(1.dp,Color(0x8875EFFF),CircleShape),
+                                    Box(Modifier.size(if(compact) 88.dp else 98.dp)
+                                        .background(Brush.radialGradient(listOf(Color(0xFF1B6072),Color(0xFF0A2B38),Color(0xFF061721))),CircleShape)
+                                        .border(1.dp,Color(0x8879EFFF),CircleShape),
                                         contentAlignment=Alignment.Center) {
-                                        Canvas(Modifier.fillMaxSize()) {
-                                            drawCircle(Color(0xFF78EFFF).copy(alpha=.22f),style=Stroke(1.dp.toPx()))
-                                            drawCircle(Brush.radialGradient(listOf(Color(0xAA55E9FF),Color(0x3331C5E0),Color.Transparent),
-                                                Offset(center.x,center.y*.78f),size.minDimension*.48f),
-                                                size.minDimension*.48f,Offset(center.x,center.y*.78f))
-                                            drawCircle(Color(0x8878EFFF),size.minDimension*.34f,center,style=Stroke(.8.dp.toPx()))
-                                        }
-                                        Text("J",color=Color(0xFFD2FAFF),fontSize=65.sp,fontWeight=FontWeight.ExtraLight)
+                                        Text("J",color=Color(0xFFE0FBFF),fontSize=58.sp,fontWeight=FontWeight.ExtraLight)
                                     }
                                 }
-                                Spacer(Modifier.height(14.dp))
-                                Text("J.A.R.V.I.S.", color=Color(0xFFE8FCFF), fontSize=21.sp, letterSpacing=5.sp, fontWeight=FontWeight.Light)
-                                Spacer(Modifier.height(5.dp))
-                                Text("PERSONAL INTELLIGENCE SYSTEM", color=Color(0xFF65B9C9), fontSize=8.sp, letterSpacing=2.sp)
+                                Spacer(Modifier.height(22.dp))
+                                Text("Good to see you.",color=Color(0xFF8CCBD6),fontSize=13.sp,
+                                    fontWeight=FontWeight.Normal,letterSpacing=.4.sp)
+                                Spacer(Modifier.height(4.dp))
+                                Text("How can I help?",color=Color(0xFFF0FBFD),fontSize=27.sp,
+                                    fontWeight=FontWeight.Light,letterSpacing=.2.sp)
+                                Spacer(Modifier.height(9.dp))
+                                Text("Ask anything. I’ll take it from here.",color=Color(0xFF7D9FA9),
+                                    fontSize=11.sp,textAlign=TextAlign.Center)
+                                Spacer(Modifier.height(25.dp))
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                                    Text("GET STARTED",color=Color(0xFF78C8D6),fontSize=8.sp,
+                                        letterSpacing=1.5.sp,fontWeight=FontWeight.SemiBold)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("QUICK ACTIONS",color=Color(0xFF547B87),fontSize=7.sp,letterSpacing=1.sp)
+                                }
                                 Spacer(Modifier.height(10.dp))
-                                Text("All systems operational. How can I assist you today?", color=Color(0xFFD9F7FC), fontSize=11.sp, textAlign=androidx.compose.ui.text.style.TextAlign.Center)
-                                Spacer(Modifier.height(7.dp))
-                                Text("SELECT A MODULE OR ENTER A COMMAND", color=Color(0xFF4D8998), fontSize=7.sp, letterSpacing=1.sp)
-                                Spacer(Modifier.height(12.dp))
-                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                    listOf(Triple("⌘","GITHUB","MCP CONNECTED"), Triple("</>","CODING","CODE · DEBUG"), Triple("◈","PROJECT","BUILD · MANAGE"), Triple("✧","TOOLS","AI · AUTOMATION")).forEach { item ->
-                                        Column(Modifier.width(103.dp).height(66.dp).background(Brush.verticalGradient(listOf(Color(0xCC103342),Color(0xB9071A27))),RoundedCornerShape(9.dp)).border(1.dp,Color(0x7752DFF2),RoundedCornerShape(9.dp)).clickable {
-                                            command = when(item.second) {
-                                                "GITHUB" -> "Help me inspect my GitHub repository"
-                                                "CODING" -> "Help me write or debug code"
-                                                "PROJECT" -> "Help me plan and manage a project"
-                                                else -> "Show me the available JARVIS tools"
-                                            }
-                                            inputFocus.requestFocus()
-                                        }.padding(horizontal=8.dp,vertical=7.dp), verticalArrangement=Arrangement.SpaceBetween) {
-                                            Text(item.first,color=Cyan,fontSize=16.sp)
-                                            Column(verticalArrangement=Arrangement.spacedBy(2.dp)) {
-                                                Text(item.second,color=Color(0xFFE1F9FF),fontSize=8.sp,fontWeight=FontWeight.SemiBold,letterSpacing=.8.sp)
-                                                Text(item.third,color=Color(0xFF6EA9B7),fontSize=6.sp,letterSpacing=.3.sp)
+                                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement=Arrangement.spacedBy(9.dp)) {
+                                    val actions=listOf(
+                                        Triple("⌘","Explore GitHub","Repositories & code"),
+                                        Triple("⌁","Build something","Code & debugging"),
+                                        Triple("◈","Plan a project","Ideas & workflow"),
+                                        Triple("✧","Discover tools","AI & automation")
+                                    )
+                                    actions.forEachIndexed { index,item ->
+                                        Column(Modifier.width(150.dp).height(88.dp)
+                                            .background(Brush.verticalGradient(listOf(Color(0xFF102D39),Color(0xFF091B25))),RoundedCornerShape(13.dp))
+                                            .border(1.dp,Color(0x444EC4D8),RoundedCornerShape(13.dp))
+                                            .clickable {
+                                                command=when(index) {
+                                                    0 -> "Help me explore my GitHub repositories"
+                                                    1 -> "Help me build something or debug code"
+                                                    2 -> "Help me plan a project"
+                                                    else -> "Show me the available JARVIS tools"
+                                                }
+                                                inputFocus.requestFocus()
+                                            }.padding(11.dp),
+                                            verticalArrangement=Arrangement.SpaceBetween) {
+                                            Text(item.first,color=Color(0xFF76E7F5),fontSize=19.sp)
+                                            Column(verticalArrangement=Arrangement.spacedBy(3.dp)) {
+                                                Text(item.second,color=Color(0xFFE5F7FA),fontSize=10.sp,fontWeight=FontWeight.SemiBold)
+                                                Text(item.third,color=Color(0xFF789BA5),fontSize=8.sp)
                                             }
                                         }
                                     }
