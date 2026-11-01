@@ -750,6 +750,16 @@ private fun MarkdownTable(rows: List<List<String>>) {
                     }
                 }
             }
+            if(settings) AlertDialog(onDismissRequest={settings=false},containerColor=Color(0xFF0A1922),
+                title={Text("J.A.R.V.I.S. SETTINGS",color=Color.White)},
+                text={Column {
+                    Text("Gemini TTS API key",color=TextMuted,fontSize=11.sp)
+                    OutlinedTextField(value=keyDraft,onValueChange={keyDraft=it},singleLine=true,visualTransformation=androidx.compose.ui.text.input.PasswordVisualTransformation())
+                    Spacer(Modifier.height(14.dp))
+
+                }},
+                confirmButton={TextButton(onClick={if(keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim());settings=false;keyDraft=""}){Text("SAVE",color=Cyan)}},
+                dismissButton={TextButton(onClick={settings=false}){Text("CANCEL",color=TextMuted)}})
         }
     }
 }
@@ -913,31 +923,29 @@ private fun JarvisScreen(
     var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var statusText by remember { mutableStateOf("SYSTEM STANDBY") }
     var processStage by remember { mutableStateOf("Menganalisis permintaan") }
+    var settings by remember { mutableStateOf(false) }
+    var keyDraft by remember { mutableStateOf("") }
     // Only Chat and Voice are exposed in the current app navigation.
     val lines = remember { mutableStateListOf<Line>() }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
     var followLatest by remember { mutableStateOf(true) }
-    val transition = rememberInfiniteTransition(label = "reactor")
-    // Stop continuous HUD animation while Chat is active to reduce unnecessary frame work.
+    // Animate only toward the active Voice state; Chat remains frame-efficient.
     val voiceActive = page == "VOICE"
-    val spin by transition.animateFloat(
-        initialValue = 0f,
+    val spin by animateFloatAsState(
         targetValue = if (voiceActive) 360f else 0f,
-        animationSpec = if (voiceActive) infiniteRepeatable(tween(16000), RepeatMode.Restart) else tween(0),
+        animationSpec = tween(if (voiceActive) 16000 else 0),
         label = "spin"
     )
-    val breathe by transition.animateFloat(
-        initialValue = 1f,
+    val breathe by animateFloatAsState(
         targetValue = if (voiceActive) 1.06f else 1f,
-        animationSpec = if (voiceActive) infiniteRepeatable(tween(950), RepeatMode.Reverse) else tween(0),
+        animationSpec = tween(if (voiceActive) 950 else 0),
         label = "breathe"
     )
-    val wavePhase by transition.animateFloat(
-        initialValue = 0f,
+    val wavePhase by animateFloatAsState(
         targetValue = if (voiceActive) 6.28318f else 0f,
-        animationSpec = if (voiceActive) infiniteRepeatable(tween(1100), RepeatMode.Restart) else tween(0),
+        animationSpec = tween(if (voiceActive) 1100 else 0),
         label = "wavePhase"
     )
 
@@ -1074,6 +1082,8 @@ private fun JarvisScreen(
                         Box(Modifier.size(6.dp).background(if(busy) Color(0xFFFFC66D) else Color(0xFF63DDAE),CircleShape))
                         Text(if(busy) "THINKING" else "ONLINE",color=Color(0xFFB8D9DF),fontSize=8.sp,letterSpacing=.6.sp)
                     }
+                    IconButton(onClick={keyDraft="";settings=true},modifier=Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Settings,null,tint=Color(0xFF9BBBC4),modifier=Modifier.size(20.dp))
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x223F8190)))
                 if (page == "VOICE") {
