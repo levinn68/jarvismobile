@@ -699,7 +699,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                         Text(title,color=Color(0xFFEAFBFF),fontSize=12.sp,lineHeight=17.sp,
                             fontWeight=FontWeight.SemiBold,minLines=2,maxLines=2)
                         if(imageCell!=null) {
-                            val match=Regex("!\\\\[([^]]*)]\\\\((https?://[^ )]+)\\)").find(imageCell)
+                            val match=Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(imageCell)
                             if(match!=null) {
                                 val context=LocalContext.current
                                 AsyncImage(model=ImageRequest.Builder(context).data(match.groupValues[2])
