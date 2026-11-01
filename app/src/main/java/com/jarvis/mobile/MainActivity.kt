@@ -1027,8 +1027,7 @@ private fun JarvisScreen(
                         Text("LIVE VOICE INTERFACE  /  PRIVATE SESSION", color = Color(0xFF568B99), fontSize = 7.sp, letterSpacing = 1.5.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 292.dp else 336.dp
-                            Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f)
-                                .clickable(enabled=voiceListening){onStartListening()},
+                            Box(Modifier.size(reactorSize).scale(if(voiceListening) breathe else 1f),
                                 contentAlignment=Alignment.Center) {
                                 Canvas(Modifier.fillMaxSize()) {
                                     val c=Color(0xFF55D7E9)
@@ -1134,7 +1133,6 @@ private fun JarvisScreen(
                                         .border(2.dp, Cyan.copy(alpha = .88f), CircleShape)
                                         .clickable {
                                             voiceListening = !voiceListening
-                                            if (voiceListening) onStartListening()
                                             statusText = if (voiceListening) "VOICE MODE · LISTENING" else "MICROPHONE OFF"
                                         }, contentAlignment = Alignment.Center) {
                                         Box(Modifier.size(if (compact) 72.dp else 82.dp).border(1.dp, Cyan.copy(alpha = .38f), CircleShape), contentAlignment = Alignment.Center) {
@@ -1174,9 +1172,14 @@ private fun JarvisScreen(
                     }
                     androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                         if (lines.isEmpty()) item {
-                            JarvisWelcomeHero(compact = compact) { selectedPrompt ->
-                                command = selectedPrompt
-                                inputFocus.requestFocus()
+                            Column(
+                                Modifier.fillMaxWidth().fillParentMaxHeight(.88f),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                JarvisWelcomeHero(compact = compact) { selectedPrompt ->
+                                    command = selectedPrompt
+                                    inputFocus.requestFocus()
+                                }
                             }
                         }
                         items(lines.size) { i ->
