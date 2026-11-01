@@ -843,7 +843,7 @@ private fun RichMessageText(markdown: String) {
                                         ) {
                                             Text(
                                                 item.firstOrNull().orEmpty(), color = Color(0xFFE9FAFD),
-                                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 15.sp
+                                                fontSize = 13.sp, fontWeight = FontWeight.SemiBold, lineHeight = 18.sp
                                             )
                                             Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x6652DFF2)))
                                             item.drop(1).forEachIndexed { offset, value ->
@@ -851,12 +851,12 @@ private fun RichMessageText(markdown: String) {
                                                 if (value.isNotBlank()) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                                     Text(
                                                         headers.getOrNull(index).orEmpty().uppercase(Locale.ROOT),
-                                                        color = Cyan, fontSize = 7.sp, letterSpacing = .8.sp,
+                                                        color = Cyan, fontSize = 9.sp, letterSpacing = .8.sp,
                                                         fontWeight = FontWeight.Bold
                                                     )
                                                     Text(
                                                         value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
-                                                        color = Color(0xFFDCEFF3), fontSize = 10.sp, lineHeight = 14.sp
+                                                        color = Color(0xFFDCEFF3), fontSize = 13.sp, lineHeight = 18.sp
                                                     )
                                                 }
                                             }
