@@ -1096,53 +1096,59 @@ private fun JarvisScreen(
                                         animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
                                     )
                             ) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 354.dp)
-                                    .wrapContentWidth(Alignment.Start)
-                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xE6081B26), RoundedCornerShape(14.dp))
-                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x6652DFF2), RoundedCornerShape(14.dp)).padding(if (line.user) 11.dp else 13.dp)) {
-                                    Row(verticalAlignment=Alignment.CenterVertically) {
-                                        Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
-                                        Text(line.time, color=TextMuted, fontSize=8.sp)
-                                        
-                                    }
-                                    Spacer(Modifier.height(7.dp))
-                                    AnimatedVisibility(
-                                        visible = line.revealed.value,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(
-                                            expandFrom = Alignment.Top,
-                                            animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                        )
-                                    ) {
-                                        Column {
-                                            RichMessageText(line.displayText.value)
-                                            if (!line.user) {
-                                                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Salin", color = TextMuted, fontSize = 9.sp)
+                            if (line.user) {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.End) {
+                                    Column(Modifier.widthIn(max = 292.dp)
+                                        .background(Brush.linearGradient(listOf(Color(0xFF104B76), Color(0xFF092B49))), RoundedCornerShape(15.dp))
+                                        .border(1.dp, Color(0xAA39BFF0), RoundedCornerShape(15.dp))
+                                        .padding(horizontal=13.dp, vertical=10.dp)) {
+                                        Text(line.text, color=Color(0xFFF0FAFF), fontSize=13.sp, lineHeight=18.sp)
+                                        Text(line.time, color=Color(0xFF8CB7CE), fontSize=8.sp, modifier=Modifier.align(Alignment.End).padding(top=4.dp))
+                                        line.attachments.forEach { file ->
+                                            Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
+                                                Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
+                                                Text(file.name, color=Color(0xFFB8DCE8), fontSize=9.sp, maxLines=1)
                                             }
-                                            TextButton(onClick = {
-                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                    type = "text/plain"
-                                                    putExtra(Intent.EXTRA_TEXT, line.text)
-                                                }
-                                                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
-                                            }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.Language, null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Bagikan", color = TextMuted, fontSize = 9.sp)
-                                            }
-                                                }
-                                            }
-                                            if (!line.user) SourceStrip(line.text)
                                         }
                                     }
-                                    line.attachments.forEach { file ->
-                                        Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
-                                            Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
-                                            Text(file.name, color=TextMuted, fontSize=9.sp, maxLines=1)
+                                }
+                            } else {
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement=Arrangement.Start, verticalAlignment=Alignment.Top) {
+                                    Box(Modifier.padding(top=2.dp, end=8.dp).size(31.dp)
+                                        .background(Color(0xFF073447), CircleShape)
+                                        .border(1.dp, Color(0xFF27CDEB), CircleShape), contentAlignment=Alignment.Center) {
+                                        Canvas(Modifier.size(19.dp)) {
+                                            drawCircle(Cyan.copy(alpha=.22f), style=Stroke(2.dp.toPx()))
+                                            drawCircle(Cyan, radius=size.minDimension*.22f)
+                                            for (n in 0..3) {
+                                                val a=n*Math.PI/2
+                                                val p=Offset(center.x+kotlin.math.cos(a).toFloat()*size.minDimension*.38f, center.y+kotlin.math.sin(a).toFloat()*size.minDimension*.38f)
+                                                drawCircle(Cyan, radius=1.6.dp.toPx(), center=p)
+                                            }
+                                        }
+                                    }
+                                    Column(Modifier.weight(1f), verticalArrangement=Arrangement.spacedBy(7.dp)) {
+                                        AnimatedVisibility(visible=line.revealed.value,
+                                            enter=fadeIn(tween(180))+expandVertically(expandFrom=Alignment.Top, animationSpec=tween(520))) {
+                                            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                                                RichMessageText(line.displayText.value)
+                                                Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.CenterVertically) {
+                                                    TextButton(onClick={clipboard.setText(AnnotatedString(line.text))}, contentPadding=PaddingValues(horizontal=6.dp, vertical=1.dp)) {
+                                                        Icon(Icons.Default.ContentCopy,null,tint=TextMuted,modifier=Modifier.size(12.dp))
+                                                        Spacer(Modifier.width(3.dp)); Text("Salin",color=TextMuted,fontSize=9.sp)
+                                                    }
+                                                    TextButton(onClick={
+                                                        val shareIntent=Intent(Intent.ACTION_SEND).apply { type="text/plain"; putExtra(Intent.EXTRA_TEXT,line.text) }
+                                                        runCatching { context.startActivity(Intent.createChooser(shareIntent,"Bagikan jawaban JARVIS")) }
+                                                    },contentPadding=PaddingValues(horizontal=6.dp,vertical=1.dp)) {
+                                                        Icon(Icons.Default.Share,null,tint=TextMuted,modifier=Modifier.size(12.dp))
+                                                        Spacer(Modifier.width(3.dp)); Text("Bagikan",color=TextMuted,fontSize=9.sp)
+                                                    }
+                                                    Spacer(Modifier.weight(1f))
+                                                    Text(line.time,color=TextMuted,fontSize=8.sp)
+                                                }
+                                                SourceStrip(line.text)
+                                            }
                                         }
                                     }
                                 }
