@@ -988,43 +988,68 @@ private fun JarvisScreen(
             // Persistent HUD layer: it morphs from the full idle hologram into a subdued
             // conversation backdrop instead of disappearing when the first message arrives.
             Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                val cx = w * .5f
-                val cy = h * .39f
-                val unit = 38.dp.toPx()
-                val grid = Color(0xFF20CDEB)
-                for (x in 0..(w / unit).toInt()) {
-                    val px = x * unit
-                    drawLine(grid.copy(alpha = .075f * ambienceAlpha), Offset(px, 0f), Offset(px, h), 0.65f)
+                val w=size.width; val h=size.height
+                val cx=w*.5f; val cy=h*.385f
+                val grid=Color(0xFF35DDF5)
+                val unit=35.dp.toPx()
+                // Fine technical grid, fading toward the edges.
+                for(x in 0..(w/unit).toInt()) drawLine(grid.copy(alpha=.052f*ambienceAlpha),Offset(x*unit,0f),Offset(x*unit,h),.55f)
+                for(y in 0..(h/unit).toInt()) drawLine(grid.copy(alpha=.045f*ambienceAlpha),Offset(0f,y*unit),Offset(w,y*unit),.55f)
+                // Corner brackets and side telemetry rails.
+                val inset=15.dp.toPx(); val len=28.dp.toPx()
+                listOf(Offset(inset,inset),Offset(w-inset,inset),Offset(inset,h-inset),Offset(w-inset,h-inset)).forEachIndexed { i,p ->
+                    val sx=if(i%2==0) 1f else -1f; val sy=if(i<2) 1f else -1f
+                    drawLine(grid.copy(alpha=.58f*ambienceAlpha),p,Offset(p.x+sx*len,p.y),1.15.dp.toPx())
+                    drawLine(grid.copy(alpha=.58f*ambienceAlpha),p,Offset(p.x,p.y+sy*len),1.15.dp.toPx())
                 }
-                for (y in 0..(h / unit).toInt()) {
-                    val py = y * unit
-                    drawLine(grid.copy(alpha = .065f * ambienceAlpha), Offset(0f, py), Offset(w, py), 0.65f)
+                for(side in 0..1) {
+                    val x=if(side==0) 9.dp.toPx() else w-9.dp.toPx()
+                    drawLine(grid.copy(alpha=.19f*ambienceAlpha),Offset(x,h*.22f),Offset(x,h*.47f),.8.dp.toPx())
+                    for(i in 0..8) {
+                        val y=h*(.235f+i*.026f)
+                        val d=if(i%2==0) 8.dp.toPx() else 4.dp.toPx()
+                        drawLine(grid.copy(alpha=(if(i%2==0) .48f else .22f)*ambienceAlpha),
+                            Offset(x,y),Offset(x+(if(side==0) d else -d),y),.8.dp.toPx())
+                    }
                 }
-                val glowRadius = w * .53f
-                drawCircle(
-                    Brush.radialGradient(
-                        listOf(Color(0x4421CBEA).copy(alpha = .78f * ambienceAlpha), Color(0x1421CBEA).copy(alpha = .5f * ambienceAlpha), Color.Transparent),
-                        Offset(cx, cy), glowRadius
-                    ), glowRadius, Offset(cx, cy)
-                )
-                for (ring in 0..4) {
-                    val radius = w * (.19f + ring * .075f)
-                    drawCircle(grid.copy(alpha = (.15f - ring * .018f) * ambienceAlpha),
-                        radius, Offset(cx, cy), style = Stroke(if (ring == 0) 1.25f else .65f))
+                // Layered reactor halo.
+                val glow=w*.67f
+                drawCircle(Brush.radialGradient(listOf(Color(0x6651E8FF).copy(alpha=.76f*ambienceAlpha),
+                    Color(0x3027BBD7).copy(alpha=.6f*ambienceAlpha),Color.Transparent),Offset(cx,cy),glow),glow,Offset(cx,cy))
+                for(i in 0..5) {
+                    val r=w*(.22f+i*.058f)
+                    drawCircle(grid.copy(alpha=(.23f-i*.027f)*ambienceAlpha),r,Offset(cx,cy),
+                        style=Stroke(if(i==0) 1.3.dp.toPx() else .65.dp.toPx()))
                 }
-                // Low projection platform remains as a faint ambient trace during chat.
-                for (ring in 0..3) {
-                    val ovalW = w * (.34f + ring * .12f)
-                    val ovalH = h * (.025f + ring * .008f)
-                    drawOval(grid.copy(alpha = (.19f - ring * .03f) * ambienceAlpha),
-                        topLeft = Offset(cx - ovalW / 2f, h * .81f - ovalH / 2f),
-                        size = androidx.compose.ui.geometry.Size(ovalW, ovalH),
-                        style = Stroke(if (ring == 0) 1.5f else .8f)
-                    )
+                // Fine radial ticks, segmented arcs and calibration dots.
+                for(i in 0 until 96) {
+                    val a=i*Math.PI*2/96
+                    val r1=w*.245f
+                    val r2=w*if(i%8==0) .278f else .255f
+                    drawLine(grid.copy(alpha=(if(i%8==0) .82f else .27f)*ambienceAlpha),
+                        Offset(cx+kotlin.math.cos(a).toFloat()*r1,cy+kotlin.math.sin(a).toFloat()*r1),
+                        Offset(cx+kotlin.math.cos(a).toFloat()*r2,cy+kotlin.math.sin(a).toFloat()*r2),
+                        if(i%8==0) 1.25.dp.toPx() else .6.dp.toPx())
                 }
-                drawLine(grid.copy(alpha = .22f * ambienceAlpha), Offset(0f, cy), Offset(w, cy), .8f)
+                for(i in 0..3) {
+                    val r=w*(.292f+i*.024f)
+                    drawArc(grid.copy(alpha=(.48f-i*.075f)*ambienceAlpha),i*90f+15f,48f,false,
+                        Offset(cx-r,cy-r),androidx.compose.ui.geometry.Size(r*2,r*2),
+                        style=Stroke(if(i==0) 1.7.dp.toPx() else .85.dp.toPx()))
+                }
+                // Vertical energy column leading into a brighter projection deck.
+                drawRect(Brush.verticalGradient(listOf(Color.Transparent,Color(0x1838DDF5).copy(alpha=ambienceAlpha),
+                    Color(0x5538DDF5).copy(alpha=ambienceAlpha),Color.Transparent),startY=h*.69f,endY=h*.91f),
+                    topLeft=Offset(w*.39f,h*.69f),size=androidx.compose.ui.geometry.Size(w*.22f,h*.22f))
+                drawCircle(Brush.radialGradient(listOf(Color(0x4437DDF5).copy(alpha=ambienceAlpha),Color.Transparent),
+                    Offset(cx,h*.835f),w*.42f),w*.42f,Offset(cx,h*.835f))
+                for(i in 0..6) {
+                    val ovalW=w*(.29f+i*.105f); val ovalH=h*(.014f+i*.0055f)
+                    drawOval(grid.copy(alpha=(.42f-i*.047f)*ambienceAlpha),
+                        Offset(cx-ovalW/2f,h*.835f-ovalH/2f),androidx.compose.ui.geometry.Size(ovalW,ovalH),
+                        style=Stroke(if(i==0) 1.8.dp.toPx() else .75.dp.toPx()))
+                }
+                drawLine(grid.copy(alpha=.2f*ambienceAlpha),Offset(0f,cy),Offset(w,cy),.7.dp.toPx())
             }
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
