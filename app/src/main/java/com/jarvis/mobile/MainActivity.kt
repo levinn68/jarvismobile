@@ -898,9 +898,6 @@ private fun SourceLogo(url: String) {
 private fun VoiceVisualResults(markdown: String) {
     val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
     val images = blocks.filterIsInstance<MarkdownBlock.Image>().distinctBy { it.url }.take(4)
-    val summary = blocks.filterIsInstance<MarkdownBlock.Paragraph>()
-        .firstOrNull()?.text?.replace(Regex("\\s+"), " ")?.trim()?.take(240).orEmpty()
-    val table = blocks.filterIsInstance<MarkdownBlock.Table>().firstOrNull()
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 3.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp)
@@ -927,41 +924,6 @@ private fun VoiceVisualResults(markdown: String) {
                                     modifier = Modifier.padding(top = 5.dp))
                             }
                         }
-                    }
-                }
-            }
-        }
-        if (summary.isNotBlank()) {
-            Text(summary, color = Color(0xFFD8EDF2), fontSize = 10.sp,
-                lineHeight = 15.sp, maxLines = 3)
-        }
-        if (table != null && table.rows.size > 1) {
-            val headers = table.rows.first()
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val cardWidth = (maxWidth - 8.dp) / 2
-                table.rows.drop(1).take(4).chunked(2).forEach { pair ->
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { row ->
-                            Column(
-                                Modifier.width(cardWidth)
-                                    .background(Color(0xFF071923), RoundedCornerShape(10.dp))
-                                    .border(1.dp, Color(0x6652DFF2), RoundedCornerShape(10.dp))
-                                    .padding(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(row.firstOrNull().orEmpty(), color = Color(0xFFE8F8FB),
-                                    fontSize = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
-                                row.drop(1).forEachIndexed { index, value ->
-                                    if (value.isNotBlank()) {
-                                        Text(headers.getOrNull(index + 1)?.uppercase(Locale.ROOT).orEmpty(),
-                                            color = Cyan, fontSize = 7.sp, letterSpacing = .7.sp)
-                                        Text(value.replace(Regex("\\*\\*(.*?)\\*\\*"), "$1"),
-                                            color = Color(0xFFD8EDF2), fontSize = 9.sp, maxLines = 2)
-                                    }
-                                }
-                            }
-                        }
-                        if (pair.size == 1) Spacer(Modifier.width(cardWidth))
                     }
                 }
             }
@@ -1129,6 +1091,7 @@ private fun JarvisScreen(
         busy = true
         statusText = "ANALYSING REQUEST"
         processStage = "Menyiapkan pencarian"
+        if (voice) onSpeak(if (responseLanguage == "en") "Searching now." else "Sedang mencari.")
         onSearch(q)
         cancelCurrentRequest = onAskGemini(requestText, responseLanguage) { response ->
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
@@ -1144,7 +1107,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 responseLine.revealed.value = true
             }
-            if (voice) onSpeak(voiceCompletionMessage(answer, responseLanguage))
+            if (voice) onSpeak(if (responseLanguage == "en") "The results are on your screen." else "Hasilnya sudah tampil di layar.")
         }
     }
 
@@ -1253,6 +1216,7 @@ private fun JarvisScreen(
 
                             Canvas(Modifier.size(reactorSize).offset(y = reactorOffset)
                                 .scale(if (voiceListening) breathe else 1f)
+                                .scale(1f, .58f)
                                 .rotate(if (voiceListening) spin * .12f else spin * .025f)
                                 .clickable(enabled = voiceListening) { onStartListening() }) {
                                 val cx = size.width / 2f
@@ -1682,7 +1646,7 @@ private fun JarvisScreen(
                         Spacer(Modifier.width(6.dp))
                         BasicTextField(value=command,onValueChange={command=it},
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
-                            singleLine=false, minLines=1, maxLines=4,
+                            singleLine=true, minLines=1, maxLines=1,
                             cursorBrush = Brush.linearGradient(listOf(Cyan, Cyan)),
                             textStyle=androidx.compose.ui.text.TextStyle(
                                 color=Color.White, fontSize=15.sp,
