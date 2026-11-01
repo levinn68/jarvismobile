@@ -67,6 +67,29 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.TaskAlt
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.CompareArrows
+import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -114,6 +137,7 @@ private val Background = Color(0xFF050912)
 private val Panel = Color(0xFF0D1726)
 private val Cyan = Color(0xFF64E8FF)
 private val TextMuted = Color(0xFF8FA6BD)
+private val lineIds = java.util.concurrent.atomic.AtomicLong()
 
 /**
  * Lightweight clap-pattern detector fed by SpeechRecognizer's live RMS callback.
@@ -530,7 +554,7 @@ private sealed class MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock()
     data class Code(val language: String, val text: String) : MarkdownBlock()
     data class Table(val rows: List<List<String>>) : MarkdownBlock()
-    data class Bullet(val text: String, val ordered: Boolean) : MarkdownBlock()
+    data class Bullet(val text: String, val ordered: Boolean, val number: Int = 0) : MarkdownBlock()
 }
 
 private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
@@ -595,21 +619,34 @@ private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
         }
         blocks.add(MarkdownBlock.Paragraph(paragraph.joinToString("\n")))
     }
-    return blocks
+    return numberBullets(blocks)
+}
+
+private fun numberBullets(blocks: List<MarkdownBlock>): List<MarkdownBlock> {
+    var n = 0
+    return blocks.map { b ->
+        if (b is MarkdownBlock.Bullet && b.ordered) { n += 1; b.copy(number = n) } else { n = 0; b }
+    }
 }
 
 @Composable
-private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 14.sp) {
+private fun InlineMarkdownText(
+    markdown: String,
+    fontSize: androidx.compose.ui.unit.TextUnit = 14.sp,
+    lineHeight: androidx.compose.ui.unit.TextUnit = 22.sp
+) {
     val uriHandler = LocalUriHandler.current
     val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
     val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
     val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
+    val codePattern = Regex("`([^`\\n]+)`")
     val clean = markdown.replace(Regex("(?m)^#{1,6}\\s*"), "")
     val annotated = buildAnnotatedString {
         var cursor = 0
         val matches = (linkPattern.findAll(clean).map { it to "link" } +
             rawUrlPattern.findAll(clean).map { it to "url" } +
-            boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
+            boldPattern.findAll(clean).map { it to "bold" } +
+            codePattern.findAll(clean).map { it to "code" }).sortedBy { it.first.range.first }
         for ((match, kind) in matches) {
             if (match.range.first < cursor) continue
             append(clean.substring(cursor, match.range.first))
@@ -619,57 +656,319 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
                 val target = if (kind == "link") match.groupValues[2] else match.value
                 withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.Medium)) { append(label) }
                 addStringAnnotation("URL", target, startOffset, length)
+            } else if (kind == "code") {
+                withStyle(SpanStyle(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, background = Color(0x3329C7E0), color = Color(0xFF9CF5FF))) { append(match.groupValues[1]) }
             } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF1FCFF))) { append(match.groupValues[1]) }
             cursor = match.range.last + 1
         }
         if (cursor < clean.length) append(clean.substring(cursor))
     }
-    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = 22.sp), onClick = { offset ->
+    ClickableText(text = annotated, style = androidx.compose.ui.text.TextStyle(color = Color(0xFFE2F5F8), fontSize = fontSize, lineHeight = lineHeight), onClick = { offset ->
         annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
     })
 }
 
 @Composable
-private fun RichMessageText(markdown: String) {
+private fun RichMessageText(markdown: String, bulletIcon: ImageVector? = null, bulletTint: Color = Cyan) {
+    val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        parseMarkdownBlocks(markdown).forEach { block ->
+        blocks.forEach { block ->
             when (block) {
                 is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text)
-                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text(if (block.ordered) "1." else "•", color = Cyan, fontSize = 14.sp)
-                    InlineMarkdownText(block.text)
-                }
-                is MarkdownBlock.Code -> Column(Modifier.fillMaxWidth().background(Color(0xFF06111A), RoundedCornerShape(9.dp))
-                    .border(1.dp, Color(0x5549B8CB), RoundedCornerShape(9.dp)).padding(10.dp)) {
-                    if (block.language.isNotBlank()) Text(block.language.uppercase(), color = Cyan, fontSize = 8.sp, letterSpacing = 1.sp)
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        SelectionContainer { Text(block.text, color = Color(0xFFD2E8EF), fontSize = 12.sp, lineHeight = 18.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace) }
+                is MarkdownBlock.Bullet -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                    if (block.ordered) {
+                        Box(Modifier.size(20.dp).background(Cyan.copy(alpha = .14f), CircleShape), contentAlignment = Alignment.Center) {
+                            Text(block.number.toString(), color = Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (bulletIcon != null) {
+                        Icon(bulletIcon, null, tint = bulletTint, modifier = Modifier.padding(top = 3.dp).size(16.dp))
+                    } else {
+                        Box(Modifier.padding(top = 9.dp, start = 4.dp, end = 2.dp).size(5.dp).background(bulletTint, CircleShape))
                     }
+                    Box(Modifier.weight(1f)) { InlineMarkdownText(block.text) }
                 }
-                is MarkdownBlock.Table -> {
-                    val columnCount = block.rows.maxOfOrNull { it.size } ?: 0
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                        Column(Modifier.border(1.dp, Color(0x5549B8CB), RoundedCornerShape(7.dp))) {
-                            block.rows.forEachIndexed { rowIndex, row ->
-                                Row(Modifier.height(IntrinsicSize.Min)) {
-                                    repeat(columnCount) { columnIndex ->
-                                        val longest = block.rows.maxOfOrNull { it.getOrNull(columnIndex)?.length ?: 0 } ?: 8
-                                        val cellWidth = (longest * 7 + 22).coerceIn(88, 180).dp
-                                        Box(Modifier.width(cellWidth).heightIn(min = 36.dp)
-                                            .background(if (rowIndex == 0) Color(0xFF123443) else Color(0xFF091923))
-                                            .border(.5.dp, Color(0x5549B8CB)).padding(horizontal = 8.dp, vertical = 6.dp),
-                                            contentAlignment = Alignment.CenterStart) {
-                                            Text(row.getOrNull(columnIndex).orEmpty(), color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8),
-                                                fontSize = 11.sp, lineHeight = 15.sp, fontWeight = if (rowIndex == 0) FontWeight.Bold else FontWeight.Normal)
-                                        }
-                                    }
-                                }
-                            }
+                is MarkdownBlock.Code -> CodeBlockView(block.language, block.text)
+                is MarkdownBlock.Table -> TableView(block.rows)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeBlockView(language: String, code: String) {
+    val clipboard = LocalClipboardManager.current
+    val lineCount = code.lines().size
+    val shape = RoundedCornerShape(10.dp)
+    Column(Modifier.fillMaxWidth().clip(shape).background(Color(0xFF06111A)).border(1.dp, Color(0x5549B8CB), shape)) {
+        Row(Modifier.fillMaxWidth().background(Color(0xFF0B2230)).padding(start = 10.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (language.isBlank()) "KODE" else language.uppercase(Locale.ROOT), color = Cyan, fontSize = 10.sp,
+                letterSpacing = 1.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            TextButton(onClick = { clipboard.setText(AnnotatedString(code)) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Salin", color = TextMuted, fontSize = 10.sp)
+            }
+        }
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(10.dp)) {
+            Text((1..lineCount).joinToString("\n"), color = Color(0xFF3F6C7A), fontSize = 12.sp, lineHeight = 18.sp,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, textAlign = TextAlign.End)
+            Spacer(Modifier.width(12.dp))
+            SelectionContainer {
+                Text(code, color = Color(0xFFD2E8EF), fontSize = 12.sp, lineHeight = 18.sp, softWrap = false,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TableView(rows: List<List<String>>) {
+    val columnCount = rows.maxOfOrNull { it.size } ?: 0
+    if (columnCount == 0) return
+    val shape = RoundedCornerShape(10.dp)
+    val fit = columnCount <= 3
+    Box(Modifier.fillMaxWidth().clip(shape).border(1.dp, Color(0x5549B8CB), shape)) {
+        Column(if (fit) Modifier.fillMaxWidth() else Modifier.horizontalScroll(rememberScrollState())) {
+            rows.forEachIndexed { rowIndex, row ->
+                Row((if (fit) Modifier.fillMaxWidth() else Modifier).height(IntrinsicSize.Min)) {
+                    repeat(columnCount) { columnIndex ->
+                        val longest = rows.maxOfOrNull { it.getOrNull(columnIndex)?.length ?: 0 } ?: 8
+                        val cellModifier = if (fit) Modifier.weight(1f) else Modifier.width((longest * 7 + 22).coerceIn(88, 180).dp)
+                        val background = when {
+                            rowIndex == 0 -> Color(0xFF123443)
+                            rowIndex % 2 == 0 -> Color(0xFF0A1D28)
+                            else -> Color(0xFF081821)
+                        }
+                        Box(cellModifier.fillMaxHeight().background(background).border(.5.dp, Color(0x3349B8CB))
+                            .padding(horizontal = 9.dp, vertical = 7.dp), contentAlignment = Alignment.CenterStart) {
+                            Text(row.getOrNull(columnIndex).orEmpty().replace("**", ""),
+                                color = if (rowIndex == 0) Cyan else Color(0xFFE2F5F8), fontSize = 12.sp, lineHeight = 16.sp,
+                                fontWeight = if (rowIndex == 0 || columnIndex == 0) FontWeight.SemiBold else FontWeight.Normal)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private data class AnswerSection(val title: String?, val body: String)
+
+/** Splits a markdown answer into an optional intro and titled sections (## heading or a bold-only line). */
+private fun splitAnswerSections(markdown: String): List<AnswerSection> {
+    val out = mutableListOf<AnswerSection>()
+    val buf = mutableListOf<String>()
+    var title: String? = null
+    var inCode = false
+    val heading = Regex("^\\s{0,3}#{1,4}\\s+(.+?)\\s*#*\\s*$")
+    val boldLine = Regex("^\\s*\\*\\*([^*]{2,60})\\*\\*\\s*:?\\s*$")
+    fun flush() {
+        val body = buf.joinToString("\n").trim()
+        if (body.isNotBlank()) out.add(AnswerSection(title, body))
+        buf.clear()
+    }
+    for (line in markdown.replace("\\n", "\n").lines()) {
+        val fence = line.trimStart().startsWith("```")
+        if (fence) inCode = !inCode
+        val m = if (fence || inCode) null else (heading.matchEntire(line) ?: boldLine.matchEntire(line))
+        if (m != null) {
+            flush()
+            title = m.groupValues[1].trim().trimEnd(':').replace("**", "").trim()
+        } else buf.add(line)
+    }
+    flush()
+    return out
+}
+
+private fun sectionIcon(key: String): ImageVector = when {
+    Regex("gambar|foto|image").containsMatchIn(key) -> Icons.Default.Image
+    Regex("kode|code|script|html").containsMatchIn(key) -> Icons.Default.Code
+    Regex("soal|latihan|kuis|quiz").containsMatchIn(key) -> Icons.Default.School
+    Regex("anggaran|keuangan|biaya|alokasi|rincian|harga").containsMatchIn(key) -> Icons.Default.AccountBalanceWallet
+    Regex("itinerary|travel|liburan|hari \\d|destinasi").containsMatchIn(key) -> Icons.Default.Flight
+    Regex("perbandingan|bandingkan|\\bvs\\b|spesifikasi").containsMatchIn(key) -> Icons.Default.CompareArrows
+    Regex("kesimpulan|simpulan").containsMatchIn(key) -> Icons.Default.CheckCircle
+    Regex("tips|saran|catatan").containsMatchIn(key) -> Icons.Default.Lightbulb
+    Regex("analisis|hasil|temuan").containsMatchIn(key) -> Icons.Default.Search
+    Regex("tabel|data").containsMatchIn(key) -> Icons.Default.TableChart
+    else -> Icons.Default.Article
+}
+
+@Composable
+private fun SectionCard(title: String, body: String) {
+    val key = title.lowercase(Locale.ROOT)
+    val isSummary = Regex("kesimpulan|ringkasan|simpulan|summary").containsMatchIn(key)
+    val isTip = Regex("tips|saran|catatan").containsMatchIn(key)
+    val accent = when { isSummary -> Color(0xFF5CF2A8); isTip -> Color(0xFFFFC857); else -> Cyan }
+    val shape = RoundedCornerShape(14.dp)
+    Column(Modifier.fillMaxWidth().background(Color(0xE60A1823), shape).border(1.dp, accent.copy(alpha = .35f), shape).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(26.dp).background(accent.copy(alpha = .14f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                Icon(sectionIcon(key), null, tint = accent, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.width(9.dp))
+            Text(title, color = Color(0xFFEAFBFF), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(9.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(accent.copy(alpha = .18f)))
+        Spacer(Modifier.height(10.dp))
+        RichMessageText(
+            body,
+            bulletIcon = if (isSummary) Icons.Default.CheckCircle else if (isTip) Icons.Default.Lightbulb else null,
+            bulletTint = accent
+        )
+    }
+}
+
+@Composable
+private fun JarvisAvatar(size: Dp = 30.dp) {
+    Box(Modifier.size(size).background(Brush.radialGradient(listOf(Color(0xFF14566A), Color(0xFF082331))), CircleShape)
+        .border(1.dp, Color(0x8852DFF2), CircleShape), contentAlignment = Alignment.Center) {
+        Text("J", color = Cyan, fontSize = (size.value * .5f).sp, fontWeight = FontWeight.Light)
+    }
+}
+
+@Composable
+private fun UserMessage(text: String, time: String, attachments: List<String>, maxBubble: Dp) {
+    val shape = RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.Top) {
+        Column(horizontalAlignment = Alignment.End) {
+            Column(Modifier.widthIn(max = maxBubble)
+                .background(Brush.verticalGradient(listOf(Color(0xFF0E3A4C), Color(0xFF0A2633))), shape)
+                .border(1.dp, Color(0x7755CFE8), shape).padding(horizontal = 13.dp, vertical = 10.dp)) {
+                SelectionContainer { Text(text, color = Color(0xFFEAFBFF), fontSize = 14.sp, lineHeight = 20.sp) }
+                attachments.forEach { name ->
+                    Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AttachFile, null, tint = Cyan, modifier = Modifier.size(13.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(name, color = TextMuted, fontSize = 10.sp, maxLines = 1)
+                    }
+                }
+            }
+            Text(time, color = TextMuted, fontSize = 8.sp, modifier = Modifier.padding(top = 3.dp, end = 4.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.size(30.dp).background(Color(0xFF0E2D3A), CircleShape).border(1.dp, Color(0x6652DFF2), CircleShape),
+            contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.Person, null, tint = Cyan, modifier = Modifier.size(17.dp))
+        }
+    }
+}
+
+@Composable
+private fun AssistantMessage(markdown: String, time: String, onCopy: () -> Unit, onShare: () -> Unit) {
+    val body = remember(markdown) {
+        markdown.replace("\\n", "\n").replace(Regex("(?s)\\n*Sumber yang bisa dibuka:.*$"), "").trim()
+    }
+    val sections = remember(body) { splitAnswerSections(body) }
+    val intro = sections.firstOrNull { it.title == null }?.body.orEmpty()
+    val cards = sections.filter { it.title != null }
+    val bubbleShape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            JarvisAvatar()
+            if (intro.isNotBlank()) {
+                Column(Modifier.weight(1f, fill = false).background(Color(0xCC0A1F2C), bubbleShape)
+                    .border(1.dp, Color(0x5549B8CB), bubbleShape).padding(horizontal = 13.dp, vertical = 10.dp)) {
+                    RichMessageText(intro)
+                }
+            } else {
+                Text("J.A.R.V.I.S.", color = Cyan, fontSize = 10.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.CenterVertically))
+            }
+        }
+        cards.forEach { SectionCard(it.title.orEmpty(), it.body) }
+        Row(Modifier.padding(start = 30.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onCopy, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Salin", color = TextMuted, fontSize = 10.sp)
+            }
+            TextButton(onClick = onShare, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
+                Icon(Icons.Default.Share, null, tint = TextMuted, modifier = Modifier.size(13.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Bagikan", color = TextMuted, fontSize = 10.sp)
+            }
+            Text(time, color = TextMuted, fontSize = 8.sp, modifier = Modifier.padding(start = 6.dp))
+        }
+        SourceStrip(markdown)
+    }
+}
+
+private data class HomeCategory(val title: String, val subtitle: String, val icon: ImageVector, val color: Color, val starter: String)
+
+@Composable
+private fun JarvisHome(modifier: Modifier, compact: Boolean, spin: Float, breathe: Float, onPrompt: (String) -> Unit) {
+    val categories = remember {
+        listOf(
+            HomeCategory("Teknologi", "HP, Laptop, Gadget", Icons.Default.PhoneAndroid, Color(0xFF2FD3F0), "Rekomendasikan HP terbaik untuk "),
+            HomeCategory("Belajar", "Materi, Rangkuman", Icons.Default.School, Color(0xFF6FA8FF), "Buatkan rangkuman materi tentang "),
+            HomeCategory("Produktivitas", "To-Do, Rencana", Icons.Default.TaskAlt, Color(0xFF3FE0B0), "Bantu saya menyusun rencana untuk "),
+            HomeCategory("Kreativitas", "Gambar, Desain, AI", Icons.Default.Palette, Color(0xFFB58CFF), "Beri ide kreatif untuk "),
+            HomeCategory("Coding", "Kode, Debug, Project", Icons.Default.Code, Color(0xFF58E1FF), "Buatkan contoh kode untuk "),
+            HomeCategory("Hiburan", "Film, Game, Musik", Icons.Default.PlayArrow, Color(0xFFD38CFF), "Rekomendasikan film atau game untuk "),
+            HomeCategory("Travel", "Destinasi, Itinerary", Icons.Default.Flight, Color(0xFF4DE3FF), "Buatkan itinerary liburan ke "),
+            HomeCategory("Keuangan", "Anggaran, Investasi", Icons.Default.AccountBalanceWallet, Color(0xFF52E6A0), "Bantu buat rencana keuangan bulanan dengan gaji Rp"),
+            HomeCategory("Lainnya", "Tanya apa saja", Icons.Default.GridView, Color(0xFF8FA6FF), "")
+        )
+    }
+    val quick = remember {
+        listOf(
+            Triple("Cari rekomendasi HP", Icons.Default.Search, "Carikan rekomendasi HP terbaik saat ini"),
+            Triple("Bandingkan dua laptop", Icons.Default.CompareArrows, "Bandingkan dua laptop: "),
+            Triple("Buat itinerary liburan", Icons.Default.Flight, "Buat itinerary liburan 3 hari 2 malam ke ")
+        )
+    }
+    Column(modifier.verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(if (compact) 4.dp else 14.dp))
+        Box(Modifier.size(if (compact) 92.dp else 116.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize().scale(breathe)) {
+                val r = size.minDimension / 2f
+                drawCircle(Brush.radialGradient(listOf(Color(0x6634D9F3), Color(0x1A21AFCB), Color.Transparent), center, r), r, center)
+                drawCircle(Color(0xFF36DDF5).copy(alpha = .55f), r * .78f, center, style = Stroke(1.6f))
+                drawCircle(Color(0xFF36DDF5).copy(alpha = .25f), r * .62f, center, style = Stroke(.8f))
+                drawArc(Cyan.copy(alpha = .9f), spin, 70f, false, Offset(center.x - r * .9f, center.y - r * .9f),
+                    androidx.compose.ui.geometry.Size(r * 1.8f, r * 1.8f), style = Stroke(2.2f))
+                drawArc(Cyan.copy(alpha = .5f), 120f - spin * 1.3f, 50f, false, Offset(center.x - r * .9f, center.y - r * .9f),
+                    androidx.compose.ui.geometry.Size(r * 1.8f, r * 1.8f), style = Stroke(1.4f))
+            }
+            Text("J", color = Color(0xFFD9FBFF), fontSize = if (compact) 32.sp else 40.sp, fontWeight = FontWeight.Light)
+        }
+        Spacer(Modifier.height(12.dp))
+        Text("GOOD DAY. I'M JARVIS.", color = Color(0xFFBDEFFA), fontSize = 14.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(5.dp))
+        Text("Your personal intelligence system is ready.", color = TextMuted, fontSize = 12.sp, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(if (compact) 10.dp else 18.dp))
+        categories.chunked(3).forEach { rowItems ->
+            Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                rowItems.forEach { cat ->
+                    val cardShape = RoundedCornerShape(14.dp)
+                    Column(Modifier.weight(1f).height(if (compact) 76.dp else 88.dp).clip(cardShape)
+                        .background(Brush.verticalGradient(listOf(cat.color.copy(alpha = .22f), cat.color.copy(alpha = .06f))))
+                        .border(1.dp, cat.color.copy(alpha = .55f), cardShape)
+                        .clickable { onPrompt(cat.starter) }.padding(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(cat.icon, null, tint = cat.color, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.height(5.dp))
+                        Text(cat.title, color = Color(0xFFEAFBFF), fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(cat.subtitle, color = TextMuted, fontSize = 8.sp, lineHeight = 10.sp, textAlign = TextAlign.Center, maxLines = 2)
+                    }
+                }
+            }
+        }
+        Text("QUICK COMMANDS", color = Cyan, fontSize = 9.sp, letterSpacing = 1.6.sp,
+            modifier = Modifier.align(Alignment.Start).padding(top = 6.dp, bottom = 7.dp))
+        quick.forEach { (label, icon, prompt) ->
+            val rowShape = RoundedCornerShape(12.dp)
+            Row(Modifier.fillMaxWidth().padding(bottom = 7.dp).clip(rowShape).background(Color(0xCC081923))
+                .border(1.dp, Color(0x5549B8CB), rowShape).clickable { onPrompt(prompt) }.padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, null, tint = Cyan, modifier = Modifier.size(17.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(label, color = Color(0xFFD9EDF2), fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -715,6 +1014,7 @@ private fun JarvisScreen(
         val user: Boolean,
         val text: String,
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
+        val id: Long = lineIds.incrementAndGet(),
         val attachments: List<Attachment> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
@@ -722,6 +1022,7 @@ private fun JarvisScreen(
     var page by remember { mutableStateOf("COMMAND") }
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
+    var fieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var lastPrompt by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
@@ -845,7 +1146,7 @@ private fun JarvisScreen(
         if (voiceOn) onStartListening()
     }
     LaunchedEffect(listState) { snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }.collect { (lastVisible, total) -> followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2 } }
-    LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1) }
+    LaunchedEffect(lines.size, busy) { if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(if (busy) lines.size else lines.size - 1) }
     LaunchedEffect(lines) {
         snapshotFlow { lines.lastOrNull()?.revealed?.value }.collect {
             if (followLatest && lines.isNotEmpty()) listState.scrollToItem(lines.size - 1)
@@ -861,6 +1162,7 @@ private fun JarvisScreen(
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
+            val bubbleMax = maxWidth * 0.78f
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -871,7 +1173,7 @@ private fun JarvisScreen(
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(if (busy) "● PROCESSING" else "● SYSTEM ONLINE", color = Cyan, fontSize = 8.sp)
-                        Text("CORE 01 / " + page, color = TextMuted, fontSize = 7.sp)
+                        Text("CORE 01 / " + (if (page == "VOICE") "VOICE" else if (lines.isEmpty()) "HOME" else "CHAT"), color = TextMuted, fontSize = 7.sp)
                     }
                     IconButton(onClick = { keyDraft = ""; settings = true }, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.Settings, null, tint = Cyan, modifier = Modifier.size(23.dp)) }
                 }
@@ -1024,107 +1326,54 @@ private fun JarvisScreen(
                             modifier = Modifier.padding(top = 7.dp, bottom = 4.dp))
                     }
                } else {
-                    Row(Modifier.fillMaxWidth().padding(top=4.dp,bottom=8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("COMMAND CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
-                        Text(lines.size.toString()+" ENTRIES", color = TextMuted, fontSize = 7.sp)
-                    }
-                    androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state=listState, contentPadding=PaddingValues(bottom=12.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                        if (lines.isEmpty()) item {
-                            Column(Modifier.fillMaxWidth().padding(top=34.dp, bottom=22.dp),
-                                horizontalAlignment=Alignment.CenterHorizontally) {
-                                Box(Modifier.size(104.dp).background(Color(0xFF0B2430), CircleShape)
-                                    .border(1.dp, Color(0x6652DFF2), CircleShape), contentAlignment=Alignment.Center) {
-                                    Text("J", color=Cyan, fontSize=48.sp, fontWeight=FontWeight.Light)
-                                }
-                                Spacer(Modifier.height(18.dp))
-                                Text("GOOD DAY. I'M JARVIS.", color=Color(0xFFBDEFFA), fontSize=13.sp,
-                                    letterSpacing=2.sp, fontWeight=FontWeight.Medium)
-                                Spacer(Modifier.height(8.dp))
-                                Text("Your personal intelligence system is ready.",
-                                    color=TextMuted, fontSize=12.sp, textAlign=TextAlign.Center)
-                                Spacer(Modifier.height(18.dp))
-                                Column(Modifier.fillMaxWidth().background(Color(0x99081721), RoundedCornerShape(14.dp))
-                                    .border(1.dp, Color(0x4449B8CB), RoundedCornerShape(14.dp)).padding(15.dp)) {
-                                    Text("TRY A COMMAND", color=Cyan, fontSize=8.sp, letterSpacing=1.8.sp)
-                                    Spacer(Modifier.height(10.dp))
-                                    Text("“Carikan rekomendasi HP terbaik.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Bandingkan dua pilihan laptop.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                    Spacer(Modifier.height(7.dp))
-                                    Text("“Buka YouTube.”", color=Color(0xFFD9EDF2), fontSize=12.sp)
-                                }
+                    if (lines.isEmpty() && !busy) {
+                        JarvisHome(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            compact = compact, spin = spin, breathe = breathe,
+                            onPrompt = { starter ->
+                                command = starter
+                                runCatching { inputFocus.requestFocus() }
+                                keyboard?.show()
                             }
+                        )
+                    } else {
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("CHAT CONSOLE", color = Color(0xFF8EDDED), fontSize = 9.sp, letterSpacing = 1.8.sp, modifier = Modifier.weight(1f))
+                            Text(lines.size.toString() + " ENTRIES", color = TextMuted, fontSize = 8.sp)
                         }
-                        items(lines.size) { i ->
-                            val line=lines[i]
-                            AnimatedVisibility(
-                                visible = true,
-                                enter = fadeIn(animationSpec = tween(180)) +
-                                    expandVertically(
-                                        expandFrom = Alignment.Top,
-                                        animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+                        androidx.compose.foundation.lazy.LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState,
+                            contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            items(lines.size, key = { lines[it].id }) { i ->
+                                val line = lines[i]
+                                if (line.user) {
+                                    UserMessage(line.text, line.time, line.attachments.map { it.name }, bubbleMax)
+                                } else {
+                                    AssistantMessage(
+                                        markdown = line.displayText.value.ifBlank { line.text },
+                                        time = line.time,
+                                        onCopy = { clipboard.setText(AnnotatedString(line.text)) },
+                                        onShare = {
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, line.text)
+                                            }
+                                            runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
+                                        }
                                     )
-                            ) {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement=if(line.user) Arrangement.End else Arrangement.Start) {
-                                Column(Modifier.widthIn(max = if (line.user) 292.dp else 326.dp)
-                                    .wrapContentWidth(Alignment.Start)
-                                    .background(if(line.user) Color(0xFF0A2633) else Color(0xCC081923), RoundedCornerShape(12.dp))
-                                    .border(1.dp, if(line.user) Color(0x7755CFE8) else Color(0x5549B8CB), RoundedCornerShape(12.dp)).padding(11.dp)) {
-                                    Row(verticalAlignment=Alignment.CenterVertically) {
-                                        Text(if(line.user) "YOU / COMMAND" else "J.A.R.V.I.S. / RESPONSE", color=if(line.user) Color(0xFF8BB4C1) else Cyan, fontSize=8.sp, letterSpacing=1.1.sp, fontWeight=FontWeight.Bold, modifier=Modifier.weight(1f))
-                                        Text(line.time, color=TextMuted, fontSize=8.sp)
-                                        
-                                    }
-                                    Spacer(Modifier.height(7.dp))
-                                    AnimatedVisibility(
-                                        visible = line.revealed.value,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(
-                                            expandFrom = Alignment.Top,
-                                            animationSpec = tween(durationMillis = 720, easing = androidx.compose.animation.core.FastOutSlowInEasing)
-                                        )
-                                    ) {
-                                        Column {
-                                            RichMessageText(line.displayText.value)
-                                            if (!line.user) {
-                                                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            TextButton(onClick = { clipboard.setText(AnnotatedString(line.text)) }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.ContentCopy, null, tint = TextMuted, modifier = Modifier.size(13.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Salin", color = TextMuted, fontSize = 9.sp)
-                                            }
-                                            TextButton(onClick = {
-                                                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                    type = "text/plain"
-                                                    putExtra(Intent.EXTRA_TEXT, line.text)
-                                                }
-                                                runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
-                                            }, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
-                                                Icon(Icons.Default.Language, null, tint = TextMuted, modifier = Modifier.size(14.dp))
-                                                Spacer(Modifier.width(4.dp))
-                                                Text("Bagikan", color = TextMuted, fontSize = 9.sp)
-                                            }
-                                                }
-                                            }
-                                            if (!line.user) SourceStrip(line.text)
-                                        }
-                                    }
-                                    line.attachments.forEach { file ->
-                                        Row(Modifier.fillMaxWidth().padding(top=5.dp), verticalAlignment=Alignment.CenterVertically) {
-                                            Icon(Icons.Default.AttachFile, null, tint=Cyan, modifier=Modifier.size(13.dp))
-                                            Text(file.name, color=TextMuted, fontSize=9.sp, maxLines=1)
-                                        }
-                                    }
                                 }
                             }
-                            }
-                        }
-                        if(busy) item {
-                            val pulse by rememberInfiniteTransition(label="thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label="thinkingAlpha")
-                            Row(Modifier.wrapContentWidth().padding(start = 5.dp, top = 2.dp, bottom = 4.dp),
-                                verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(7.dp)) {
-                                Box(Modifier.size(6.dp).background(Cyan.copy(alpha=pulse), CircleShape))
-                                Text(processStage, color=TextMuted, fontSize=10.sp)
-                                repeat(3) { index -> Box(Modifier.size(4.dp).background(Cyan.copy(alpha=if (index == 1) pulse else .45f), CircleShape)) }
+                            if (busy) item(key = "thinking") {
+                                val pulse by rememberInfiniteTransition(label = "thinkingPulse").animateFloat(.35f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "thinkingAlpha")
+                                val thinkingShape = RoundedCornerShape(4.dp, 16.dp, 16.dp, 16.dp)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    JarvisAvatar()
+                                    Row(Modifier.background(Color(0xCC0A1F2C), thinkingShape).border(1.dp, Color(0x5549B8CB), thinkingShape)
+                                        .padding(horizontal = 13.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                                        Text(processStage, color = TextMuted, fontSize = 12.sp)
+                                        repeat(3) { index -> Box(Modifier.size(5.dp).background(Cyan.copy(alpha = if (index == 1) pulse else .45f), CircleShape)) }
+                                    }
+                                }
                             }
                         }
                     }
@@ -1168,7 +1417,7 @@ private fun JarvisScreen(
                                     leadingIcon={ Icon(Icons.Default.Image, null, tint=Cyan) })
                             }
                         }
-                        BasicTextField(value=command,onValueChange={command=it},
+                        BasicTextField(value=if (fieldValue.text == command) fieldValue else TextFieldValue(command, androidx.compose.ui.text.TextRange(command.length)),onValueChange={ fieldValue = it; command = it.text },
                             modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
                             singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
@@ -1194,10 +1443,17 @@ private fun JarvisScreen(
                     Row(Modifier.fillMaxWidth().padding(top = 7.dp, bottom = 3.dp)
                         .background(Color(0xFF071923), RoundedCornerShape(24.dp))
                         .border(1.dp, Color(0x3354DDF4), RoundedCornerShape(24.dp)).padding(3.dp)) {
-                        listOf("COMMAND", "VOICE").forEach { tab ->
-                            TextButton(onClick = { if (tab == "COMMAND") voiceListening = false; page = tab }, modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.textButtonColors(contentColor = if (page == tab) Cyan else TextMuted)) {
-                                Text(if (tab == "VOICE") "◉  VOICE" else "⌘  COMMAND", fontSize = 9.sp, letterSpacing = 1.1.sp)
+                        listOf("COMMAND" to "CHAT", "VOICE" to "VOICE").forEach { (key, label) ->
+                            val selected = page == key
+                            Row(Modifier.weight(1f).height(38.dp).clip(RoundedCornerShape(20.dp))
+                                .background(if (selected) Color(0xFF0E3F4D) else Color.Transparent)
+                                .clickable { if (key == "COMMAND") voiceListening = false; page = key },
+                                horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                Icon(if (key == "VOICE") Icons.Default.SettingsVoice else Icons.Default.ChatBubbleOutline, null,
+                                    tint = if (selected) Cyan else TextMuted, modifier = Modifier.size(15.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text(label, color = if (selected) Cyan else TextMuted, fontSize = 11.sp, letterSpacing = 1.2.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
                             }
                         }
                     }
