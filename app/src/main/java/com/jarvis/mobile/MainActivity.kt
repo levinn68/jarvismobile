@@ -527,7 +527,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun speakWithAndroid(text: String) {
-        tts?.language = Locale.forLanguageTag(detectRecognitionLanguage(text))
+        tts?.language = Locale.forLanguageTag(if (isEnglishText(text)) "en-US" else "id-ID")
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
     }
 
@@ -1748,7 +1748,7 @@ private fun JarvisScreen(
     var command by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
     var voiceAnswer by remember { mutableStateOf("") }
-    var awaitingAppName by remember { mutableStateOf(false) }
+    var voiceStatusNote by remember { mutableStateOf("") }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
 
     val context = LocalContext.current
@@ -1849,12 +1849,7 @@ private fun JarvisScreen(
         }
 
         val norm = q.lowercase(Locale.ROOT)
-        if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis")) {
-            val greeting = "Good day. Sistem J.A.R.V.I.S. aktif dan siap membantu. Apa perintahmu?"
-            if (voice) voiceAnswer = greeting else showJarvis(greeting)
-            if (voice) onSpeak(greeting)
-            return
-        }
+        if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis", "open", "buka")) return
         // Do not infer app-launch actions from ordinary words such as "open" or short utterances.
         // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
         busy = true
@@ -1882,39 +1877,35 @@ private fun JarvisScreen(
         }
     }
 
-    // Always accept normal requests; app launching requires the explicit Jarvis wake phrase.
+    // Voice remains silent until the user says a command addressed to JARVIS.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            if (awaitingAppName) {
-                awaitingAppName = false
-                val opened = onOpenApp(heard)
-                onSpeak(if (opened) "Certainly, Boss. $heard is open." else "I couldn't find $heard on this device, Sir.")
+            val wake = Regex("(?i)\\bjarvis\\b[,.! ]*")
+            if (!wake.containsMatchIn(heard)) return@LaunchedEffect
+            val request = heard.replaceFirst(wake, "").trim()
+            if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
+                voiceStatusNote = "READY FOR COMMAND"
                 return@LaunchedEffect
             }
-            val wake = Regex("(?i)^jarvis\\b[,.! ]*")
-            val hasWake = wake.containsMatchIn(heard)
-            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
-            if (hasWake && Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon)$").matches(request)) {
+            if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby)$").matches(request)) {
                 voiceListening = false
-                awaitingAppName = false
-                onSpeak("Understood, Sir. I'll stand down.")
-            } else if (hasWake && request.isBlank()) {
-                onSpeak("I'm listening, Sir. What would you like me to do?")
-            } else if (hasWake && Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
-                awaitingAppName = true
-                onSpeak("Certainly, Sir. Which application shall I open?")
-            } else if (hasWake && Regex("(?i)^(open|buka)(kan)?\\s+").containsMatchIn(request)) {
-                val appName = request.replaceFirst(Regex("(?i)^(open|buka)(kan)?\\s+"), "").trim()
-                val opened = onOpenApp(appName)
-                onSpeak(if (opened) "Right away, Sir. $appName is open." else "I couldn't find $appName on this device, Boss.")
-            } else {
-                send(request, voice = true)
+                return@LaunchedEffect
             }
+            val appCommand = Regex("(?i)^(open|buka)(kan)?\\s+(.+)$").matchEntire(request)
+            if (appCommand != null) {
+                val appName = appCommand.groupValues[3].trim()
+                val opened = onOpenApp(appName)
+                val reply = if (isEnglishText(request)) {
+                    if (opened) "Certainly, Sir. $appName is open." else "I could not find $appName on this device, Sir."
+                } else {
+                    if (opened) "Siap, Sir. $appName sudah dibuka." else "Maaf, Sir. $appName tidak ditemukan di perangkat ini."
+                }
+                onSpeak(reply)
+            } else send(request, voice = true)
         }
     }
-
     LaunchedEffect(page, voiceListening) {
         val voiceOn = page == "VOICE" && voiceListening
         onModeChanged(voiceOn)
@@ -2167,7 +2158,7 @@ private fun JarvisScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
                                     VoiceHudReactor(
-                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 126.dp else if (compact) 170.dp else 210.dp),
+                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 150.dp else if (compact) 190.dp else 230.dp),
                                         phase = phase,
                                         spin = spin,
                                         breathe = breathe
