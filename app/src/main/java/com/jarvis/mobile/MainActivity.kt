@@ -1162,6 +1162,7 @@ private fun JarvisScreen(
         BoxWithConstraints(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()
             .background(Brush.verticalGradient(listOf(Color(0xFF02080D), Color(0xFF06131C), Color(0xFF02070C))))) {
             val compact = maxHeight < 700.dp
+            val bubbleMax = maxWidth * 0.78f
             Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 10.dp).animateContentSize()) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1345,7 +1346,7 @@ private fun JarvisScreen(
                             items(lines.size, key = { lines[it].id }) { i ->
                                 val line = lines[i]
                                 if (line.user) {
-                                    UserMessage(line.text, line.time, line.attachments.map { it.name }, maxWidth * 0.78f)
+                                    UserMessage(line.text, line.time, line.attachments.map { it.name }, bubbleMax)
                                 } else {
                                     AssistantMessage(
                                         markdown = line.displayText.value.ifBlank { line.text },
