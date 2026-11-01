@@ -1736,6 +1736,7 @@ private fun JarvisScreen(
     var command by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
     var voiceAnswer by remember { mutableStateOf("") }
+    var awaitingAppName by remember { mutableStateOf(false) }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
 
     val context = LocalContext.current
