@@ -129,6 +129,10 @@ import java.net.URL
 import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -317,11 +321,13 @@ class MainActivity : ComponentActivity() {
     }
 
 
-    private fun askGemini(prompt: String, callback: (String) -> Unit): () -> Unit {
+    private fun askGemini(prompt: String, callback: (AskResult) -> Unit): () -> Unit {
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
         Thread {
             var connection: HttpURLConnection? = null
+            var media: List<MediaItem> = emptyList()
+            var ok = true
             val result = try {
                 val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
                 connection = endpoint.openConnection() as HttpURLConnection
@@ -342,6 +348,7 @@ class MainActivity : ComponentActivity() {
                 val raw = BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                 val json = JSONObject(raw)
                 if (code !in 200..299 || !json.optBoolean("ok", false)) {
+                    ok = false
                     val diagnostics = json.optJSONArray("diagnostics")
                     val detail = if (diagnostics != null) (0 until diagnostics.length()).mapNotNull { i ->
                         val item = diagnostics.optJSONObject(i) ?: return@mapNotNull null
@@ -350,14 +357,18 @@ class MainActivity : ComponentActivity() {
                     json.optString("error").ifBlank { "JARVIS API error ($code)." } +
                         if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
                 } else {
+                    media = parseMedia(json.optJSONObject("media"))
                     json.optString("answer", "JARVIS tidak menerima jawaban akhir.").trim()
                 }
             } catch (e: Exception) {
+                ok = false
                 "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
             } finally {
                 connection?.disconnect()
             }
-            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(result) }
+            val finalMedia = media
+            val finalOk = ok
+            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(AskResult(result, finalMedia, finalOk)) }
         }.start()
         return {
             cancelled.set(true)
@@ -856,7 +867,7 @@ private fun UserMessage(text: String, time: String, attachments: List<String>, m
 }
 
 @Composable
-private fun AssistantMessage(markdown: String, time: String, onCopy: () -> Unit, onShare: () -> Unit) {
+private fun AssistantMessage(markdown: String, time: String, onCopy: () -> Unit, onShare: () -> Unit, media: List<MediaItem> = emptyList()) {
     val body = remember(markdown) {
         markdown.replace("\\n", "\n").replace(Regex("(?s)\\n*Sumber yang bisa dibuka:.*$"), "").trim()
     }
@@ -877,6 +888,7 @@ private fun AssistantMessage(markdown: String, time: String, onCopy: () -> Unit,
                     modifier = Modifier.align(Alignment.CenterVertically))
             }
         }
+        if (media.isNotEmpty()) MediaGallery(media)
         cards.forEach { SectionCard(it.title.orEmpty(), it.body) }
         Row(Modifier.padding(start = 30.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onCopy, contentPadding = PaddingValues(horizontal = 7.dp, vertical = 2.dp)) {
@@ -1006,7 +1018,7 @@ private fun JarvisScreen(
     recognizedText: String, status: String, onConsumed: () -> Unit, onSpeak: (String) -> Unit,
     onStartListening: () -> Unit, onModeChanged: (Boolean) -> Unit, onSearch: (String) -> Unit,
     geminiConfigured: () -> Boolean, onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (String) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
+    onAskGemini: (String, (AskResult) -> Unit) -> (() -> Unit), onOpenApp: (String) -> Boolean,
     onInstalledApps: () -> List<String>
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
@@ -1016,6 +1028,7 @@ private fun JarvisScreen(
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val id: Long = lineIds.incrementAndGet(),
         val attachments: List<Attachment> = emptyList(),
+        val media: List<MediaItem> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
@@ -1024,6 +1037,9 @@ private fun JarvisScreen(
     var command by remember { mutableStateOf("") }
     var fieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var lastPrompt by remember { mutableStateOf("") }
+    var voiceHeard by remember { mutableStateOf("") }
+    var voiceMedia by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
+    var voiceAnswer by remember { mutableStateOf("") }
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -1068,6 +1084,9 @@ private fun JarvisScreen(
     val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(16000), RepeatMode.Restart), label = "spin")
     val breathe by transition.animateFloat(.94f, 1.06f, infiniteRepeatable(tween(950), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(1100), RepeatMode.Restart), label = "wavePhase")
+    val caretAlpha by transition.animateFloat(1f, 0f, infiniteRepeatable(tween(540), RepeatMode.Reverse), label = "caret")
+    var inputLayout by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+    var inputFocused by remember { mutableStateOf(false) }
 
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
@@ -1105,10 +1124,17 @@ private fun JarvisScreen(
         busy = true
         statusText = "ANALYSING REQUEST"
         onSearch(q)
-        cancelCurrentRequest = onAskGemini(requestText) { response ->
+        if (voice) {
+            voiceHeard = q
+            voiceMedia = emptyList()
+            voiceAnswer = ""
+            onSpeak("Baik, saya carikan.")
+        }
+        cancelCurrentRequest = onAskGemini(requestText) { result ->
+            val response = result.text
             val answer = response.substringAfter("KESIMPULAN JARVIS", response)
                 .substringAfter("JAWABAN AKHIR", response).trim().ifBlank { response.trim() }
-            val responseLine = Line(false, answer)
+            val responseLine = Line(false, answer, media = result.media)
             responseLine.displayText.value = answer
             responseLine.revealed.value = false
             lines.add(responseLine)
@@ -1119,7 +1145,11 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 responseLine.revealed.value = true
             }
-            if (voice) onSpeak(answer)
+            if (voice) {
+                voiceMedia = result.media
+                voiceAnswer = answer
+                onSpeak(if (!result.ok) "Maaf, ada kendala." else if (result.media.isNotEmpty()) "Sudah ketemu." else "Jawabannya sudah siap.")
+            }
         }
     }
 
@@ -1186,97 +1216,11 @@ private fun JarvisScreen(
                         Text("PERSONAL INTELLIGENCE INTERFACE", color = Color(0xFF397F8D), fontSize = 7.sp, letterSpacing = 1.6.sp)
                         Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                             val reactorSize = if (compact) 220.dp else 246.dp
-                            Canvas(Modifier.size(reactorSize)
-                                .scale(if (voiceListening) breathe else 1f)
-                                .rotate(if (voiceListening) spin * .12f else spin * .025f)
-                                .clickable(enabled = voiceListening) { onStartListening() }) {
-                                val cx = size.width / 2f
-                                val cy = size.height / 2f
-                                val r = size.minDimension * .43f
-                                val cyan = Color(0xFF36DDF5)
-                                val pulse = .5f + .5f * kotlin.math.sin(wavePhase.toDouble()).toFloat()
-                                drawCircle(Brush.radialGradient(listOf(Color(0x5534D9F3), Color(0x1A21AFCB), Color.Transparent), Offset(cx, cy), r * 1.52f), r * 1.52f, Offset(cx, cy))
-                                // Organic, translucent reactor membrane from the reference video.
-                                for (layer in 0..3) {
-                                    val contour = androidx.compose.ui.graphics.Path()
-                                    for (i in 0..180) {
-                                        val angle = Math.PI * 2.0 * i / 180.0
-                                        val wobble = 1f + .025f * kotlin.math.sin(angle * 7.0 + wavePhase * .22).toFloat() +
-                                            .018f * kotlin.math.cos(angle * 11.0 - wavePhase * .16).toFloat() +
-                                            .009f * kotlin.math.sin(angle * 17.0 + layer).toFloat()
-                                        val radius = r * (.91f + layer * .045f) * wobble
-                                        val point = Offset(cx + kotlin.math.cos(angle).toFloat() * radius,
-                                            cy + kotlin.math.sin(angle).toFloat() * radius)
-                                        if (i == 0) contour.moveTo(point.x, point.y) else contour.lineTo(point.x, point.y)
-                                    }
-                                    contour.close()
-                                    drawPath(contour, cyan.copy(alpha = .13f + pulse * .035f - layer * .018f),
-                                        style = Stroke(if (layer == 0) 1.5f else .75f))
-                                }
-                                drawCircle(cyan.copy(alpha = .07f + pulse * .025f), r * .78f, Offset(cx, cy), style = Stroke(.9f))
-                                drawCircle(cyan.copy(alpha = .09f), r * .58f, Offset(cx, cy), style = Stroke(.8f))
-                                // Layered translucent holographic disc, matching the reference interface.
-                                for (ring in 0..9) {
-                                    val rr = r * (.72f - ring * .061f)
-                                    drawCircle(cyan.copy(alpha = .075f + pulse * .025f), rr, Offset(cx, cy), style = Stroke(if (ring == 0) 1.2f else .55f))
-                                }
-                                // Fine segmented perimeter and scanning arcs.
-                                for (i in 0 until 144) {
-                                    val a = Math.PI * 2.0 * i / 144.0 + spin * Math.PI / 180.0
-                                    val major = i % 12 == 0
-                                    val r1 = r * if (major) .91f else .96f
-                                    val r2 = r * if (major) 1.04f else 1.005f
-                                    drawLine(cyan.copy(alpha = if (major) .62f else .19f),
-                                        Offset(cx + kotlin.math.cos(a).toFloat() * r1, cy + kotlin.math.sin(a).toFloat() * r1),
-                                        Offset(cx + kotlin.math.cos(a).toFloat() * r2, cy + kotlin.math.sin(a).toFloat() * r2),
-                                        if (major) 1.6f else .65f)
-                                }
-                                for (i in 0..3) {
-                                    val rr = r * (.62f + i * .12f)
-                                    drawArc(cyan.copy(alpha = .22f + pulse * .18f), spin * (if (i % 2 == 0) 1f else -1f) + i * 70f,
-                                        48f + i * 13f, false, Offset(cx - rr, cy - rr), androidx.compose.ui.geometry.Size(rr * 2f, rr * 2f), style = Stroke(1.2f))
-                                }
-                                // Central wireframe globe, dotted matrix and moving scan beam.
-                                val core = r * .43f
-                                val scanY = cy + kotlin.math.sin(wavePhase.toDouble() * .55).toFloat() * core * .72f
-                                drawLine(Color(0xFF8CF3FF).copy(alpha = .62f), Offset(cx - core * .88f, scanY), Offset(cx + core * .88f, scanY), 1.25f)
-                                drawCircle(Color(0xFF9CF5FF).copy(alpha = .18f), core * .95f, Offset(cx, cy), style = Stroke(.8f))
-                                for (lat in -5..5) {
-                                    val yy = lat / 5f
-                                    val half = core * kotlin.math.sqrt((1f - yy * yy).coerceAtLeast(.02f))
-                                    drawOval(cyan.copy(alpha = .22f), Offset(cx - half, cy + yy * core - core * .055f),
-                                        androidx.compose.ui.geometry.Size(half * 2f, core * .11f), style = Stroke(.8f))
-                                }
-                                for (lon in 0..12) {
-                                    val w = core * kotlin.math.abs(kotlin.math.cos(lon * Math.PI / 12.0)).toFloat().coerceAtLeast(.06f)
-                                    drawOval(cyan.copy(alpha = .2f), Offset(cx - w, cy - core),
-                                        androidx.compose.ui.geometry.Size(w * 2f, core * 2f), style = Stroke(.8f))
-                                }
-                                for (y in -5..5) for (x in -5..5) {
-                                    val distance = kotlin.math.sqrt((x*x + y*y).toFloat())
-                                    if (distance <= 5.5f) {
-                                        val alpha = (.18f + pulse * .34f) * (1f - distance / 7f)
-                                        drawCircle(Color(0xFF9CF5FF).copy(alpha = alpha.coerceAtLeast(.05f)),
-                                            if (x == 0 && y == 0) 2.2f else 1.05f,
-                                            Offset(cx + x * core * .14f, cy + y * core * .14f))
-                                    }
-                                }
-                                // Three linked holographic nodes phase in and out around the core.
-                                val nodeAlpha = (.25f + pulse * .55f)
-                                val points = (0..2).map { index ->
-                                    val a = (spin * .35f + index * 120f - 90f) * Math.PI / 180.0
-                                    Offset(cx + kotlin.math.cos(a).toFloat() * core * .9f, cy + kotlin.math.sin(a).toFloat() * core * .9f)
-                                }
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[0], points[1], 1.4f)
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[1], points[2], 1.4f)
-                                drawLine(cyan.copy(alpha = nodeAlpha), points[2], points[0], 1.4f)
-                                points.forEach { point ->
-                                    drawCircle(cyan.copy(alpha = .18f), 13f, point)
-                                    drawCircle(Color(0xFF8CF3FF).copy(alpha = .9f), 5f, point)
-                                    drawCircle(cyan.copy(alpha = .75f), 9f, point, style = Stroke(1.2f))
-                                }
-                                drawCircle(Color(0xFFBDFBFF).copy(alpha = .85f), 2.5f, Offset(cx, cy))
-                            }
+                            HologramCore(
+                                Modifier.widthIn(max = reactorSize).fillMaxHeight(.94f).aspectRatio(1f, true)
+                                    .clickable(enabled = voiceListening) { onStartListening() },
+                                active = voiceListening, busy = busy
+                            )
                             Column(Modifier.align(Alignment.TopEnd).padding(top = 8.dp, end = 10.dp), horizontalAlignment = Alignment.End) {
                                 Text(SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date()),
                                     color = Color(0xFF6FCFE0), fontSize = 10.sp, letterSpacing = 1.4.sp)
@@ -1295,6 +1239,8 @@ private fun JarvisScreen(
                                 }
                             }
                         }
+                        if (voiceHeard.isNotBlank()) VoiceTranscriptPill(voiceHeard)
+                        if (busy || voiceMedia.isNotEmpty() || voiceAnswer.isNotBlank()) VoiceResults(voiceMedia, busy, voiceAnswer)
                         Row(Modifier.fillMaxWidth().padding(horizontal = 5.dp, vertical = 8.dp)
                             .background(Color(0x5520AFC4), RoundedCornerShape(12.dp))
                             .border(1.dp, Color(0x4439DDF5), RoundedCornerShape(12.dp)).padding(vertical = 7.dp),
@@ -1350,6 +1296,7 @@ private fun JarvisScreen(
                                 } else {
                                     AssistantMessage(
                                         markdown = line.displayText.value.ifBlank { line.text },
+                                        media = line.media,
                                         time = line.time,
                                         onCopy = { clipboard.setText(AnnotatedString(line.text)) },
                                         onShare = {
@@ -1418,8 +1365,23 @@ private fun JarvisScreen(
                             }
                         }
                         BasicTextField(value=if (fieldValue.text == command) fieldValue else TextFieldValue(command, androidx.compose.ui.text.TextRange(command.length)),onValueChange={ fieldValue = it; command = it.text },
-                            modifier=Modifier.weight(1f).focusRequester(inputFocus).padding(vertical=8.dp),
+                            modifier=Modifier.weight(1f).focusRequester(inputFocus).onFocusChanged { inputFocused = it.isFocused }.padding(vertical=8.dp)
+                                .drawWithContent {
+                                    drawContent()
+                                    val lr = inputLayout
+                                    if (inputFocused && lr != null && lr.lineCount <= 4) {
+                                        val caretAt = (if (fieldValue.text == command) fieldValue.selection.end else command.length)
+                                            .coerceIn(0, lr.layoutInput.text.length)
+                                        val rect = lr.getCursorRect(caretAt)
+                                        val half = 8.dp.toPx()
+                                        val x = rect.left + 1.dp.toPx()
+                                        drawLine(Cyan.copy(alpha = caretAlpha), Offset(x, rect.center.y - half), Offset(x, rect.center.y + half),
+                                            strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
+                                    }
+                                },
                             singleLine=false, minLines=1, maxLines=4, textStyle=androidx.compose.ui.text.TextStyle(color=Color.White,fontSize=15.sp),
+                            onTextLayout={ inputLayout = it },
+                            cursorBrush=SolidColor(if ((inputLayout?.lineCount ?: 1) <= 4) Color.Transparent else Cyan),
                             keyboardOptions=androidx.compose.foundation.text.KeyboardOptions(imeAction=androidx.compose.ui.text.input.ImeAction.Send),
                             keyboardActions=androidx.compose.foundation.text.KeyboardActions(onSend={ if (!busy) { keyboard?.hide(); focusManager.clearFocus(); send(command) } }),
                             decorationBox={ inner -> if(command.isEmpty()) Text("Message JARVIS…",color=TextMuted,fontSize=13.sp); inner() })
