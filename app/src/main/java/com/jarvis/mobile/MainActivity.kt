@@ -657,6 +657,13 @@ private fun RemoteMarkdownImage(alt: String, url: String) {
 }
 
 @Composable
+private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextUnit = 10.sp) {
+    val image = Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(value)
+    if (image != null) RemoteMarkdownImage(image.groupValues[1], image.groupValues[2])
+    else InlineMarkdownText(value, fontSize)
+}
+
+@Composable
 private fun MarkdownTable(rows: List<List<String>>) {
     if (rows.isEmpty()) return
     val headers = rows.first()
@@ -678,7 +685,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment=Alignment.Top) {
                                 Text(label, color=Cyan, fontSize=9.sp, modifier=Modifier.widthIn(min=74.dp, max=94.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Box(Modifier.weight(1f)) { InlineMarkdownText(value.replace(Regex("\\*\\*"), ""), 10.sp) }
+                                Box(Modifier.weight(1f)) { MarkdownCell(value.replace(Regex("\\*\\*"), ""), 10.sp) }
                             }
                         }
                     }
@@ -694,7 +701,7 @@ private fun MarkdownTable(rows: List<List<String>>) {
                         Box(Modifier.weight(1f).heightIn(min=31.dp)
                             .background(if(ri==0) Color(0xFF104052) else Color.Transparent)
                             .border(.4.dp,Color(0x3349B8CB)).padding(5.dp)) {
-                            InlineMarkdownText(cell, 9.sp)
+                            MarkdownCell(cell, 9.sp)
                         }
                     }
                 }
