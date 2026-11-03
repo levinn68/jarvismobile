@@ -1,6 +1,8 @@
 name: Package JARVIS All-in-One Source Bundle
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   pull_request:
     branches: [main]
