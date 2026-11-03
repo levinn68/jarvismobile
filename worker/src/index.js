@@ -660,7 +660,7 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v1/search/images") {
       try { return await handleSearch(await readJsonBody(request, 16 * 1024), env, "images"); }
-      catch (error) { return json({ ok: false, error: "Invalid search request", detail: String(error.message || error).slice(0, 180) }, 400); }
+      catch (error) { return json({ ok: false, error: error.status ? error.message : "Invalid search request", detail: String(error.message || error).slice(0, 180) }, error.status || 400); }
     }
     if (request.method === "POST" && url.pathname === "/v1/chat") {
       try {
