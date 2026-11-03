@@ -1841,6 +1841,7 @@ private fun JarvisScreen(
     var voiceAnswer by remember { mutableStateOf("") }
     var voiceStatusNote by remember { mutableStateOf("") }
     var wakeAcknowledged by remember { mutableStateOf(false) }
+    var awaitingCommandAfterWake by remember { mutableStateOf(false) }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
 
     val context = LocalContext.current
@@ -1959,27 +1960,39 @@ private fun JarvisScreen(
         }
     }
 
-    // Voice remains silent until the user says a command addressed to JARVIS.
+    // A bare wake word arms a short continuation window so the user can pause naturally
+    // before speaking the actual command, without JARVIS talking over them.
+    LaunchedEffect(awaitingCommandAfterWake, page, voiceListening) {
+        if (awaitingCommandAfterWake && page == "VOICE" && voiceListening) {
+            kotlinx.coroutines.delay(2500)
+            awaitingCommandAfterWake = false
+        }
+    }
+
+    // Voice remains silent until the user says JARVIS, then waits briefly for the command.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
             val wake = Regex("(?i)\\bjarvis\\b[,.! ]*")
-            if (!wake.containsMatchIn(heard)) {
-                // Ignore speech not addressed to JARVIS, then resume the same always-on voice mode.
+            val hasWake = wake.containsMatchIn(heard)
+            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
+
+            if (!hasWake && !awaitingCommandAfterWake) {
                 kotlinx.coroutines.delay(250)
                 onStartListening()
                 return@LaunchedEffect
             }
-            val request = heard.replaceFirst(wake, "").trim()
-            // Saying only "Jarvis" (or "Jarvis,") is not the activation phrase.
-            // Stay silent and resume listening; acknowledge only the explicit "Jarvis, open".
-            if (request.isBlank()) {
-                voiceStatusNote = "WAITING FOR JARVIS, OPEN"
-                kotlinx.coroutines.delay(300)
+
+            if (hasWake && request.isBlank()) {
+                awaitingCommandAfterWake = true
+                voiceStatusNote = "LISTENING FOR COMMAND"
+                kotlinx.coroutines.delay(250)
                 onStartListening()
                 return@LaunchedEffect
             }
+
+            awaitingCommandAfterWake = false
             if (Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
                 wakeAcknowledged = true
