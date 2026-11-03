@@ -1,5 +1,5 @@
 const encoder = new TextEncoder();
-function b64(bytes) { let value=""; for (const byte of bytes) value+=String.fromCharCode(byte); return btoa(value).replace(/=/g,"").replace(/\\+/g,"-").replace(/\\//g,"_"); }
+function b64(bytes) { let value=""; for (const byte of bytes) value+=String.fromCharCode(byte); return btoa(value).replace(/=/g,"").replace(/\+/g,"-").replace(/\//g,"_"); }
 function unb64(value) { const binary=atob(value.replace(/-/g,"+").replace(/_/g,"/")); return Uint8Array.from(binary,char=>char.charCodeAt(0)); }
 async function sign(value,secret) {
  const key=await crypto.subtle.importKey("raw",encoder.encode(secret),{name:"HMAC",hash:"SHA-256"},false,["sign"]);
@@ -13,7 +13,7 @@ async function issueToken(claims,secret,ttlSeconds) {
 }
 async function verifyToken(request,secret,scope,expectedSubject) {
  if(!secret)return null;
- const token=(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");
+ const token=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
  const [payload,signature,...extra]=token.split(".");
  if(!payload||!signature||extra.length)return null;
  const expected=await sign(payload,secret);
