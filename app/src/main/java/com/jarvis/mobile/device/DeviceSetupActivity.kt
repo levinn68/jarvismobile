@@ -5,6 +5,8 @@ import android.app.AlertDialog
 import android.os.Bundle
 import android.os.Build
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Color
 import android.view.ViewGroup
 import android.widget.*
@@ -58,6 +60,29 @@ class DeviceSetupActivity : Activity() {
                     "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
                 } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
                 runOnUiThread { status.text = message }
+            }
+        }
+        button("Salin token pairing desktop (berlaku 1 jam)") {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            status.text = "Memperbarui token pairing..."
+            worker.execute {
+                val token = try {
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    client.storedAccountToken(supabaseUserId).takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("Token akun tidak tersedia")
+                } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (token.isNullOrBlank()) {
+                        status.text = "Gagal menyiapkan token pairing. Periksa koneksi dan sesi Google."
+                    } else {
+                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("JARVIS desktop pairing token", token))
+                        status.text = "Token pairing disalin. Berlaku 1 jam; gunakan hanya saat menjalankan perintah pair pada desktop."
+                    }
+                }
             }
         }
         button("Lihat semua perangkat dalam akun") {
