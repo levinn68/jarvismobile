@@ -23,11 +23,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Validate Google OAuth client configuration
+      - name: Check optional OAuth configuration
         run: |
           if [ -z "$GOOGLE_WEB_CLIENT_ID" ]; then
-            echo "::error::Missing GOOGLE_WEB_CLIENT_ID GitHub Actions secret. Google sign-in cannot work without the OAuth Web client ID."
-            exit 1
+            echo "::warning::GOOGLE_WEB_CLIENT_ID is not configured. The APK can be compiled, but Google sign-in will remain unavailable until OAuth is configured."
+          else
+            echo "Google OAuth Web Client ID is present."
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_ANON_KEY is not configured in GitHub Actions. The app will use its build-time public fallback; configure the project key before production use."
           fi
       - name: Locate Android SDK
         run: |
