@@ -24,8 +24,8 @@ export async function handleDeviceRequest(request,env,url) {
    let account=await getAccount(env.DEVICE_REGISTRY,accountId);
    if(!account)account=await createAccount(env.DEVICE_REGISTRY,accountId);
    if(account.status!=="active")return json({ok:false,error:"JARVIS account is inactive"},403);
-   const accountToken=await issueAccountToken(accountId,env.DEVICE_TOKEN_SECRET);
-   return json({ok:true,account:{accountId,createdAt:account.createdAt},accountToken,tokenType:"Bearer",expiresIn:31536000,provider:"supabase-google"},200);
+   const accountToken=await issueAccountToken(accountId,env.DEVICE_TOKEN_SECRET,3600);
+   return json({ok:true,account:{accountId,createdAt:account.createdAt},accountToken,tokenType:"Bearer",expiresIn:3600,provider:"supabase-google"},200);
   } catch(e) { return json({ok:false,error:String(e.message||e).slice(0,200)},502); }
  }
  if(path==="/v1/accounts/create"&&request.method==="POST") {
