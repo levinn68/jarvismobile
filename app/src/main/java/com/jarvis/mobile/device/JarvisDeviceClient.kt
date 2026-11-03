@@ -18,7 +18,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         val accountId = result.optJSONObject("account")?.optString("accountId").orEmpty()
         val supabaseUserId = accountId.removePrefix("acct-")
         val accountToken = result.optString("accountToken")
-        if (accountToken.isNotBlank()) vault.saveAccountToken(accountToken, supabaseUserId)
+        require(supabaseUserId.matches(Regex("[A-Fa-f0-9-]{36}")) && accountToken.isNotBlank()) {
+            "Worker returned an invalid Google-linked account session"
+        }
+        vault.saveAccountToken(accountToken, supabaseUserId)
         return result
     }
 
