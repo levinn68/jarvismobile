@@ -161,7 +161,7 @@ class DeviceSetupActivity : Activity() {
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
         }
-        button("Pengaturan aksesibilitas (baca layar)") {
+        button("Pengaturan aksesibilitas (baca & kontrol layar)") {
             startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         button("Izinkan akses kontak & kalender") {
@@ -174,7 +174,13 @@ class DeviceSetupActivity : Activity() {
                 val capabilities = mutableListOf("apps.list", "apps.launch", "system.read")
                 if (FileController(this).hasSelectedFolder()) capabilities.add("files.read")
                 if (NotificationController(this).list().optBoolean("ok")) capabilities.add("notifications.read")
-                if (DevicePermissionManager(this).isGranted("screen.read")) capabilities.add("screen.read")
+                if (DevicePermissionManager(this).isGranted("screen.read") || JarvisAccessibilityService.isActive()) {
+                    capabilities.add("screen.read")
+                }
+                // screen.control is only advertised when Accessibility is active; execution still requires on-device approval.
+                if (JarvisAccessibilityService.isActive()) {
+                    capabilities.add("screen.control")
+                }
                 if (DevicePermissionManager(this).isGranted("contacts.read")) capabilities.add("contacts.read")
                 if (DevicePermissionManager(this).isGranted("calendar.read")) capabilities.add("calendar.read")
                 val message = try {
