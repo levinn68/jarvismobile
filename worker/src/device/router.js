@@ -63,7 +63,23 @@ async function readBody(request) {
   }
 }
 
-const bearer = request => { const value = request.headers.get("Authorization") || ""; if (value.length > 4096) return ""; return value.slice(0, 7).toLowerCase() === "bearer " ? value.slice(7).trim() : value.trim(); };
+function constantTimeEqual(leftValue, rightValue) {
+  const left = String(leftValue || "");
+  const right = String(rightValue || "");
+  const length = Math.max(left.length, right.length);
+  let difference = left.length ^ right.length;
+  for (let index = 0; index < length; index += 1) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0);
+  }
+  return difference === 0;
+}
+
+const bearer = request => {
+  const value = request.headers.get("Authorization") || "";
+  if (value.length > 4096) return "";
+  const match = value.trim().match(/^Bearer\\s+(\\S+)$/i);
+  return match ? match[1] : "";
+};
 
 async function accountIsActive(kv, accountId) {
   const account = await getAccount(kv, accountId);
@@ -86,7 +102,7 @@ export async function handleDeviceRequest(request, env, url) {
     if (!env.DEVICE_ENROLLMENT_SECRET || !env.DEVICE_TOKEN_SECRET || !env.DEVICE_REGISTRY) {
       return json({ ok: false, error: "Account enrollment is not configured." }, 503);
     }
-    if (bearer(request) !== env.DEVICE_ENROLLMENT_SECRET) {
+    if (!constantTimeEqual(bearer(request), env.DEVICE_ENROLLMENT_SECRET)) {
       return json({ ok: false, error: "Unauthorized bootstrap secret" }, 401);
     }
     try {
