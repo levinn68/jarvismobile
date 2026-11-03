@@ -31,7 +31,16 @@ class JarvisDeviceSyncService : Service() {
                 try {
                     client.pollOnce(executor) { message ->
                         pollInFlight = false
-                        if (running) {
+                        if (running && (message.contains("HTTP 401") || message.contains("HTTP 404"))) {
+                            handler.post {
+                                if (running) {
+                                    getSystemService(NotificationManager::class.java)
+                                        .notify(NOTIFICATION_ID, notification("Perangkat dicabut atau sesi tidak berlaku. Sinkronisasi dihentikan."))
+                                    stopSync()
+                                    stopSelf()
+                                }
+                            }
+                        } else if (running) {
                             getSystemService(NotificationManager::class.java)
                                 .notify(NOTIFICATION_ID, notification(message))
                         }
