@@ -446,8 +446,10 @@ class MainActivity : ComponentActivity() {
                     Thread {
                         val message = try {
                             val client = JarvisDeviceClient(this)
-                            val deviceId = client.deviceId()
+                            val localId = client.deviceId()
                                 ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
+                            val deviceId = getSharedPreferences("jarvis_device_secure", MODE_PRIVATE)
+                                .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
                             val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params))
                             if (queued.optBoolean("ok")) {
                                 JarvisDeviceSyncService.start(this)
@@ -2151,13 +2153,14 @@ private fun JarvisScreen(
             busy = true
             processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
             onDeviceCommand(deviceCommand.first, deviceCommand.second) { result ->
-                showJarvis(result)
-                busy = false
-                processStage = "SIAP"
                 if (voice) {
                     voiceAnswer = result
                     onSpeak(result)
+                } else {
+                    showJarvis(result)
                 }
+                busy = false
+                processStage = "SIAP"
             }
             return
         }
