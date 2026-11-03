@@ -10,11 +10,26 @@ export async function handleDeviceRequest(request,env,url) {
  if(path==="/v1/accounts/create"&&request.method==="POST") {
   if(!env.DEVICE_ENROLLMENT_SECRET||!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Account enrollment is not configured."},503);
   if(bearer(request)!==env.DEVICE_ENROLLMENT_SECRET)return json({ok:false,error:"Unauthorized bootstrap secret"},401);
+  let enrollmentStage="initializing";
   try {
-   const accountId="acct-"+crypto.randomUUID(),account=await createAccount(env.DEVICE_REGISTRY,accountId);
+   enrollmentStage="generate_account_id";
+   const accountId="acct-"+crypto.randomUUID();
+   enrollmentStage="write_account_to_kv";
+   const account=await createAccount(env.DEVICE_REGISTRY,accountId);
+   enrollmentStage="issue_account_token";
    const accountToken=await issueAccountToken(accountId,env.DEVICE_TOKEN_SECRET);
    return json({ok:true,account:{accountId,createdAt:account.createdAt},accountToken,tokenType:"Bearer",expiresIn:31536000},201);
-  } catch(e){return json({ok:false,error:e.message},400)}
+  } catch(e){
+   const errorName=String(e?.name||"Error").slice(0,80);
+   const errorMessage=String(e?.message||e).slice(0,240);
+   console.error("[JARVIS_ACCOUNT_ENROLLMENT_FAILED]",JSON.stringify({
+    stage:enrollmentStage,
+    name:errorName,
+    message:errorMessage,
+    stack:String(e?.stack||"").slice(0,1200)
+   }));
+   return json({ok:false,error:errorMessage,stage:enrollmentStage},400);
+  }
  }
  if(path==="/v1/devices/enroll"&&request.method==="POST") {
   if(!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Device enrollment is not configured."},503);
