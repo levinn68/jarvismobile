@@ -11,8 +11,7 @@ class AppController(private val context: Context) {
     fun listApps(): JSONObject {
         val pm = context.packageManager
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val apps = if (Build.VERSION.SDK_INT >= 33) pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
-                   else @Suppress("DEPRECATION") pm.queryIntentActivities(intent, 0)
+        val apps = queryLauncherApps(pm, intent)
         val data = JSONArray()
         apps.sortedBy { it.loadLabel(pm).toString().lowercase() }.forEach { info ->
             data.put(JSONObject().put("label", info.loadLabel(pm).toString())
@@ -31,3 +30,8 @@ class AppController(private val context: Context) {
         return JSONObject().put("ok", true).put("launchedPackage", packageName)
     }
 }
+
+@Suppress("DEPRECATION")
+private fun queryLauncherApps(pm: PackageManager, intent: Intent): List<android.content.pm.ResolveInfo> =
+    if (Build.VERSION.SDK_INT >= 33) pm.queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
+    else pm.queryIntentActivities(intent, 0)
