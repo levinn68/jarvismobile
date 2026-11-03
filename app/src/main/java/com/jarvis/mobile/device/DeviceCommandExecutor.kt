@@ -21,6 +21,7 @@ class DeviceCommandExecutor(context: Context) {
         return when (action) {
             "apps.list" -> appController.listApps()
             "apps.launch" -> appController.launch(params.optString("packageName"))
+            "apps.launch_label" -> appController.launchByLabel(params.optString("appName"))
             "system.status" -> deviceController.status()
             "notifications.list" -> notificationController.list()
             "screen.read" -> JarvisAccessibilityService.snapshot()
