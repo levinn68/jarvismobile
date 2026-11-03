@@ -228,6 +228,21 @@ test("command acknowledgement is idempotent", async () => {
 });
 
 
+test("account bootstrap requires a Bearer token and rejects raw secret headers", async () => {
+  const secretValue = "bootstrap-secret-for-integration-tests";
+  const env = {
+    DEVICE_ENROLLMENT_SECRET: secretValue,
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: { async put() {} }
+  };
+  const request = new Request("https://jarvis.test/v1/accounts/create", {
+    method: "POST",
+    headers: { Authorization: secretValue }
+  });
+  const response = await handleDeviceRequest(request, env, new URL(request.url));
+  assert.equal(response.status, 401);
+});
+
 test("account enrollment, Windows command queue, polling and acknowledgement work end to end", async () => {
   class MemoryKV {
     constructor() { this.values = new Map(); }
