@@ -3,7 +3,7 @@ import { handleDeviceRequest } from "./device/router.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+  "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
@@ -42,6 +42,64 @@ const json = (data, status = 200) =>
     status,
     headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" },
   });
+
+async function readJsonBody(request, maxBytes = 128 * 1024) {
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    const error = new Error(`Request body is too large (maximum ${maxBytes} bytes)`);
+    error.status = 413;
+    throw error;
+  }
+  if (!request.body) {
+    const error = new Error("Request body must be valid JSON");
+    error.status = 400;
+    throw error;
+  }
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        const error = new Error(`Request body is too large (maximum ${maxBytes} bytes)`);
+        error.status = 413;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error.status === 413) throw error;
+    const wrapped = new Error("Request body could not be read");
+    wrapped.status = 400;
+    throw wrapped;
+  }
+
+  try {
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      const error = new Error("Request body must be a JSON object");
+      error.status = 400;
+      throw error;
+    }
+    return parsed;
+  } catch (cause) {
+    if (cause?.status === 400) throw cause;
+    const error = new Error("Request body must be valid JSON");
+    error.status = 400;
+    throw error;
+  }
+}
 
 const safeHttpUrl = (value) => {
   try {
@@ -163,7 +221,9 @@ function appendVisualResults(answer, kind, results) {
 }
 
 async function handleSearch(body, env, kind) {
-  const query = String(body.query || body.q || "").trim();
+  const rawQuery = body.query || body.q || "";
+  if (typeof rawQuery !== "string") return json({ ok: false, error: "query must be a string" }, 400);
+  const query = rawQuery.trim();
   if (!query) return json({ ok: false, error: "query is required" }, 400);
   if (query.length > 240) return json({ ok: false, error: "query is too long (max 240 characters)" }, 413);
   if (!env.SERPAPI_API_KEY) {
@@ -418,7 +478,9 @@ function detectSpeechLanguage(text) {
 }
 
 async function handleChat(body, env) {
-  const prompt = String(body.message || body.prompt || "").trim();
+  const rawPrompt = body.message || body.prompt || "";
+  if (typeof rawPrompt !== "string") return json({ ok: false, error: "message must be a string" }, 400);
+  const prompt = rawPrompt.trim();
   if (!prompt) return json({ error: "message is required" }, 400);
   if (prompt.length > 12000) return json({ error: "message is too long (max 12000 characters)" }, 413);
 
@@ -566,8 +628,9 @@ export default {
     if (request.method === "POST" && url.pathname === "/v1/tts") {
       try {
         if (!env.FISH_API_KEY) return json({ ok: false, error: "FISH_API_KEY is not configured on the Worker." }, 503);
-        const body = await request.json();
-        const text = String(body.text || "").trim();
+        const body = await readJsonBody(request, 64 * 1024);
+        if (typeof body.text !== "string") return json({ ok: false, error: "text must be a string" }, 400);
+        const text = body.text.trim();
         if (!text) return json({ ok: false, error: "text is required" }, 400);
         if (text.length > 5000) return json({ ok: false, error: "text is too long (max 5000 characters)" }, 413);
         const speechLanguage = detectSpeechLanguage(text);
@@ -600,25 +663,25 @@ export default {
           headers: { ...CORS, "Content-Type": "audio/mpeg", "Cache-Control": "no-store", "X-Jarvis-Language": speechLanguage },
         });
       } catch (error) {
-        return json({ ok: false, error: "Fish Audio TTS failed", detail: String(error.message || error).slice(0, 300) }, 502);
+        return json({ ok: false, error: error.status ? error.message : "Fish Audio TTS failed", detail: String(error.message || error).slice(0, 300) }, error.status || 502);
       }
     }
     if (request.method === "POST" && url.pathname === "/v1/search/products") {
-      try { return await handleSearch(await request.json(), env, "products"); }
-      catch (error) { return json({ ok: false, error: "Invalid search request", detail: String(error.message || error).slice(0, 180) }, 400); }
+      try { return await handleSearch(await readJsonBody(request, 64 * 1024), env, "products"); }
+      catch (error) { return json({ ok: false, error: error.status ? error.message : "Invalid search request", detail: String(error.message || error).slice(0, 180) }, error.status || 400); }
     }
     if (request.method === "POST" && url.pathname === "/v1/search/images") {
-      try { return await handleSearch(await request.json(), env, "images"); }
-      catch (error) { return json({ ok: false, error: "Invalid search request", detail: String(error.message || error).slice(0, 180) }, 400); }
+      try { return await handleSearch(await readJsonBody(request, 64 * 1024), env, "images"); }
+      catch (error) { return json({ ok: false, error: error.status ? error.message : "Invalid search request", detail: String(error.message || error).slice(0, 180) }, error.status || 400); }
     }
     if (request.method === "POST" && url.pathname === "/v1/chat") {
       try {
-        const body = await request.json();
+        const body = await readJsonBody(request, 512 * 1024);
         return await handleChat(body, env);
       } catch (error) {
         const detail = String(error.message || error).slice(0, 200);
         const reply = "Maaf, terjadi gangguan pada server pemrosesan JARVIS.";
-        return json({ ok: false, success: false, error: "Internal JARVIS error", detail, reply, response: reply, message: reply }, 500);
+        return json({ ok: false, success: false, error: "Internal JARVIS error", detail, reply, response: reply, message: reply }, error.status || 500);
       }
     }
     const deviceResponse = await handleDeviceRequest(request, env, url);

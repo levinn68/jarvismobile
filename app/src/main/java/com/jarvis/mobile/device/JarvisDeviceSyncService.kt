@@ -78,7 +78,7 @@ class JarvisDeviceSyncService : Service() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
-    override fun onDestroy() { stopSync(); super.onDestroy() }
+    override fun onDestroy() { stopSync(); client.close(); super.onDestroy() }
     override fun onBind(intent: Intent?): IBinder? = null
     companion object {
         private const val CHANNEL_ID = "jarvis_device_sync"

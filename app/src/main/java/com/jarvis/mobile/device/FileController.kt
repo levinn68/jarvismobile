@@ -13,17 +13,31 @@ import org.json.JSONObject
 class FileController(private val context: Context) {
     companion object { const val PREFS = "jarvis_device_secure"; const val TREE_URI = "selected_tree_uri" }
 
-    fun hasSelectedFolder(): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null) != null
-    fun saveSelectedFolder(uri: Uri) {
-        context.contentResolver.takePersistableUriPermission(uri,
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+    fun hasSelectedFolder(): Boolean {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null)
+            ?: return false
+        val selectedUri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        return context.contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == selectedUri && permission.isReadPermission
+        }
+    }
+    fun saveSelectedFolder(uri: Uri, grantedFlags: Int) {
+        val persistableFlags = grantedFlags and
+            (android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        require(persistableFlags and android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION != 0) {
+            "Android did not grant read access to the selected folder"
+        }
+        context.contentResolver.takePersistableUriPermission(uri, persistableFlags)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(TREE_URI, uri.toString()).apply()
     }
 
     fun execute(action: String, params: JSONObject): JSONObject {
+        if (!hasSelectedFolder()) {
+            return JSONObject().put("ok", false).put("requiresUserSelection", true)
+                .put("error", "Select a folder using Android's system file picker first")
+        }
         val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null)
             ?: return JSONObject().put("ok", false).put("requiresUserSelection", true)
-                .put("error", "Select a folder using Android's system file picker first")
         val tree = Uri.parse(raw)
         return try {
             when (action) {

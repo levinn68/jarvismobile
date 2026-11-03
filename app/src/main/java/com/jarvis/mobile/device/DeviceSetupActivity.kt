@@ -82,9 +82,9 @@ class DeviceSetupActivity : Activity() {
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
                         val item = devices.optJSONObject(i) ?: continue
-                        output.append("\\n• ").append(item.optString("name"))
+                        output.append("\n• ").append(item.optString("name"))
                             .append(" — ").append(item.optString("platform"))
-                            .append("\\n  ").append(item.optString("deviceId"))
+                            .append("\n  ").append(item.optString("deviceId"))
                     }
                     output.toString()
                 } catch (e: Exception) { "Gagal memuat perangkat: ${e.message}" }
@@ -133,10 +133,10 @@ class DeviceSetupActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == 501 && resultCode == RESULT_OK && data?.data != null) {
             try {
-                FileController(this).saveSelectedFolder(data.data!!)
+                FileController(this).saveSelectedFolder(data.data!!, data.flags)
                 status.text = "Folder dipilih dan izin disimpan"
             } catch (e: Exception) { status.text = "Gagal menyimpan izin: ${e.message}" }
         }
     }
-    override fun onDestroy() { worker.shutdown(); super.onDestroy() }
+    override fun onDestroy() { worker.shutdown(); client.close(); super.onDestroy() }
 }
