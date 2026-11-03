@@ -42,8 +42,7 @@ test("device router rejects request bodies larger than 128 KiB", async () => {
     method: "POST",
     headers: {
       Authorization: "Bearer " + accountToken,
-      "Content-Type": "application/json",
-      "Content-Length": String(64 * 1024 + 1)
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({ deviceId: "android-oversize-01", padding: "x".repeat(128 * 1024) })
   });
