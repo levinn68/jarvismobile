@@ -30,20 +30,7 @@ class DeviceSetupActivity : Activity() {
         fun button(text: String, action: () -> Unit) = Button(this).apply {
             this.text = text; setOnClickListener { action() }; layout.addView(this)
         }
-        val bootstrapSecret = EditText(this).apply {
-            hint = "Bootstrap secret (khusus membuat akun)"
-            inputType = 0x00000081
-            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-            layout.addView(this)
-        }
-        val accountToken = EditText(this).apply {
-            hint = "JARVIS account token (bisa dipakai di perangkat lain)"
-            inputType = 0x00000001
-            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-            setTextIsSelectable(true)
-            setText(client.storedAccountToken())
-            layout.addView(this)
-        }
+        val googleAccessToken = intent.getStringExtra(EXTRA_SUPABASE_ACCESS_TOKEN).orEmpty()
         val targetDevice = EditText(this).apply {
             hint = "ID perangkat target (kosong = perangkat ini)"
             inputType = 0x00000001
@@ -52,41 +39,27 @@ class DeviceSetupActivity : Activity() {
             layout.addView(this)
         }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
-        button("Buat akun JARVIS") {
-            val value = bootstrapSecret.text.toString()
-            bootstrapSecret.text.clear()
-            if (value.isBlank()) { status.text = "Masukkan bootstrap secret"; return@button }
-            status.text = "Membuat akun..."
-            worker.execute {
-                try {
-                    val result = client.createAccount(value)
-                    val token = result.optString("accountToken")
-                    runOnUiThread {
-                        accountToken.setText(token)
-                        status.text = "Akun dibuat: ${result.optJSONObject("account")?.optString("accountId")}. Simpan account token untuk pairing perangkat lain."
-                    }
-                } catch (e: Exception) { runOnUiThread { status.text = "Gagal membuat akun: ${e.message}" } }
+        button("Hubungkan akun Google & pair perangkat ini") {
+            if (googleAccessToken.isBlank()) {
+                status.text = "Buka pengaturan perangkat dari JARVIS setelah masuk dengan Google."
+                return@button
             }
-        }
-        button("Pair perangkat ke akun") {
-            val value = accountToken.text.toString().trim()
-            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
-            status.text = "Menghubungkan perangkat ke akun..."
+            status.text = "Memverifikasi sesi Google dan memasangkan perangkat..."
             worker.execute {
                 val message = try {
-                    client.pair(value, Build.MODEL, Build.VERSION.RELEASE)
-                    "Pairing berhasil: ${client.deviceId()}"
-                } catch (e: Exception) { "Pairing gagal: ${e.message}" }
+                    val account = client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    val accountId = account.optJSONObject("account")?.optString("accountId").orEmpty()
+                    client.pair(client.storedAccountToken(), Build.MODEL, Build.VERSION.RELEASE)
+                    "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
+                } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
         }
         button("Lihat semua perangkat dalam akun") {
-            val value = accountToken.text.toString().trim()
-            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
             status.text = "Memuat daftar perangkat..."
             worker.execute {
                 val message = try {
-                    val devices = client.listAccountDevices(value)
+                    val devices = client.listAccountDevices()
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
                         val item = devices.optJSONObject(i) ?: continue
@@ -173,4 +146,5 @@ class DeviceSetupActivity : Activity() {
         }
     }
     override fun onDestroy() { worker.shutdown(); super.onDestroy() }
+    companion object { const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token" }
 }
