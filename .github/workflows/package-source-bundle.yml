@@ -26,7 +26,7 @@ jobs:
         run: |
           zip -r JARVIS-ALL-IN-ONE-SOURCE.zip . \
             -x ".git/*" "*/build/*" "*/.gradle/*" "*/node_modules/*" \
-               "*/.env" "*/.env.*" "!*/.env.example" \
+               "*/.env" "*/.env.local" "*/.env.production" "*/.env.development" \
                "*/local.properties" "*/secrets.properties"
       - uses: actions/upload-artifact@v4
         with:
