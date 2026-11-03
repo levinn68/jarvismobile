@@ -70,6 +70,13 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun acknowledge(commandId: String, result: JSONObject): JSONObject =
         request("POST", "/v1/device/commands/ack", JSONObject().put("deviceId", deviceId()).put("commandId", commandId).put("result", result))
 
+    fun commandStatus(targetDeviceId: String, commandId: String): JSONObject {
+        require(targetDeviceId.matches(Regex("[A-Za-z0-9_-]{8,80}")))
+        require(commandId.matches(Regex("[A-Fa-f0-9-]{36}")))
+        val accountToken = vault.accountToken() ?: throw IllegalStateException("JARVIS account token is missing")
+        return rawRequest("GET", "/v1/device/command/status?deviceId=$targetDeviceId&commandId=$commandId", null, accountToken)
+    }
+
     fun pollOnce(executor: DeviceCommandExecutor, onResult: (String) -> Unit = {}) {
         if (!isConfigured()) return
         io.execute {
