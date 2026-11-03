@@ -6,7 +6,7 @@ const ANDROID_ACTIONS = Object.freeze({
  "files.list":{capability:"files.read",params:[]},"files.search":{capability:"files.read",params:["query"]},
  "files.read":{capability:"files.read",params:["documentId"]},"apps.list":{capability:"apps.list",params:[]},
  "apps.launch":{capability:"apps.launch",params:["packageName"]},"system.status":{capability:"system.read",params:[]},
- "notifications.list":{capability:"notifications.read",params:[]}
+ "notifications.list":{capability:"notifications.read",params:[]},"screen.read":{capability:"screen.read",params:[]}
 });
 function validateParams(action,raw) {
  if(raw==null)raw={};if(typeof raw!=="object"||Array.isArray(raw))throw new Error("Command params must be a JSON object");
