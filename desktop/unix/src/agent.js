@@ -199,6 +199,21 @@ async function launchApp(appId) {
   return { ok: true, launchedAppId: appId };
 }
 
+async function launchAppByName(appName) {
+  const wanted = String(appName || "").trim().toLocaleLowerCase();
+  if (!wanted || wanted.length > 100) return { ok: false, error: "A valid app name is required." };
+  const apps = await listApplications();
+  const matches = apps.filter((app) => app.name.trim().toLocaleLowerCase() === wanted);
+  if (matches.length !== 1) {
+    return {
+      ok: false,
+      error: matches.length ? "More than one installed app has that exact name. Use apps.list and choose a specific entry." : "No installed app matched that exact name. Refresh apps.list and check the visible name.",
+      matches: matches.map((app) => ({ appId: app.appId, name: app.name }))
+    };
+  }
+  return launchApp(matches[0].appId);
+}
+
 async function execute(command) {
   const params = command.params || {};
   switch (command.action) {
@@ -211,6 +226,7 @@ async function execute(command) {
       };
     case "apps.list": return { ok: true, apps: await listApplications() };
     case "apps.launch": return launchApp(params.appId);
+    case "apps.launch_label": return launchAppByName(params.appName);
     case "files.list": return listFiles(params);
     case "files.search": return searchFiles(params);
     case "files.read": return readFile(params);
