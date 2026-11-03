@@ -12,6 +12,13 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
 
+    fun createOrRestoreAccountWithSupabase(accessToken: String): JSONObject {
+        require(accessToken.isNotBlank()) { "Google/Supabase session is required" }
+        val result = rawRequest("POST", "/v1/accounts/google", null, accessToken)
+        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it) }
+        return result
+    }
+
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
         val result = rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
