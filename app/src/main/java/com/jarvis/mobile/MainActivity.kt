@@ -455,13 +455,13 @@ class MainActivity : ComponentActivity() {
                                 if (deviceId == localId) JarvisDeviceSyncService.start(this)
                                 val commandId = queued.optString("commandId")
                                 var completed: org.json.JSONObject? = null
-                                repeat(20) {
+                                for (attempt in 0 until 20) {
                                     Thread.sleep(1500)
                                     val state = client.commandStatus(deviceId, commandId)
                                     val record = state.optJSONObject("command")
                                     if (record?.optString("status") == "completed") {
                                         completed = record
-                                        return@repeat
+                                        break
                                     }
                                 }
                                 val record = completed
