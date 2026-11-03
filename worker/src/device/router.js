@@ -13,7 +13,7 @@ export async function handleDeviceRequest(request,env,url) {
   const accessToken=bearer(request);
   if(!accessToken)return json({ok:false,error:"A Supabase Google session is required"},401);
   try {
-   const response=await fetch(env.SUPABASE_URL.replace(/\\/$/,"")+"/auth/v1/user",{
+   const response=await fetch(env.SUPABASE_URL.replace(/\/$/,"")+"/auth/v1/user",{
     headers:{apikey:env.SUPABASE_ANON_KEY,Authorization:"Bearer "+accessToken,Accept:"application/json"}
    });
    if(!response.ok)return json({ok:false,error:"Supabase session is invalid or expired"},401);
