@@ -15,14 +15,15 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun createOrRestoreAccountWithSupabase(accessToken: String): JSONObject {
         require(accessToken.isNotBlank()) { "Google/Supabase session is required" }
         val result = rawRequest("POST", "/v1/accounts/google", null, accessToken)
-        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it) }
         return result
     }
 
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
         val result = rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
-        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it) }
+        val accountId = result.optJSONObject("account")?.optString("accountId").orEmpty()
+        val supabaseUserId = accountId.removePrefix("acct-")
+        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it, supabaseUserId) }
         return result
     }
 
@@ -36,23 +37,25 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         val token = result.optString("token")
         if (token.isBlank()) throw IllegalStateException("Pairing response did not contain a device token")
         configure(id, token)
-        vault.saveAccountToken(accountToken)
         return result
     }
 
-    fun listAccountDevices(accountToken: String = vault.accountToken().orEmpty()): JSONArray {
-        require(accountToken.isNotBlank()) { "JARVIS account token is missing" }
+    fun listAccountDevices(expectedSupabaseUserId: String? = null): JSONArray {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account. Reconnect the device.")
         return rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
     }
 
-    fun hasAccountToken(): Boolean = !vault.accountToken().isNullOrBlank()
-    fun storedAccountToken(): String = vault.accountToken().orEmpty()
+    fun hasAccountToken(expectedSupabaseUserId: String? = null): Boolean = !vault.accountToken(expectedSupabaseUserId).isNullOrBlank()
+    fun storedAccountToken(expectedSupabaseUserId: String? = null): String = vault.accountToken(expectedSupabaseUserId).orEmpty()
+    fun storedAccountUserId(): String? = vault.accountUserId()
+    fun clearAccountToken() = vault.clearAccountToken()
 
     /** Queue a typed action for a device owned by this JARVIS account. */
-    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject()): JSONObject {
+    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null): JSONObject {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(action.length in 1..80) { "Invalid action" }
-        val accountToken = vault.accountToken() ?: throw IllegalStateException("Pair or create a JARVIS account first")
+        val accountToken = vault.accountToken(expectedSupabaseUserId) ?: throw IllegalStateException("Pair this device with the currently signed-in Google account first")
         val body = JSONObject().put("deviceId", deviceId).put("action", action).put("params", params)
         return rawRequest("POST", "/v1/device/command", body, accountToken)
     }
@@ -77,10 +80,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun acknowledge(commandId: String, result: JSONObject): JSONObject =
         request("POST", "/v1/device/commands/ack", JSONObject().put("deviceId", deviceId()).put("commandId", commandId).put("result", result))
 
-    fun commandStatus(targetDeviceId: String, commandId: String): JSONObject {
+    fun commandStatus(targetDeviceId: String, commandId: String, expectedSupabaseUserId: String? = null): JSONObject {
         require(targetDeviceId.matches(Regex("[A-Za-z0-9_-]{8,80}")))
         require(commandId.matches(Regex("[A-Fa-f0-9-]{36}")))
-        val accountToken = vault.accountToken() ?: throw IllegalStateException("JARVIS account token is missing")
+        val accountToken = vault.accountToken(expectedSupabaseUserId) ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
         return rawRequest("GET", "/v1/device/command/status?deviceId=$targetDeviceId&commandId=$commandId", null, accountToken)
     }
 
