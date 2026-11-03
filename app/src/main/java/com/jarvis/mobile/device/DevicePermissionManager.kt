@@ -10,6 +10,8 @@ import androidx.core.content.ContextCompat
 class DevicePermissionManager(private val context: Context) {
     fun requiredFor(capability: String): List<String> = when (capability) {
         "camera.capture" -> listOf(Manifest.permission.CAMERA)
+        "contacts.read" -> listOf(Manifest.permission.READ_CONTACTS)
+        "calendar.read" -> listOf(Manifest.permission.READ_CALENDAR)
         "voice.microphone" -> listOf(Manifest.permission.RECORD_AUDIO)
         "notifications.post" -> if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
         "notifications.read" -> emptyList() // Requires a user-enabled Notification Listener service.
