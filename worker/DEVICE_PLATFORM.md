@@ -55,6 +55,6 @@ The backend never executes shell commands, arbitrary code, or direct filesystem 
 
 Android SAF folder selection and Notification Access remain explicit user-granted permissions. The current capability update endpoint accepts self-reported capabilities from the paired device; this is not hardware attestation and must not be treated as proof that a permission is genuine.
 
-Sensitive operations remain blocked until a proper in-app confirmation flow is implemented. Account ownership and account-scoped listing/enrollment are implemented, but account-token revocation, device removal, multi-user roles, and QR-based pairing are not implemented yet.
+Sensitive operations remain blocked until a proper in-app confirmation flow is implemented. Account ownership, account-scoped listing/enrollment, encrypted Android account-token storage, typed command dispatch, and command acknowledgement lookup are implemented. Account-token revocation, device removal, multi-user roles, QR-based pairing, native Windows/macOS/iOS agents, and a broad device-control permission/confirmation console are not implemented yet.
 
 Android/iOS sandboxing and consent remain in force. File, screen, camera, microphone, contacts, notification, location and app access require platform-specific permissions or supported APIs.
