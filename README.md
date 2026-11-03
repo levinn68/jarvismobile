@@ -43,3 +43,10 @@ The Worker includes a built-in Personality Core and dynamic Skill Router. Five r
 The `POST /v1/tts` endpoint detects Indonesian or English text and selects a matching Fish Audio reference voice when configured. Optional Worker variables: `FISH_VOICE_ID_ID` and `FISH_VOICE_ID_EN`. If either is absent, the existing `FISH_VOICE_ID` remains the fallback. The Fish API key stays in Worker Secrets and is never committed.
 
 The existing AI providers, visual search, API routes, Android client contract and default Fish voice remain compatible.
+
+
+## Universal multi-device foundation
+
+The Worker now includes a first device control-plane foundation under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT connectors. It provides device enrollment, HMAC device tokens, per-device capability declarations, heartbeat, typed command validation and a short-lived KV command queue.
+
+See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes and security boundaries. This is the backend control plane only; native device connectors still need to be implemented per platform and must enforce local OS permissions. No arbitrary shell or remote code execution is exposed.
