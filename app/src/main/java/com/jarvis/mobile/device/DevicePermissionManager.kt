@@ -20,6 +20,12 @@ class DevicePermissionManager(private val context: Context) {
             return context.getSharedPreferences(FileController.PREFS, Context.MODE_PRIVATE)
                 .getString(FileController.TREE_URI, null) != null
         if (capability == "notifications.read") return android.provider.Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) == true
+        if (capability == "screen.read") {
+            val enabled = android.provider.Settings.Secure.getInt(context.contentResolver, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1
+            val component = android.content.ComponentName(context, JarvisAccessibilityService::class.java).flattenToString()
+            val services = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+            return enabled && services.split(':').any { it.equals(component, ignoreCase = true) }
+        }
         return requiredFor(capability).all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
