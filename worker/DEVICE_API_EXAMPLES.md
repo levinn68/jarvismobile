@@ -78,3 +78,44 @@ Content-Type: application/json
 ```
 
 A queued command is not proof of execution. The device connector must enforce local OS permissions and user consent.
+
+## 5. Enroll a desktop device
+
+The Windows, macOS and Linux connector pair commands call this route with the account token. The platform name must match the connector.
+
+Example Windows enrollment:
+
+```http
+POST /v1/devices/enroll
+Authorization: Bearer <ACCOUNT_TOKEN>
+Content-Type: application/json
+
+{
+  "deviceId": "windows-<UUID>",
+  "platform": "windows",
+  "name": "DESKTOP-01",
+  "osVersion": "<Windows version>",
+  "appVersion": "1.0.0",
+  "capabilities": ["apps.list", "apps.launch", "system.read", "files.read"]
+}
+```
+
+macOS uses "platform": "macos" and Linux uses "platform": "linux". The connector prints the returned device token once; store it in a secure OS credential store or secret manager. Do not commit it.
+
+## 6. Queue a desktop app launch
+
+Desktop connectors use the appId returned by that device's apps.list command. The account token can queue a typed command for a device owned by the account:
+
+```http
+POST /v1/device/command
+Authorization: Bearer <ACCOUNT_TOKEN>
+Content-Type: application/json
+
+{
+  "deviceId": "windows-<UUID>",
+  "action": "apps.launch",
+  "params": { "appId": "<APP_ID_FROM_APPS_LIST>" }
+}
+```
+
+Desktop file commands use rootIndex and relativePath. The root index maps to one of the folders explicitly approved in JARVIS_ALLOWED_DIRS on that desktop device. A file read is limited to supported text formats and 64 KB.
