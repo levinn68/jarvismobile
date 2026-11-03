@@ -22,11 +22,16 @@ class JarvisDeviceSyncService : Service() {
     private lateinit var client: JarvisDeviceClient
     private lateinit var executor: DeviceCommandExecutor
     private var running = false
+    @Volatile private var pollInFlight = false
     private val poll = object : Runnable {
         override fun run() {
             if (!running) return
-            client.pollOnce(executor) { message ->
-                getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(message))
+            if (!pollInFlight) {
+                pollInFlight = true
+                client.pollOnce(executor) { message ->
+                    getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(message))
+                    pollInFlight = false
+                }
             }
             handler.postDelayed(this, POLL_INTERVAL_MS)
         }
@@ -60,6 +65,7 @@ class JarvisDeviceSyncService : Service() {
     }
     private fun stopSync() {
         running = false
+        pollInFlight = false
         handler.removeCallbacks(poll)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE) else @Suppress("DEPRECATION") stopForeground(true)
     }
