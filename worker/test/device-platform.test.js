@@ -315,3 +315,56 @@ test("device ID cannot be re-enrolled into a different account", async () => {
     /already enrolled in another account/
   );
 });
+
+
+test("inactive accounts revoke existing device and account token access", async () => {
+  class MemoryKV {
+    constructor() { this.values = new Map(); }
+    async get(key) { return this.values.get(key) ?? null; }
+    async put(key, value) { this.values.set(key, value); }
+  }
+
+  const registry = new MemoryKV();
+  const commands = new MemoryKV();
+  const accountId = "acct-disabled-account-123";
+  const deviceId = "android-disabled-device-01";
+  await createAccount(registry, accountId);
+  await saveDevice(registry, {
+    deviceId,
+    accountId,
+    platform: "android",
+    capabilities: ["system.read"]
+  });
+
+  const accountToken = await issueAccountToken(accountId, secret);
+  const deviceToken = await issueDeviceToken(deviceId, secret);
+
+  await registry.put("account:" + accountId, JSON.stringify({
+    accountId,
+    status: "inactive",
+    createdAt: new Date().toISOString()
+  }));
+
+  const env = {
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: registry,
+    DEVICE_COMMANDS: commands
+  };
+
+  const deviceRequest = new Request("https://jarvis.test/v1/device/commands?deviceId=" + deviceId, {
+    headers: { Authorization: "Bearer " + deviceToken }
+  });
+  const deviceResponse = await handleDeviceRequest(deviceRequest, env, new URL(deviceRequest.url));
+  assert.equal(deviceResponse.status, 403);
+
+  const accountRequest = new Request("https://jarvis.test/v1/device/command", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + accountToken,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ deviceId, action: "system.status", params: {} })
+  });
+  const accountResponse = await handleDeviceRequest(accountRequest, env, new URL(accountRequest.url));
+  assert.equal(accountResponse.status, 403);
+});
