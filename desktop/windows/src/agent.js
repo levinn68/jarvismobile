@@ -58,12 +58,12 @@ async function resolvedRoots() {
   return roots.slice(0, 20);
 }
 
-function isInside(root, target) {
+export function isInside(root, target) {
   const relative = path.relative(root, target);
   return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
 }
 
-async function safeTarget(root, relativePath, mustExist = true) {
+export async function safeTarget(root, relativePath, mustExist = true) {
   if (typeof relativePath !== "string" || relativePath.includes("\0") || path.isAbsolute(relativePath)) {
     throw new Error("A relative path inside an approved folder is required.");
   }
