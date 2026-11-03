@@ -41,3 +41,14 @@ export async function touchDevice(kv,id) {
  const d=await getDevice(kv,id);if(!d)return null;d.lastSeen=new Date().toISOString();
  await kv.put(key(id),JSON.stringify(d),{expirationTtl:7776000});return d;
 }
+
+
+export async function removeDevice(kv, id, accountId) {
+ if(!kv || typeof kv.delete!=="function")throw new Error("DEVICE_REGISTRY KV delete support is required");
+ const device=await getDevice(kv,id);
+ if(!device)return false;
+ if(device.accountId!==accountId)throw new Error("Device does not belong to this account");
+ await kv.delete(key(id));
+ await kv.delete(accountDevicePrefix(accountId)+id);
+ return true;
+}
