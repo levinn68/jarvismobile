@@ -14,7 +14,7 @@ android {
         versionCode = 8
         versionName = "0.8.0"
         buildConfigField("String", "SUPABASE_URL", "\"https://agwaxaejnnszunccmftm.supabase.co\"")
-        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${System.getenv("SUPABASE_ANON_KEY")?.takeIf { it.isNotBlank() } ?: "sb_publishable_BtFlJ2XJc4SW4kNSmIZ8bA_WcTQgFq-"}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\"")
     }
 
