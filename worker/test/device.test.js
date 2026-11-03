@@ -242,3 +242,19 @@ test("account cannot revoke another user's device", async () => {
   }, new URL(request.url));
   assert.equal(response.status, 403);
 });
+
+
+test("desktop app launch by visible name is validated and remains typed", () => {
+  for (const platform of ["windows", "macos", "linux"]) {
+    const command = validateCommand({
+      action: "apps.launch_label",
+      params: { appName: "Visual Studio Code" }
+    }, platform);
+    assert.equal(command.capability, "apps.launch");
+    assert.equal(command.params.appName, "Visual Studio Code");
+    assert.throws(() => validateCommand({
+      action: "apps.launch_label",
+      params: { appName: "" }
+    }, platform));
+  }
+});
