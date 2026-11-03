@@ -617,7 +617,7 @@ export default {
     if (request.method === "POST" && url.pathname === "/v1/tts") {
       try {
         if (!env.FISH_API_KEY) return json({ ok: false, error: "FISH_API_KEY is not configured on the Worker." }, 503);
-        const body = await readJsonBody(request, 32 * 1024);
+        const body = await readJsonBody(request, 64 * 1024);
         const text = String(body.text || "").trim();
         if (!text) return json({ ok: false, error: "text is required" }, 400);
         if (text.length > 5000) return json({ ok: false, error: "text is too long (max 5000 characters)" }, 413);
@@ -655,16 +655,16 @@ export default {
       }
     }
     if (request.method === "POST" && url.pathname === "/v1/search/products") {
-      try { return await handleSearch(await readJsonBody(request, 16 * 1024), env, "products"); }
+      try { return await handleSearch(await readJsonBody(request, 64 * 1024), env, "products"); }
       catch (error) { return json({ ok: false, error: error.status ? error.message : "Invalid search request", detail: String(error.message || error).slice(0, 180) }, error.status || 400); }
     }
     if (request.method === "POST" && url.pathname === "/v1/search/images") {
-      try { return await handleSearch(await readJsonBody(request, 16 * 1024), env, "images"); }
+      try { return await handleSearch(await readJsonBody(request, 64 * 1024), env, "images"); }
       catch (error) { return json({ ok: false, error: error.status ? error.message : "Invalid search request", detail: String(error.message || error).slice(0, 180) }, error.status || 400); }
     }
     if (request.method === "POST" && url.pathname === "/v1/chat") {
       try {
-        const body = await readJsonBody(request, 128 * 1024);
+        const body = await readJsonBody(request, 512 * 1024);
         return await handleChat(body, env);
       } catch (error) {
         const detail = String(error.message || error).slice(0, 200);
