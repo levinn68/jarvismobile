@@ -328,7 +328,8 @@ class MainActivity : ComponentActivity() {
                 accountBusy = accountBusy.value,
                 accountStatus = accountStatus.value,
                 onGoogleSignIn = { signInGoogle() },
-                onGoogleSignOut = { signOutGoogle() },\n                onSaveTurn = { userText, assistantText -> saveChatTurn(userText, assistantText) }
+                onGoogleSignOut = { signOutGoogle() },
+                onSaveTurn = { userText, assistantText -> saveChatTurn(userText, assistantText) }
             )
         }
     }
@@ -348,7 +349,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun saveChatTurn(userText: String, assistantText: String) {\n        if (!supabaseClient.hasSession()) return\n        lifecycleScope.launch {\n            runCatching { supabaseClient.saveTurn(userText, assistantText) }\n                .onFailure { accountStatus.value = "CHAT BELUM TERSINKRON: " + (it.message ?: "error") }\n                .onSuccess { accountStatus.value = "CHAT TERSIMPAN" }\n        }\n    }\n\n    private fun signOutGoogle() {
+    private fun saveChatTurn(userText: String, assistantText: String) {
+        if (!supabaseClient.hasSession()) return
+        lifecycleScope.launch {
+            runCatching { supabaseClient.saveTurn(userText, assistantText) }
+                .onFailure { accountStatus.value = "CHAT BELUM TERSINKRON: " + (it.message ?: "error") }
+                .onSuccess { accountStatus.value = "CHAT TERSIMPAN" }
+        }
+    }
+
+    private fun signOutGoogle() {
         lifecycleScope.launch {
             runCatching { supabaseClient.signOut() }
             accountEmail.value = null
@@ -1862,7 +1872,8 @@ private fun JarvisScreen(
     accountBusy: Boolean,
     accountStatus: String,
     onGoogleSignIn: () -> Unit,
-    onGoogleSignOut: () -> Unit
+    onGoogleSignOut: () -> Unit,
+    onSaveTurn: (String, String) -> Unit
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
@@ -1981,6 +1992,7 @@ private fun JarvisScreen(
         cancelCurrentRequest = onAskGemini(requestText) { payload ->
             val answer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
                 .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
+            onSaveTurn(requestText, answer)
             if (voice) {
                 voiceAnswer = answer
                 voiceProducts.clear()
