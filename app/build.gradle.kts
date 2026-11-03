@@ -12,7 +12,10 @@ android {
         minSdk = 23
         targetSdk = 35
         versionCode = 8
-        versionName = "0.8.0"\n        buildConfigField("String", "SUPABASE_URL", "\\"https://agwaxaejnnszunccmftm.supabase.co\\"")\n        buildConfigField("String", "SUPABASE_ANON_KEY", "\\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\\"")\n        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\\"")
+        versionName = "0.8.0"
+        buildConfigField("String", "SUPABASE_URL", "\"https://agwaxaejnnszunccmftm.supabase.co\"")
+        buildConfigField("String", "SUPABASE_ANON_KEY", "\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\"")
     }
 
     signingConfigs {
@@ -34,7 +37,10 @@ android {
         }
     }
 
-    buildFeatures {\n        compose = true\n        buildConfig = true\n    }\n\n    defaultConfig {\n        buildConfigField("String", "SUPABASE_URL", "\\"https://agwaxaejnnszunccmftm.supabase.co\\"")\n        buildConfigField("String", "SUPABASE_ANON_KEY", "\\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\\"")\n        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\\"")\n    }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -43,7 +49,10 @@ android {
 }
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.02.00"))
-    implementation("androidx.activity:activity-compose:1.10.1")\n    implementation("androidx.credentials:credentials:1.5.0")\n    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")\n    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("androidx.activity:activity-compose:1.10.1")
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")
