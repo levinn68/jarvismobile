@@ -22,7 +22,17 @@ class ScreenActionApprovalActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Izinkan tindakan JARVIS?")
             .setMessage("$description\n\nTindakan hanya dijalankan pada perangkat ini setelah kamu memilih Izinkan.")
-            .setNegativeButton("Tolak") { _, _ -> finish() }
+            .setNegativeButton("Tolak") { _, _ ->
+                val id = command.optString("commandId")
+                if (id.isNotBlank()) {
+                    try {
+                        JarvisDeviceClient(this).use {
+                            it.acknowledge(id, JSONObject().put("ok", false).put("approved", false).put("error", "Rejected by device user"))
+                        }
+                    } catch (_: Exception) {}
+                }
+                finish()
+            }
             .setPositiveButton("Izinkan sekali") { _, _ ->
                 val result = try { DeviceCommandExecutor(this).executeApproved(command) }
                 catch (error: Exception) { JSONObject().put("ok", false).put("error", error.message ?: "Screen action failed") }
