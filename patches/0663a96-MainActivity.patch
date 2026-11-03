@@ -1,0 +1,43 @@
+From 0663a96f49e1e718bff90601636f6ac78bbc1b80 Mon Sep 17 00:00:00 2001
+From: JARVIS Dev <jarvis-dev@local>
+Date: Tue, 3 Nov 2026 15:00:28 +0000
+Subject: [PATCH] fix(voice,chat): full lifecycle polish, offline queue,
+ connectivity auto-flush
+
+Voice: audio focus, stop receiver, recognizer recovery, wake variants, orb binding
+Chat: clientRequestId, one transient retry, shared conversation saveTurn
+Offline: queue max 40, flush on restore/save/network available, clear on logout
+ConnectivityManager NetworkCallback triggers flushPendingTurns without secrets
+---
+ .../java/com/jarvis/mobile/MainActivity.kt    | 421 +++++++++++++++---
+ 1 file changed, 349 insertions(+), 72 deletions(-)
+
+diff --git a/app/src/main/java/com/jarvis/mobile/MainActivity.kt b/app/src/main/java/com/jarvis/mobile/MainActivity.kt
+index 1908202..fe4fc69 100644
+--- a/app/src/main/java/com/jarvis/mobile/MainActivity.kt
++++ b/app/src/main/java/com/jarvis/mobile/MainActivity.kt
+@@ -5,6 +5,16 @@ import com.jarvis.mobile.device.JarvisDeviceSyncService
+ import com.jarvis.mobile.device.DeviceSetupActivity
+ import android.Manifest
+ import android.content.Intent
++import android.media.AudioManager
++import android.net.NetworkRequest
++import android.net.NetworkCapabilities
++import android.net.Network
++import android.net.ConnectivityManager
++import android.media.AudioFocusRequest
++import android.media.AudioAttributes
++import android.content.IntentFilter
++import android.content.Context
++import android.content.BroadcastReceiver
+ import android.content.pm.PackageManager
+ import android.content.ComponentName
+ import android.media.MediaPlayer
+@@ -119,6 +129,8 @@ import kotlinx.coroutines.withContext
+ import androidx.lifecycle.lifecycleScope
+ import com.jarvis.mobile.account.SupabaseJarvisClient
+ import com.jarvis.mobile.ui.HolographicOrb
++import com.jarvis.mobile.ui.VoiceOrbState
+ import com.jarvis.mobile.account.SavedConversation
+ import com.jarvis.mobile.account.SavedMessage
+ import java.io.BufferedReader
