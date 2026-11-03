@@ -47,9 +47,9 @@ The existing AI providers, visual search, API routes, Android client contract an
 
 ## Universal multi-device foundation
 
-The Worker now includes a first device control-plane foundation under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT connectors. It provides device enrollment, HMAC device tokens, per-device capability declarations, heartbeat, typed command validation and a short-lived KV command queue.
+The Worker includes an account-scoped device control plane under `worker/src/device/`, with paired connectors implemented for Android, Windows, macOS and Linux. It provides device enrollment, HMAC device tokens, per-device capabilities, heartbeat, typed command validation and a short-lived KV command queue. iOS/iPadOS, Wear OS, web and IoT are registry identifiers only; their native command connectors are not implemented yet.
 
-See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes and security boundaries. This is the backend control plane only; native device connectors still need to be implemented per platform and must enforce local OS permissions. No arbitrary shell or remote code execution is exposed.
+See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes, platform coverage and security boundaries. Each connector enforces local OS permissions and explicit folder access. No arbitrary shell or remote code execution is exposed.
 
 
 ### Modular backend modules
