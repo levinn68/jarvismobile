@@ -52,6 +52,11 @@ test("device router rejects request bodies larger than 128 KiB", async () => {
   assert.match((await response.json()).error, /too large/);
 });
 
+test("authorization token headers above 4 KiB are rejected before verification", async () => {
+  const request = requestWithToken("x".repeat(4097));
+  assert.equal(await verifyAccountToken(request, secret), null);
+});
+
 test("account token round-trips with Bearer authorization", async () => {
   const token = await issueAccountToken("acct-test-account-123", secret);
   assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
