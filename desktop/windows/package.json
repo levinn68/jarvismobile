@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node src/agent.js",
-    "pair": "node src/agent.js pair"
+    "pair": "node src/agent.js pair",
+    "test": "node --test"
   }
 }
