@@ -62,6 +62,17 @@ class DeviceSetupActivity : Activity() {
                 runOnUiThread { status.text = message }
             }
         }
+        button("Buat kode pairing QR untuk desktop") {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            startActivity(
+                Intent(this, PairingQrActivity::class.java)
+                    .putExtra(PairingQrActivity.EXTRA_SUPABASE_ACCESS_TOKEN, googleAccessToken)
+                    .putExtra(PairingQrActivity.EXTRA_SUPABASE_USER_ID, supabaseUserId)
+            )
+        }
         button("Salin token pairing desktop (berlaku 1 jam)") {
             if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
                 status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
@@ -177,7 +188,6 @@ class DeviceSetupActivity : Activity() {
                 if (DevicePermissionManager(this).isGranted("screen.read") || JarvisAccessibilityService.isActive()) {
                     capabilities.add("screen.read")
                 }
-                // screen.control is only advertised when Accessibility is active; execution still requires on-device approval.
                 if (JarvisAccessibilityService.isActive()) {
                     capabilities.add("screen.control")
                 }
