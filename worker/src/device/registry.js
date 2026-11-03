@@ -18,6 +18,15 @@ export async function saveDevice(kv,input) {
  if(!d.accountId)throw new Error("accountId is required for device enrollment");
  const account=await getAccount(kv,d.accountId);
  if(!account||account.status!=="active")throw new Error("JARVIS account not found or inactive");
+
+ // A globally unique device ID must never be reassigned across accounts.
+ // Otherwise an account could overwrite another user's device record while
+ // the physical device still holds a valid token for the same device ID.
+ const existing=await getDevice(kv,d.deviceId);
+ if(existing&&existing.accountId!==d.accountId) {
+  throw new Error("Device ID is already enrolled in another account");
+ }
+
  await kv.put(key(d.deviceId),JSON.stringify(d),{expirationTtl:7776000});
  await kv.put(accountDevicePrefix(d.accountId)+d.deviceId,"1",{expirationTtl:7776000});
  return d;
@@ -30,7 +39,7 @@ export async function listDevicesForAccount(kv,accountId) {
  if(!kv)return [];
  const page=await kv.list({prefix:accountDevicePrefix(accountId),limit:100});
  const values=await Promise.all(page.keys.map(async item=>getDevice(kv,item.name.slice(accountDevicePrefix(accountId).length))));
- return values.filter(Boolean);
+ return values.filter(value=>value&&value.accountId===accountId);
 }
 export async function listDevices(kv) {
  if(!kv)return [];const page=await kv.list({prefix:"device:",limit:100});
