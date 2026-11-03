@@ -45,7 +45,7 @@ class SupabaseJarvisClient(context: Context) {
     private val prefs = appContext.getSharedPreferences("jarvis_supabase_session", Context.MODE_PRIVATE)
     private val baseUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
     private val anonKey = BuildConfig.SUPABASE_ANON_KEY
-    private val googleWebClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
+    private val googleWebClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID\n    private var activeConversationId: String? = prefs.getString("active_conversation_id", null)
 
     fun hasSession(): Boolean = prefs.getString("access_token", null).isNullOrBlank().not()
 
@@ -102,10 +102,10 @@ class SupabaseJarvisClient(context: Context) {
     suspend fun signOut() = withContext(Dispatchers.IO) {
         val token = accessToken()
         runCatching { request("/auth/v1/logout", "POST", JSONObject(), token) }
-        prefs.edit().clear().apply()
+        prefs.edit().clear().apply()\n        activeConversationId = null
     }
 
-    suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
+    suspend fun startNewConversation() = withContext(Dispatchers.IO) {\n        activeConversationId = null\n        prefs.edit().remove("active_conversation_id").apply()\n    }\n\n    suspend fun saveTurn(userText: String, assistantText: String) = withContext(Dispatchers.IO) {\n        if (!hasSession()) return@withContext\n        var conversationId = activeConversationId\n        if (conversationId == null) {\n            val title = userText.replace(Regex("\\\\s+"), " ").trim().take(64).ifBlank { "Percakapan baru" }\n            conversationId = createConversation(title)\n            activeConversationId = conversationId\n            prefs.edit().putString("active_conversation_id", conversationId).apply()\n        }\n        appendMessage(conversationId, "user", userText)\n        appendMessage(conversationId, "assistant", assistantText)\n    }\n\n    suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
         val rows = requestArray(
             "/rest/v1/jarvis_conversations?select=id,title,updated_at&order=updated_at.desc",
             "GET"
