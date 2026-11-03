@@ -452,8 +452,12 @@ class MainActivity : ComponentActivity() {
                                 .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
                             val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params))
                             if (queued.optBoolean("ok")) {
-                                JarvisDeviceSyncService.start(this)
-                                "Perintah ${action} masuk antrean perangkat. Sinkronisasi sedang dijalankan; hasil baru dapat dipastikan setelah perangkat mengirim acknowledgement."
+                                if (deviceId == localId) {
+                                    JarvisDeviceSyncService.start(this)
+                                    "Perintah ${action} masuk antrean perangkat ini. Sinkronisasi lokal sedang dijalankan; hasil baru dapat dipastikan setelah acknowledgement."
+                                } else {
+                                    "Perintah ${action} masuk antrean perangkat target. Pastikan JARVIS Device Sync sudah aktif pada perangkat target agar perintah dieksekusi."
+                                }
                             } else {
                                 "Perintah tidak dapat dijalankan: ${queued.optString("reason", queued.optString("error", "izin kemampuan belum aktif"))}"
                             }
