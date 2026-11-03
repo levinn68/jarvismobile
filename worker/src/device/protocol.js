@@ -5,7 +5,7 @@ export const SENSITIVE_CAPABILITIES = new Set(["files.write","notifications.mana
 const ANDROID_ACTIONS = Object.freeze({
  "files.list":{capability:"files.read",params:[]},"files.search":{capability:"files.read",params:["query"]},
  "files.read":{capability:"files.read",params:["documentId"]},"apps.list":{capability:"apps.list",params:[]},
- "apps.launch":{capability:"apps.launch",params:["packageName"]},"system.status":{capability:"system.read",params:[]},
+ "apps.launch":{capability:"apps.launch",params:["packageName"]},"apps.launch_label":{capability:"apps.launch",params:["appName"]},"system.status":{capability:"system.read",params:[]},
  "notifications.list":{capability:"notifications.read",params:[]},"screen.read":{capability:"screen.read",params:[]},"contacts.list":{capability:"contacts.read",params:[]},"calendar.list":{capability:"calendar.read",params:[]}
 });
 function validateParams(action,raw) {
@@ -16,6 +16,7 @@ function validateParams(action,raw) {
  if(action==="files.search"){const query=typeof raw.query==="string"?raw.query.trim():"";if(!query||query.length>200)throw new Error("files.search requires query (1-200 characters)");params.query=query;}
  else if(action==="files.read"){const documentId=typeof raw.documentId==="string"?raw.documentId.trim():"";if(!documentId||documentId.length>1024)throw new Error("files.read requires a valid documentId");params.documentId=documentId;}
  else if(action==="apps.launch"){const packageName=typeof raw.packageName==="string"?raw.packageName.trim():"";if(!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName)||packageName.length>200)throw new Error("apps.launch requires a valid Android packageName");params.packageName=packageName;}
+ else if(action==="apps.launch_label"){const appName=typeof raw.appName==="string"?raw.appName.trim():"";if(!appName||appName.length>100)throw new Error("apps.launch_label requires appName (1-100 characters)");params.appName=appName;}
  return params;
 }
 export function normalizeDevice(input) {
