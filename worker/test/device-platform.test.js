@@ -132,8 +132,17 @@ test("Windows connector rejects invalid app IDs, paths, and unknown commands", (
   }, "windows"));
 });
 
-test("macOS and Linux remain blocked until their native connectors exist", () => {
+test("macOS and Linux use the validated desktop command schema", () => {
   for (const platform of ["macos", "linux"]) {
+    const app = validateCommand({ action: "apps.launch", params: { appId: "APP_123" } }, platform);
+    assert.equal(app.params.appId, "APP_123");
+    const search = validateCommand({ action: "files.search", params: { query: "invoice", rootIndex: 0 } }, platform);
+    assert.equal(search.params.query, "invoice");
+  }
+});
+
+test("platforms without a connector remain blocked", () => {
+  for (const platform of ["ios", "ipados", "wearos", "web", "iot"]) {
     assert.throws(
       () => validateCommand({ action: "apps.list", params: {} }, platform),
       /No command connector is registered/
