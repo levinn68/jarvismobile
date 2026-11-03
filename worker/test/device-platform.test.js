@@ -240,6 +240,15 @@ test("account enrollment, Windows command queue, polling and acknowledgement wor
   const deviceToken = devicePayload.token;
   assert.ok(deviceToken);
 
+  const otherAccountResponse = await call("POST", "/v1/accounts/create", env.DEVICE_ENROLLMENT_SECRET, {});
+  const otherAccount = await otherAccountResponse.json();
+  const crossAccountCommand = await call("POST", "/v1/device/command", otherAccount.accountToken, {
+    deviceId: "windows-test-device-01",
+    action: "system.status",
+    params: {}
+  });
+  assert.equal(crossAccountCommand.status, 403);
+
   const queued = await call("POST", "/v1/device/command", accountToken, {
     deviceId: "windows-test-device-01",
     action: "system.status",
