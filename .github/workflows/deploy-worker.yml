@@ -45,4 +45,4 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          wrangler deploy worker/src/index.js --name jarvis-api --compatibility-date 2026-10-31 --var FISH_VOICE_ID:612b878b113047d9a770c069c8b4fdfe --var FISH_MODEL:s2.1-pro-free
+          wrangler deploy --config worker/wrangler.toml
