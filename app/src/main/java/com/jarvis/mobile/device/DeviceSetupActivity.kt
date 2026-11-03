@@ -44,6 +44,13 @@ class DeviceSetupActivity : Activity() {
             setText(client.storedAccountToken())
             layout.addView(this)
         }
+        val targetDevice = EditText(this).apply {
+            hint = "ID perangkat target (kosong = perangkat ini)"
+            inputType = 0x00000001
+            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
+            setText(getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).getString("target_device_id", ""))
+            layout.addView(this)
+        }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
         button("Buat akun JARVIS") {
             val value = bootstrapSecret.text.toString()
@@ -91,6 +98,16 @@ class DeviceSetupActivity : Activity() {
                 } catch (e: Exception) { "Gagal memuat perangkat: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
+        }
+        button("Gunakan perangkat target untuk perintah chat") {
+            val target = targetDevice.text.toString().trim()
+            if (target.isNotEmpty() && !target.matches(Regex("[A-Za-z0-9_-]{8,80}"))) {
+                status.text = "Format ID perangkat tidak valid"
+                return@button
+            }
+            getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).edit()
+                .putString("target_device_id", target.ifBlank { client.deviceId().orEmpty() }).apply()
+            status.text = if (target.isBlank()) "Target diatur ke perangkat ini" else "Target perangkat disimpan: $target"
         }
         button("Pilih folder yang boleh diakses") {
             startActivityForResult(FileController(this).folderPickerIntent(), 501)
