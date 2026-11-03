@@ -102,6 +102,7 @@ test("Google-linked account enrollment verifies Supabase user and reuses stable 
     assert.equal(firstBody.account.accountId, "acct-123e4567-e89b-12d3-a456-426614174000");
     assert.equal(secondBody.account.accountId, firstBody.account.accountId);
     assert.notEqual(firstBody.accountToken, "");
+    assert.equal(firstBody.expiresIn, 3600);
   } finally {
     globalThis.fetch = originalFetch;
   }
