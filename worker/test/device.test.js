@@ -91,8 +91,8 @@ test("Google-linked account enrollment verifies Supabase user and reuses stable 
     const firstBody = await first.json();
     const second = await handleDeviceRequest(request(), env, new URL("https://worker.test/v1/accounts/google"));
     const secondBody = await second.json();
-    assert.equal(first.status, 200);
-    assert.equal(second.status, 200);
+    assert.equal(first.status, 200, JSON.stringify(firstBody));
+    assert.equal(second.status, 200, JSON.stringify(secondBody));
     assert.equal(firstBody.account.accountId, "acct-123e4567-e89b-12d3-a456-426614174000");
     assert.equal(secondBody.account.accountId, firstBody.account.accountId);
     assert.notEqual(firstBody.accountToken, "");
