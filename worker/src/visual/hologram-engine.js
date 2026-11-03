@@ -1,0 +1,2 @@
+import { normalizeVoiceState } from "./voice-visual-state.js";
+export function buildHologramState({voiceState="idle",taskActive=false}={}){const state=normalizeVoiceState(voiceState);return {state,compact:Boolean(taskActive),motion:state==="listening"?"pulse":state==="thinking"?"scan":state==="speaking"?"wave":state==="executing"?"orbit":"idle",accent:state==="thinking"?"violet":"cyan"};}
