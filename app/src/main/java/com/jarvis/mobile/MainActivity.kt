@@ -107,6 +107,8 @@ import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.launch
+import androidx.lifecycle.lifecycleScope
+import com.jarvis.mobile.account.SupabaseJarvisClient
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -221,6 +223,10 @@ private fun detectEnglishContent(text: String): Boolean {
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var supabaseClient: SupabaseJarvisClient
+    private val accountEmail = mutableStateOf<String?>(null)
+    private val accountBusy = mutableStateOf(false)
+    private val accountStatus = mutableStateOf("")
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -264,6 +270,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supabaseClient = SupabaseJarvisClient(this)
+        accountEmail.value = supabaseClient.currentEmail()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         tts = TextToSpeech(this) { result ->
@@ -315,8 +323,36 @@ class MainActivity : ComponentActivity() {
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
-                onOpenApp = { q -> openRequestedApp(q) }
+                onOpenApp = { q -> openRequestedApp(q) },
+                accountEmail = accountEmail.value,
+                accountBusy = accountBusy.value,
+                accountStatus = accountStatus.value,
+                onGoogleSignIn = { signInGoogle() },
+                onGoogleSignOut = { signOutGoogle() }
             )
+        }
+    }
+
+    private fun signInGoogle() {
+        if (accountBusy.value) return
+        accountBusy.value = true
+        accountStatus.value = "MENGHUBUNGKAN GOOGLE..."
+        lifecycleScope.launch {
+            runCatching { supabaseClient.signInWithGoogle(this@MainActivity) }
+                .onSuccess { session ->
+                    accountEmail.value = session.email ?: session.displayName ?: "Google Account"
+                    accountStatus.value = "AKUN TERSINKRON"
+                }
+                .onFailure { error -> accountStatus.value = error.message ?: "GOOGLE SIGN-IN GAGAL" }
+            accountBusy.value = false
+        }
+    }
+
+    private fun signOutGoogle() {
+        lifecycleScope.launch {
+            runCatching { supabaseClient.signOut() }
+            accountEmail.value = null
+            accountStatus.value = "KELUAR DARI AKUN"
         }
     }
 
@@ -1821,7 +1857,12 @@ private fun JarvisScreen(
     onSearch: (String) -> Unit,
     onSaveGeminiKey: (String) -> Unit,
     onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
-    onOpenApp: (String) -> Boolean
+    onOpenApp: (String) -> Boolean,
+    accountEmail: String?,
+    accountBusy: Boolean,
+    accountStatus: String,
+    onGoogleSignIn: () -> Unit,
+    onGoogleSignOut: () -> Unit
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
@@ -2154,6 +2195,24 @@ private fun JarvisScreen(
                                     letterSpacing = 1.sp,
                                     fontFamily = FontFamily.Monospace
                                 )
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = when {
+                                    accountBusy -> "GOOGLE SIGN-IN..."
+                                    accountEmail != null -> accountEmail
+                                    else -> "MASUK DENGAN GOOGLE"
+                                },
+                                color = if (accountEmail != null) OkGreen else Cyan,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.clickable {
+                                    if (accountEmail == null) onGoogleSignIn() else onGoogleSignOut()
+                                }
+                            )
+                            if (accountStatus.isNotBlank()) {
+                                Text(accountStatus, color = TextMuted, fontSize = 7.sp, maxLines = 1)
                             }
                             Spacer(Modifier.height(3.dp))
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
