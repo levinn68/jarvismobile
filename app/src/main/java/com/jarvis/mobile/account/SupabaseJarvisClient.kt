@@ -142,6 +142,7 @@ class SupabaseJarvisClient(context: Context) {
             "/rest/v1/jarvis_conversations?id=eq.${encode(id)}",
             "PATCH",
             JSONObject().put("title", title),
+            token = accessToken(),
             prefer = "return=minimal"
         )
     }
@@ -151,6 +152,7 @@ class SupabaseJarvisClient(context: Context) {
             "/rest/v1/jarvis_conversations?id=eq.${encode(id)}",
             "DELETE",
             JSONObject(),
+            token = accessToken(),
             prefer = "return=minimal"
         )
         if (activeConversationId == id) {
@@ -177,7 +179,7 @@ class SupabaseJarvisClient(context: Context) {
             .put("conversation_id", conversationId)
             .put("role", role)
             .put("content", content)
-        request("/rest/v1/jarvis_messages", "POST", JSONArray().put(row), prefer = "return=minimal")
+        request("/rest/v1/jarvis_messages", "POST", JSONArray().put(row), token = accessToken(), prefer = "return=minimal")
     }
 
     private fun accessToken(): String = prefs.getString("access_token", null)
@@ -200,7 +202,7 @@ class SupabaseJarvisClient(context: Context) {
         token: String? = null,
         prefer: String? = null
     ): JSONObject {
-        val raw = http(path, method, body.toString(), token ?: accessToken(), prefer)
+        val raw = http(path, method, body.toString(), token, prefer)
         return if (raw.startsWith("{")) JSONObject(raw) else JSONObject()
     }
 
