@@ -515,3 +515,23 @@ test("device registry pagination fails closed when a cursor repeats", async () =
   );
   assert.equal(calls, 2);
 });
+
+
+test("device registry pagination fails closed after the 100-page safety limit", async () => {
+  let calls = 0;
+  const kv = {
+    async list() {
+      calls += 1;
+      return {
+        keys: [],
+        list_complete: false,
+        cursor: "cursor-" + calls
+      };
+    }
+  };
+  await assert.rejects(
+    () => listDevicesForAccount(kv, "acct-test"),
+    /exceeded the 100-page safety limit/
+  );
+  assert.equal(calls, 100);
+});
