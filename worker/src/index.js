@@ -221,7 +221,9 @@ function appendVisualResults(answer, kind, results) {
 }
 
 async function handleSearch(body, env, kind) {
-  const query = String(body.query || body.q || "").trim();
+  const rawQuery = body.query || body.q || "";
+  if (typeof rawQuery !== "string") return json({ ok: false, error: "query must be a string" }, 400);
+  const query = rawQuery.trim();
   if (!query) return json({ ok: false, error: "query is required" }, 400);
   if (query.length > 240) return json({ ok: false, error: "query is too long (max 240 characters)" }, 413);
   if (!env.SERPAPI_API_KEY) {
@@ -476,7 +478,9 @@ function detectSpeechLanguage(text) {
 }
 
 async function handleChat(body, env) {
-  const prompt = String(body.message || body.prompt || "").trim();
+  const rawPrompt = body.message || body.prompt || "";
+  if (typeof rawPrompt !== "string") return json({ ok: false, error: "message must be a string" }, 400);
+  const prompt = rawPrompt.trim();
   if (!prompt) return json({ error: "message is required" }, 400);
   if (prompt.length > 12000) return json({ error: "message is too long (max 12000 characters)" }, 413);
 
@@ -625,7 +629,8 @@ export default {
       try {
         if (!env.FISH_API_KEY) return json({ ok: false, error: "FISH_API_KEY is not configured on the Worker." }, 503);
         const body = await readJsonBody(request, 64 * 1024);
-        const text = String(body.text || "").trim();
+        if (typeof body.text !== "string") return json({ ok: false, error: "text must be a string" }, 400);
+        const text = body.text.trim();
         if (!text) return json({ ok: false, error: "text is required" }, 400);
         if (text.length > 5000) return json({ ok: false, error: "text is too long (max 5000 characters)" }, 413);
         const speechLanguage = detectSpeechLanguage(text);
