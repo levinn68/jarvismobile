@@ -475,7 +475,8 @@ class MainActivity : ComponentActivity() {
                                 ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
                             val deviceId = getSharedPreferences("jarvis_device_secure", MODE_PRIVATE)
                                 .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
-                            supabaseClient.currentAccessToken() // Refresh/validate the Google session before using the long-lived device token.
+                            val accessToken = supabaseClient.currentAccessToken() // Refresh/validate Google session.
+                            client.createOrRestoreAccountWithSupabase(accessToken) // Rotate the one-hour device-control token.
                             val userId = supabaseClient.currentUserId() ?: throw IllegalStateException("Masuk dengan Google terlebih dahulu.")
                             val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId)
                             if (queued.optBoolean("ok")) {
