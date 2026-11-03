@@ -10,8 +10,8 @@ android {
         applicationId = "com.jarvis.mobile.assistant"
         minSdk = 23
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.9.0"
+        versionCode = 10
+        versionName = "0.9.1"
         buildConfigField("String", "SUPABASE_URL", "\"https://agwaxaejnnszunccmftm.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${System.getenv("SUPABASE_ANON_KEY")?.takeIf { it.isNotBlank() } ?: "sb_publishable_BtFlJ2XJc4SW4kNSmIZ8bA_WcTQgFq-"}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\"")
@@ -31,7 +31,6 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
-    // Keep legacy Kotlin stdlib bridge artifacts aligned with the Kotlin 2.1.20 compiler.
     constraints {
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.20")
         implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.20")
@@ -51,5 +50,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
     implementation("io.coil-kt.coil3:coil-compose:3.3.0")
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.3.0")
+    // QR encoding only (no camera scanner dependency).
+    implementation("com.google.zxing:core:3.5.3")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
