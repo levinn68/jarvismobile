@@ -7,36 +7,32 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
 
-/**
- * Authenticated client for the JARVIS device command API.
- * Device tokens are stored in app-private preferences; never embed bootstrap secrets in the APK.
- */
+/** Account-scoped enrollment and per-device command transport. */
 class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
-    fun pair(enrollmentSecret: String, deviceName: String, osVersion: String, appVersion: String = "0.9.0"): JSONObject {
-        require(enrollmentSecret.isNotBlank()) { "Enrollment secret must be entered by the device owner" }
+
+    fun createAccount(enrollmentSecret: String): JSONObject {
+        require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
+        return rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
+    }
+
+    fun pair(accountToken: String, deviceName: String, osVersion: String, appVersion: String = "0.9.0"): JSONObject {
+        require(accountToken.isNotBlank()) { "JARVIS account token is required" }
         val id = "android-" + java.util.UUID.randomUUID().toString()
         val body = JSONObject().put("deviceId", id).put("platform", "android")
             .put("name", deviceName.take(80)).put("osVersion", osVersion.take(40))
             .put("appVersion", appVersion).put("capabilities", JSONArray(listOf("apps.list", "apps.launch", "system.read")))
-        val connection = (URL(baseUrl.trimEnd('/') + "/v1/devices/enroll").openConnection() as HttpURLConnection)
-        try {
-            connection.requestMethod = "POST"; connection.connectTimeout = 12000; connection.readTimeout = 20000; connection.doOutput = true
-            connection.setRequestProperty("Authorization", "Bearer " + enrollmentSecret)
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-            val code = connection.responseCode
-            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            val result = if (raw.isBlank()) JSONObject() else JSONObject(raw)
-            if (code !in 200..299) throw IllegalStateException("Pairing HTTP " + code + ": " + result.optString("error", "Pairing failed"))
-            val token = result.optString("token")
-            if (token.isBlank()) throw IllegalStateException("Pairing response did not contain a device token")
-            configure(id, token)
-            return result
-        } finally { connection.disconnect() }
+        val result = rawRequest("POST", "/v1/devices/enroll", body, accountToken)
+        val token = result.optString("token")
+        if (token.isBlank()) throw IllegalStateException("Pairing response did not contain a device token")
+        configure(id, token)
+        return result
     }
+
+    fun listAccountDevices(accountToken: String): JSONArray =
+        rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
+
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(token.isNotBlank()) { "Device token is required" }
@@ -52,7 +48,6 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         val body = JSONObject().put("capabilities", JSONArray(capabilities.distinct()))
         return request("PUT", "/v1/devices/${deviceId()}/capabilities", body)
     }
-
     fun heartbeat(): JSONObject = request("POST", "/v1/devices/${deviceId()}/heartbeat")
     fun pollCommands(): JSONArray = request("GET", "/v1/device/commands?deviceId=${deviceId()}").optJSONArray("commands") ?: JSONArray()
     fun acknowledge(commandId: String, result: JSONObject): JSONObject =
@@ -78,8 +73,11 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     }
 
     private fun request(method: String, path: String, body: JSONObject? = null): JSONObject {
-        val id = deviceId() ?: throw IllegalStateException("Device is not paired")
         val bearer = token() ?: throw IllegalStateException("Device token is missing")
+        return rawRequest(method, path, body, bearer)
+    }
+
+    private fun rawRequest(method: String, path: String, body: JSONObject? = null, bearer: String): JSONObject {
         val connection = (URL(baseUrl.trimEnd('/') + path).openConnection() as HttpURLConnection)
         try {
             connection.requestMethod = method
