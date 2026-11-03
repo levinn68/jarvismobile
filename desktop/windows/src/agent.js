@@ -58,7 +58,7 @@ async function resolvedRoots() {
   return roots.slice(0, 20);
 }
 
-function normalizedForComparison(value) {
+export function normalizedForComparison(value) {
   let input = String(value);
   if (process.platform === "win32") {
     const extendedPathPrefix = "\\\\?\\";
