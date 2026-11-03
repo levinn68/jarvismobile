@@ -586,6 +586,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
     }
 
     private fun restartListeningSession() {
