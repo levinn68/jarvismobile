@@ -8,10 +8,10 @@ export async function handleDeviceRequest(request,env,url){
  const path=url.pathname;
  if(path==="/v1/devices/enroll"&&request.method==="POST"){
   if(!env.DEVICE_ENROLLMENT_SECRET||!env.DEVICE_TOKEN_SECRET)return json({ok:false,error:"Device enrollment is not configured."},503);
-  const supplied=(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");if(supplied!==env.DEVICE_ENROLLMENT_SECRET)return json({ok:false,error:"Unauthorized"},401);
+  const supplied=(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");if(supplied!==env.DEVICE_ENROLLMENT_SECRET)return json({ok:false,error:"Unauthorized"},401);
   try{const d=await saveDevice(env.DEVICE_REGISTRY,await readBody(request));const token=await issueDeviceToken(d.deviceId,env.DEVICE_TOKEN_SECRET);return json({ok:true,device:publicDevice(d),token,tokenType:"Bearer"});}catch(e){return json({ok:false,error:e.message},400)}
  }
- const match=path.match(/^\\/v1\\/devices\\/([a-zA-Z0-9_-]{8,80})(?:\\/(heartbeat|capabilities))?$/);
+ const match=path.match(/^\/v1\/devices\/([a-zA-Z0-9_-]{8,80})(?:\/(heartbeat|capabilities))?$/);
  if(match){const [,id,action]=match;const claims=await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id);if(!claims)return json({ok:false,error:"Unauthorized device token"},401);const d=await getDevice(env.DEVICE_REGISTRY,id);if(!d)return json({ok:false,error:"Device not registered"},404);
   if(action==="heartbeat"&&request.method==="POST"){const updated=await touchDevice(env.DEVICE_REGISTRY,id);return json({ok:true,device:publicDevice(updated)});}
   if(action==="capabilities"&&request.method==="PUT"){try{const b=await readBody(request);const updated=await saveDevice(env.DEVICE_REGISTRY,{...d,capabilities:b.capabilities});return json({ok:true,device:publicDevice(updated)});}catch(e){return json({ok:false,error:e.message},400)}}
