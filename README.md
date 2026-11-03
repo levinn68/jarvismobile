@@ -47,9 +47,21 @@ The existing AI providers, visual search, API routes, Android client contract an
 
 ## Universal multi-device foundation
 
-The Worker now includes a first device control-plane foundation under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT connectors. It provides device enrollment, HMAC device tokens, per-device capability declarations, heartbeat, typed command validation and a short-lived KV command queue.
+The Worker includes a device control plane under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT platform identities. It provides Google-linked account enrollment through Supabase Auth, HMAC account/device tokens, per-device capabilities, heartbeat, typed command validation, a short-lived KV command queue, acknowledgement and command-status lookup.
 
-See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes and security boundaries. This is the backend control plane only; native device connectors still need to be implemented per platform and must enforce local OS permissions. No arbitrary shell or remote code execution is exposed.
+### Android device connector
+
+The Android app includes a user-started foreground sync service and a permission-gated connector. Supported chat/voice actions include:
+- Device status and battery information.
+- List installed apps and launch a uniquely matched app by visible name or package name.
+- List, search and read text files inside a folder explicitly selected through Android's Storage Access Framework.
+- Read recent notifications after the user enables Notification Access.
+- Read visible screen text only when explicitly requested and only after the user enables JARVIS Accessibility Service. The service does not monitor or retain screen text in the background.
+- Read contacts and a bounded 30-day calendar window only after the user grants the corresponding Android runtime permissions.
+
+Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the current Google account and pair the device. Pair each Android device with the same Google account, configure the desired permissions on each target, update capabilities, and start Device Sync on the target device. See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for setup, API routes, Cloudflare KV bindings, secrets and security boundaries.
+
+Android OS permissions remain authoritative. Camera capture, screen taps/typing, arbitrary shell, unrestricted filesystem access, silent microphone/camera access, and high-risk system settings changes are not exposed. Windows/macOS/iOS still require separate native companion agents; Worker platform identifiers alone do not constitute working connectors. The deployment workflow runs Worker protocol/security tests before deploying.
 
 
 ### Modular backend modules
