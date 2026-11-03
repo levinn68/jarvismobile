@@ -44,6 +44,8 @@ test("validates only typed Android actions and strict parameters", () => {
   assert.equal(validateCommand({ action: "screen.read" }).capability, "screen.read");
   assert.equal(validateCommand({ action: "contacts.list" }).capability, "contacts.read");
   assert.equal(validateCommand({ action: "calendar.list" }).capability, "calendar.read");
+  assert.equal(validateCommand({ action: "apps.launch_label", params: { appName: "Spotify" } }).params.appName, "Spotify");
+  assert.throws(() => validateCommand({ action: "apps.launch_label", params: { appName: "" } }));
 });
 
 test("capability policy blocks undeclared and sensitive actions without confirmation", () => {
