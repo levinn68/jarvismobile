@@ -12,6 +12,7 @@ const POLL_MS = Math.max(5000, Number(process.env.JARVIS_POLL_INTERVAL_MS || 150
 const MAX_FILE_BYTES = 64 * 1024;
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
 const appIndex = new Map();
+const pendingAcknowledgements = new Map();
 
 async function apiRequest(method, endpoint, token, body) {
   const response = await fetch(API + endpoint, {
@@ -218,10 +219,14 @@ async function pollOnce() {
   const response = await apiRequest("GET", "/v1/device/commands?deviceId=" + encodeURIComponent(DEVICE_ID), DEVICE_TOKEN);
   for (const command of response.commands || []) {
     if (!command?.commandId) continue;
-    let result;
-    try { result = await execute(command); }
-    catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
+    let result = pendingAcknowledgements.get(command.commandId);
+    if (!result) {
+      try { result = await execute(command); }
+      catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
+      pendingAcknowledgements.set(command.commandId, result);
+    }
     await apiRequest("POST", "/v1/device/commands/ack", DEVICE_TOKEN, { deviceId: DEVICE_ID, commandId: command.commandId, result });
+    pendingAcknowledgements.delete(command.commandId);
   }
 }
 
