@@ -368,3 +368,83 @@ test("inactive accounts revoke existing device and account token access", async 
   const accountResponse = await handleDeviceRequest(accountRequest, env, new URL(accountRequest.url));
   assert.equal(accountResponse.status, 403);
 });
+
+
+test("inactive account revokes access for every existing device-token route", async () => {
+  class MemoryKV {
+    constructor() { this.values = new Map(); }
+    async get(key) { return this.values.get(key) ?? null; }
+    async put(key, value) { this.values.set(key, value); }
+    async list({ prefix = "", limit = 100 }) {
+      return {
+        keys: [...this.values.keys()]
+          .filter((key) => key.startsWith(prefix))
+          .slice(0, limit)
+          .map((name) => ({ name }))
+      };
+    }
+  }
+
+  const registry = new MemoryKV();
+  const commands = new MemoryKV();
+  const accountId = "acct-revocation-test-123";
+  const deviceId = "android-revocation-01";
+  await createAccount(registry, accountId);
+  await saveDevice(registry, {
+    accountId,
+    deviceId,
+    platform: "android",
+    capabilities: ["system.read"]
+  });
+  const accountToken = await issueAccountToken(accountId, secret);
+  const deviceToken = await issueDeviceToken(deviceId, secret);
+  const env = {
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: registry,
+    DEVICE_COMMANDS: commands
+  };
+
+  async function call(method, path, token, body) {
+    const request = new Request("https://jarvis.test" + path, {
+      method,
+      headers: {
+        Authorization: "Bearer " + token,
+        ...(body ? { "Content-Type": "application/json" } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    return handleDeviceRequest(request, env, new URL(request.url));
+  }
+
+  // The device token is valid and works before account deactivation.
+  assert.equal((await call("GET", "/v1/devices/" + deviceId, deviceToken)).status, 200);
+
+  await registry.put("account:" + accountId, JSON.stringify({
+    accountId,
+    status: "inactive"
+  }));
+
+  const blocked = [
+    await call("GET", "/v1/devices/" + deviceId, deviceToken),
+    await call("POST", "/v1/devices/" + deviceId + "/heartbeat", deviceToken, {}),
+    await call("PUT", "/v1/devices/" + deviceId + "/capabilities", deviceToken, {
+      capabilities: ["system.read"]
+    }),
+    await call("GET", "/v1/device/commands?deviceId=" + deviceId, deviceToken),
+    await call("POST", "/v1/device/commands/ack", deviceToken, {
+      deviceId,
+      commandId: "command-revocation-01",
+      result: { ok: true }
+    }),
+    await call("POST", "/v1/device/command", deviceToken, {
+      deviceId,
+      action: "system.status",
+      params: {}
+    }),
+    await call("GET", "/v1/devices", accountToken)
+  ];
+
+  assert.deepEqual(blocked.map((response) => response.status), [
+    403, 403, 403, 403, 403, 403, 403
+  ]);
+});
