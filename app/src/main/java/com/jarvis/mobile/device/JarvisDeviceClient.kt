@@ -14,6 +14,29 @@ import java.util.concurrent.Executors
 class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
+    fun pair(enrollmentSecret: String, deviceName: String, osVersion: String, appVersion: String = "0.9.0"): JSONObject {
+        require(enrollmentSecret.isNotBlank()) { "Enrollment secret must be entered by the device owner" }
+        val id = "android-" + java.util.UUID.randomUUID().toString()
+        val body = JSONObject().put("deviceId", id).put("platform", "android")
+            .put("name", deviceName.take(80)).put("osVersion", osVersion.take(40))
+            .put("appVersion", appVersion).put("capabilities", JSONArray(listOf("files.read", "apps.list", "apps.launch", "system.read", "notifications.read")))
+        val connection = (URL(baseUrl.trimEnd('/') + "/v1/devices/enroll").openConnection() as HttpURLConnection)
+        try {
+            connection.requestMethod = "POST"; connection.connectTimeout = 12000; connection.readTimeout = 20000; connection.doOutput = true
+            connection.setRequestProperty("Authorization", "Bearer " + enrollmentSecret)
+            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val raw = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val result = if (raw.isBlank()) JSONObject() else JSONObject(raw)
+            if (code !in 200..299) throw IllegalStateException("Pairing HTTP " + code + ": " + result.optString("error", "Pairing failed"))
+            val token = result.optString("token")
+            if (token.isBlank()) throw IllegalStateException("Pairing response did not contain a device token")
+            configure(id, token)
+            return result
+        } finally { connection.disconnect() }
+    }
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(token.isNotBlank()) { "Device token is required" }
