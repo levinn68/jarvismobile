@@ -16,29 +16,26 @@ jobs:
         with:
           ref: feature/qr-pairing-v1
           fetch-depth: 0
-      - name: Concatenate parts
+      - name: Decode zlib+base64 parts into MainActivity.kt
         run: |
           set -euo pipefail
-          PARTS_DIR="app/src/main/java/com/jarvis/mobile/mainactivity_parts"
-          OUT="app/src/main/java/com/jarvis/mobile/MainActivity.kt"
-          if [[ ! -f "$PARTS_DIR/MANIFEST.json" ]]; then
-            echo "No MANIFEST.json; skip"
-            exit 0
-          fi
-          cat "$PARTS_DIR"/MainActivity.part*.txt > "$OUT"
-          echo "Assembled $(wc -c < "$OUT") bytes"
           python3 - <<'PY'
-          import hashlib, json, pathlib
-          out = pathlib.Path("app/src/main/java/com/jarvis/mobile/MainActivity.kt").read_bytes()
-          man = json.loads(pathlib.Path("app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json").read_text())
-          h = hashlib.sha256(out).hexdigest()
+          import base64, hashlib, json, pathlib, zlib
+          parts_dir = pathlib.Path("app/src/main/java/com/jarvis/mobile/mainactivity_parts")
+          man = json.loads((parts_dir / "MANIFEST.json").read_text())
+          assert man.get("format") == "zlib+base64"
+          joined = "".join((parts_dir / p["name"]).read_text().strip() for p in man["parts"])
+          raw = zlib.decompress(base64.b64decode(joined))
+          h = hashlib.sha256(raw).hexdigest()
           print("sha256", h)
-          print("expected", man["total_sha256"])
-          assert h == man["total_sha256"], "checksum mismatch"
-          text = out.decode()
+          print("expected", man["raw_sha256"])
+          assert h == man["raw_sha256"], "checksum mismatch"
+          text = raw.decode()
           for m in ["requestMicFocus","clientRequestId","registerConnectivityFlush","HolographicOrb","JarvisChatComposer","JarvisUserBubble"]:
               assert m in text, m
-          print("ALL MARKERS OK")
+          out = pathlib.Path("app/src/main/java/com/jarvis/mobile/MainActivity.kt")
+          out.write_bytes(raw)
+          print("ALL MARKERS OK wrote", len(raw), "bytes")
           PY
       - name: Commit MainActivity if changed
         run: |
@@ -49,6 +46,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "fix(android): assemble polished MainActivity.kt from verified parts"
+            git commit -m "fix(android): assemble polished MainActivity.kt from zlib parts (verified)"
             git push origin feature/qr-pairing-v1
           fi
