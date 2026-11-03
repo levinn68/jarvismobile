@@ -33,3 +33,5 @@ Enrollment is currently an operator/bootstrap operation. A public production rol
 The backend never executes shell commands, arbitrary code, or direct filesystem operations. It checks declared capabilities and queues typed requests. Each connector must independently verify local OS permissions and confirm sensitive operations. A queued command is not proof of execution.
 
 Android/iOS sandboxing and consent remain in force. File, screen, camera, microphone, contacts, notification, location and app access require platform-specific permissions or supported APIs.
+
+- POST /v1/device/commands/ack — acknowledge a completed command and attach its result.
