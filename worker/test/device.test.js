@@ -11,6 +11,7 @@ function memoryKv() {
   return {
     async put(key, value) { store.set(key, value); },
     async get(key) { return store.get(key) ?? null; },
+    async delete(key) { store.delete(key); },
     async list({ prefix, limit }) {
       return { keys: [...store.keys()].filter(key => key.startsWith(prefix)).slice(0, limit).map(name => ({ name })) };
     }
@@ -183,4 +184,61 @@ test("desktop command validation rejects traversal-shaped and malformed paramete
   for (const platform of ["ios", "ipados", "wearos", "web", "iot"]) {
     assert.throws(() => validateCommand({ action: "apps.list" }, platform), /No command connector is registered/);
   }
+});
+
+
+test("account owner can revoke a device and its device token loses command access", async () => {
+  const accountId = "acct-owner-123456789";
+  const deviceId = "android-revoke-123456";
+  const registry = memoryKv();
+  const commands = memoryKv();
+  await registry.put("account:" + accountId, JSON.stringify({ accountId, status: "active" }));
+  await registry.put("device:" + deviceId, JSON.stringify({
+    deviceId, accountId, platform: "android", capabilities: ["system.read"]
+  }));
+  await registry.put("account-device:" + accountId + ":" + deviceId, "1");
+  const accountToken = await issueAccountToken(accountId, "test-secret-with-more-than-32-characters");
+  const deviceToken = await issueDeviceToken(deviceId, "test-secret-with-more-than-32-characters");
+
+  const revoke = new Request("https://jarvis.test/v1/devices/" + deviceId, {
+    method: "DELETE",
+    headers: { Authorization: "Bearer " + accountToken }
+  });
+  const revoked = await handleDeviceRequest(revoke, {
+    DEVICE_TOKEN_SECRET: "test-secret-with-more-than-32-characters",
+    DEVICE_REGISTRY: registry,
+    DEVICE_COMMANDS: commands
+  }, new URL(revoke.url));
+  assert.equal(revoked.status, 200);
+  assert.equal((await revoked.json()).revoked, true);
+
+  const poll = new Request("https://jarvis.test/v1/device/commands?deviceId=" + deviceId, {
+    headers: { Authorization: "Bearer " + deviceToken }
+  });
+  const denied = await handleDeviceRequest(poll, {
+    DEVICE_TOKEN_SECRET: "test-secret-with-more-than-32-characters",
+    DEVICE_REGISTRY: registry,
+    DEVICE_COMMANDS: commands
+  }, new URL(poll.url));
+  assert.equal(denied.status, 404);
+  assert.equal(await registry.get("device:" + deviceId), null);
+});
+
+test("account cannot revoke another user's device", async () => {
+  const owner = "acct-owner-123456789";
+  const other = "acct-other-12345678";
+  const deviceId = "android-owned-device";
+  const registry = memoryKv();
+  await registry.put("device:" + deviceId, JSON.stringify({
+    deviceId, accountId: owner, platform: "android", capabilities: []
+  }));
+  const token = await issueAccountToken(other, "test-secret-with-more-than-32-characters");
+  const request = new Request("https://jarvis.test/v1/devices/" + deviceId, {
+    method: "DELETE", headers: { Authorization: "Bearer " + token }
+  });
+  const response = await handleDeviceRequest(request, {
+    DEVICE_TOKEN_SECRET: "test-secret-with-more-than-32-characters",
+    DEVICE_REGISTRY: registry
+  }, new URL(request.url));
+  assert.equal(response.status, 403);
 });
