@@ -76,7 +76,7 @@ function validateParams(action, raw, schema, platform) {
     } else if (action === "apps.launch") {
       const packageName = typeof raw.packageName === "string" ? raw.packageName.trim() : "";
       if (
-        !/^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
+        !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
         packageName.length > 200
       ) {
         throw new Error("apps.launch requires a valid Android packageName");
