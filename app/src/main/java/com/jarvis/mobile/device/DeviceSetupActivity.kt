@@ -56,6 +56,20 @@ class DeviceSetupActivity : Activity() {
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
         }
+        button("Perbarui izin & kemampuan perangkat") {
+            if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
+            status.text = "Memeriksa izin Android..."
+            worker.execute {
+                val capabilities = mutableListOf("apps.list", "apps.launch", "system.read")
+                if (FileController(this).hasSelectedFolder()) capabilities.add("files.read")
+                if (NotificationController(this).list().optBoolean("ok")) capabilities.add("notifications.read")
+                val message = try {
+                    client.updateCapabilities(capabilities)
+                    "Kemampuan aktif: ${capabilities.joinToString()}"
+                } catch (e: Exception) { "Gagal memperbarui kemampuan: ${e.message}" }
+                runOnUiThread { status.text = message }
+            }
+        }
         button("Sinkronisasi perangkat: MULAI") {
             if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
             try { JarvisDeviceSyncService.start(this); status.text = "Sinkronisasi dimulai" }
