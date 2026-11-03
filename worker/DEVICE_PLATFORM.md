@@ -18,11 +18,11 @@ Configure Worker Secrets:
 - `DEVICE_ENROLLMENT_SECRET`: high-entropy bootstrap credential used only to create a JARVIS account. Never embed it in a public APK.
 - `DEVICE_TOKEN_SECRET`: high-entropy HMAC signing secret for account and device tokens.
 
-Existing deployments must have both KV bindings and both secrets configured. Account tokens are signed for one year; device tokens are signed for 30 days. Rotate `DEVICE_TOKEN_SECRET` to invalidate all issued tokens. Account tokens must be treated as passwords and shared only with devices belonging to the same owner.
+Existing deployments must have both KV bindings and both secrets configured. Google-linked account tokens are signed for one hour and refreshed from the active Supabase session before device-control operations; device tokens are signed for 30 days. Account tokens are bound locally to the Supabase user UUID, and signing out clears the local account token and stops the local sync service. Rotate `DEVICE_TOKEN_SECRET` to invalidate all issued tokens. Account tokens must be treated as passwords and shared only with devices belonging to the same owner.
 
 ## Account and device enrollment
 1. The Android app signs in with Google through Supabase Auth. It sends the short-lived Supabase access token to POST `/v1/accounts/google`.
-2. The Worker validates that token against the configured Supabase Auth `/auth/v1/user` endpoint and derives a stable JARVIS account ID from the verified Supabase user UUID. The response contains an account token; repeated sign-ins resolve to the same account.
+2. The Worker validates that token against the configured Supabase Auth `/auth/v1/user` endpoint and derives a stable JARVIS account ID from the verified Supabase user UUID. The response contains a one-hour account token; repeated sign-ins resolve to the same account. The Android app stores the token encrypted with the matching Supabase user UUID and refreshes it before sending control commands.
 3. The legacy POST `/v1/accounts/create` bootstrap-secret route remains available for controlled non-Google provisioning only.
 4. The Android app stores the account token encrypted with Android Keystore and enrolls each device with POST `/v1/devices/enroll`.
 5. The Worker assigns the account ID from the signed account token; it ignores any client-supplied account ownership. Each device stores its device-scoped token in Android Keystore.
