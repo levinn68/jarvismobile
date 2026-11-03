@@ -39,7 +39,9 @@
         <activity android:name=".device.DeviceSetupActivity" android:label="JARVIS Device Setup" android:exported="false" />
         <activity android:name=".device.PairingQrActivity" android:label="JARVIS Desktop Pairing" android:exported="false" />
         <activity android:name=".device.ScreenActionApprovalActivity" android:label="JARVIS Action Approval" android:exported="false" />
-        <activity android:name=".MainActivity" android:exported="true">
+        <activity android:name=".MainActivity" android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
