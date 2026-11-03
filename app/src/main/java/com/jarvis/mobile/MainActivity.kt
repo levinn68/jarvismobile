@@ -2159,6 +2159,10 @@ private fun JarvisScreen(
                 "files.list" to emptyMap()
             "baca layar", "baca isi layar", "apa yang tampil di layar", "ringkas layar", "lihat isi layar" ->
                 "screen.read" to emptyMap()
+            "daftar kontak", "lihat kontak", "cari kontak saya" ->
+                "contacts.list" to emptyMap()
+            "jadwal kalender", "agenda saya", "lihat kalender", "acara mendatang" ->
+                "calendar.list" to emptyMap()
             else -> {
                 val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
                 val launch = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
