@@ -13,9 +13,49 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
   }
 });
 
+const MAX_DEVICE_REQUEST_BYTES = 64 * 1024;
+
 async function readBody(request) {
-  try { return await request.json(); }
-  catch (_) { throw new Error("Request body must be valid JSON"); }
+  const declaredLength = Number(request.headers.get("Content-Length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_DEVICE_REQUEST_BYTES) {
+    const error = new Error("Request body is too large (maximum 65536 bytes)");
+    error.status = 413;
+    throw error;
+  }
+  if (!request.body) throw new Error("Request body must be valid JSON");
+
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_DEVICE_REQUEST_BYTES) {
+        await reader.cancel();
+        const error = new Error("Request body is too large (maximum 65536 bytes)");
+        error.status = 413;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error.status === 413) throw error;
+    throw new Error("Request body could not be read");
+  }
+
+  try {
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch (_) {
+    throw new Error("Request body must be valid JSON");
+  }
 }
 
 const bearer = request => { const value = request.headers.get("Authorization") || ""; return value.slice(0, 7).toLowerCase() === "bearer " ? value.slice(7).trim() : value.trim(); };
@@ -56,7 +96,7 @@ export async function handleDeviceRequest(request, env, url) {
         expiresIn: 31536000
       }, 201);
     } catch (error) {
-      return json({ ok: false, error: error.message }, 400);
+      return json({ ok: false, error: error.message }, error.status || 400);
     }
   }
 
@@ -72,7 +112,7 @@ export async function handleDeviceRequest(request, env, url) {
       const token = await issueDeviceToken(device.deviceId, env.DEVICE_TOKEN_SECRET);
       return json({ ok: true, device: publicDevice(device), token, tokenType: "Bearer" }, 201);
     } catch (error) {
-      return json({ ok: false, error: error.message }, 400);
+      return json({ ok: false, error: error.message }, error.status || 400);
     }
   }
 
@@ -96,7 +136,7 @@ export async function handleDeviceRequest(request, env, url) {
         const updated = await saveDevice(env.DEVICE_REGISTRY, { ...device, capabilities: body.capabilities });
         return json({ ok: true, device: publicDevice(updated) });
       } catch (error) {
-        return json({ ok: false, error: error.message }, 400);
+        return json({ ok: false, error: error.message }, error.status || 400);
       }
     }
     return json({ ok: true, device: publicDevice(device) });
@@ -138,7 +178,7 @@ export async function handleDeviceRequest(request, env, url) {
       });
       return json(result, result.ok ? 200 : 403);
     } catch (error) {
-      return json({ ok: false, error: error.message }, 400);
+      return json({ ok: false, error: error.message }, error.status || 400);
     }
   }
 
@@ -173,7 +213,7 @@ export async function handleDeviceRequest(request, env, url) {
       });
       return json(result, result.ok ? 200 : 404);
     } catch (error) {
-      return json({ ok: false, error: error.message }, 400);
+      return json({ ok: false, error: error.message }, error.status || 400);
     }
   }
 
