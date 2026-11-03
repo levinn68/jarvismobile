@@ -47,6 +47,12 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     private fun token() = vault.token()
     fun clearCredentials() { vault.clear() }
 
+    fun updateCapabilities(capabilities: List<String>): JSONObject {
+        require(capabilities.size <= 40)
+        val body = JSONObject().put("capabilities", JSONArray(capabilities.distinct()))
+        return request("PUT", "/v1/devices/${deviceId()}/capabilities", body)
+    }
+
     fun heartbeat(): JSONObject = request("POST", "/v1/devices/${deviceId()}/heartbeat")
     fun pollCommands(): JSONArray = request("GET", "/v1/device/commands?deviceId=${deviceId()}").optJSONArray("commands") ?: JSONArray()
     fun acknowledge(commandId: String, result: JSONObject): JSONObject =
