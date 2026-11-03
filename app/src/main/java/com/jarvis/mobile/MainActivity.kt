@@ -256,6 +256,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var geminiSpeechInProgress = false
     @Volatile private var recognitionActive = false
     @Volatile private var recognitionStartPending = false
+    @Volatile private var suppressRecognizerCallbacks = false
     private var speechPlayer: MediaPlayer? = null
     private var voiceModeEnabled = false
     private var recognitionLanguage = "id-ID"
@@ -435,6 +436,7 @@ class MainActivity : ComponentActivity() {
         geminiSpeechInProgress = true
         recognitionActive = false
         recognitionStartPending = false
+        suppressRecognizerCallbacks = true
         recognizer?.cancel()
         clapDetector.reset()
         tts?.stop()
@@ -546,7 +548,7 @@ class MainActivity : ComponentActivity() {
                 override fun onError(error: Int) {
                     recognitionActive = false
                     recognitionStartPending = false
-                    if (geminiSpeechInProgress || clapActivationInProgress) return
+                    if (suppressRecognizerCallbacks || geminiSpeechInProgress || clapActivationInProgress) return
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
                         return
@@ -561,6 +563,7 @@ class MainActivity : ComponentActivity() {
                 override fun onResults(results: Bundle?) {
                     recognitionActive = false
                     recognitionStartPending = false
+                    if (suppressRecognizerCallbacks || geminiSpeechInProgress) return
                     val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
                     val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
                     val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
@@ -589,6 +592,7 @@ class MainActivity : ComponentActivity() {
         handler.removeCallbacks(listeningRestart)
         recognitionActive = false
         recognitionStartPending = false
+        suppressRecognizerCallbacks = true
         if (!voiceModeEnabled || geminiSpeechInProgress || isFinishing || isDestroyed) return
         voiceStatus.value = "RECONNECTING VOICE CORE"
         runCatching {
@@ -596,6 +600,7 @@ class MainActivity : ComponentActivity() {
             recognizer?.destroy()
             recognizer = null
             createSpeechRecognizer()
+            suppressRecognizerCallbacks = false
         }.onFailure {
             voiceStatus.value = "VOICE CORE RESTARTING"
         }
@@ -628,6 +633,7 @@ class MainActivity : ComponentActivity() {
             }
             speech.startListening(intent)
         } catch (_: Exception) {
+            suppressRecognizerCallbacks = false
             recognitionStartPending = false
             recognitionActive = false
             voiceStatus.value = "VOICE CORE RESTARTING"
@@ -1894,25 +1900,18 @@ private fun JarvisScreen(
     }
 
     fun buildSpokenReply(request: String, answer: String, products: List<VisualProduct>): String {
+        // The backend answer already carries JARVIS's personality and context.
+        // Do not prepend repetitive canned acknowledgements to every spoken result.
+        if (products.isEmpty()) return answer.trim().take(1800)
         val english = detectEnglishContent(request)
-        if (products.isNotEmpty()) {
-            val cheapest = products.minByOrNull { it.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE }
-            val lead = if (english) listOf("Certainly, Sir. I found a few options.", "I checked the available listings, Boss.", "Here are the closest matches I found.").random()
-                else listOf("Baik, Sir. Saya sudah menemukan beberapa pilihan.", "Sudah saya periksa, Boss. Ini hasil terbaiknya.", "Saya menemukan beberapa opsi yang sesuai.").random()
-            val detail = cheapest?.let { if (english) " The most affordable is ${it.title}, priced at ${it.price} from ${it.source}." else " Yang paling terjangkau adalah ${it.title}, seharga ${it.price} dari ${it.source}." }.orEmpty()
-            return (lead + detail).take(900)
-        }
-        val q = request.lowercase(Locale.ROOT)
-        val lead = if (english) when {
-            Regex("\\b(open|launch|run|start)\\b").containsMatchIn(q) -> listOf("Right away, Sir.", "Certainly, Boss.").random()
-            Regex("\\b(find|search|look for)\\b").containsMatchIn(q) -> listOf("Certainly, Sir. I have looked into it.", "I checked that for you, Boss.").random()
-            else -> listOf("Certainly, Sir. Here is what I found.", "Of course, Boss.").random()
-        } else when {
-            Regex("\\b(buka|bukakan|jalankan)\\b").containsMatchIn(q) -> listOf("Baik, Sir. Saya jalankan.", "Siap, Boss.").random()
-            Regex("\\b(cari|carikan|harga|rekomendasi)\\b").containsMatchIn(q) -> listOf("Baik, Sir. Saya sudah menelusurinya.", "Sudah saya periksa, Boss.").random()
-            else -> listOf("Tentu, Sir. Berikut hasilnya.", "Baik, Boss.").random()
-        }
-        return if (answer.isBlank()) lead else "$lead $answer".take(1800)
+        val cheapest = products.minByOrNull { it.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE }
+        val lead = if (english) "Sir, I found ${products.size} relevant options." else "Sir, saya menemukan ${products.size} pilihan yang relevan."
+        val detail = cheapest?.let {
+            if (english) " The lowest listed price is ${it.price} for ${it.title}, from ${it.source}."
+            else " Harga terendah yang tercantum adalah ${it.price} untuk ${it.title}, dari ${it.source}."
+        }.orEmpty()
+        val closing = if (english) " I have displayed the available options on your screen." else " Semua pilihannya sudah saya tampilkan di layar."
+        return (lead + detail + closing).take(900)
     }
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
