@@ -37,6 +37,7 @@
         </service>
         <service android:name=".JarvisVoiceService" android:exported="false" android:foregroundServiceType="microphone" android:stopWithTask="false" />
         <activity android:name=".device.DeviceSetupActivity" android:label="JARVIS Device Setup" android:exported="false" />
+        <activity android:name=".device.ScreenActionApprovalActivity" android:label="JARVIS Action Approval" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
