@@ -96,7 +96,13 @@ export function normalizeDevice(input) {
   };
 }
 
-export function validateCommand(input) {
+export function validateCommand(input, platform = "android") {
+  if (!SUPPORTED_PLATFORMS.has(platform)) {
+    throw new Error("Unsupported device platform");
+  }
+  if (platform !== "android") {
+    throw new Error("No command connector is registered for platform: " + platform);
+  }
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Command must be a JSON object");
   }
