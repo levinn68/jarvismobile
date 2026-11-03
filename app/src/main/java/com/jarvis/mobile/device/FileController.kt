@@ -14,7 +14,7 @@ class FileController(private val context: Context) {
     companion object { const val PREFS = "jarvis_device_secure"; const val TREE_URI = "selected_tree_uri" }
 
     fun hasSelectedFolder(): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null) != null
-\n    fun saveSelectedFolder(uri: Uri) {
+    fun saveSelectedFolder(uri: Uri) {
         context.contentResolver.takePersistableUriPermission(uri,
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(TREE_URI, uri.toString()).apply()
