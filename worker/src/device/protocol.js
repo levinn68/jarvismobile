@@ -15,7 +15,7 @@ function validateParams(action,raw) {
  const params={};
  if(action==="files.search"){const query=typeof raw.query==="string"?raw.query.trim():"";if(!query||query.length>200)throw new Error("files.search requires query (1-200 characters)");params.query=query;}
  else if(action==="files.read"){const documentId=typeof raw.documentId==="string"?raw.documentId.trim():"";if(!documentId||documentId.length>1024)throw new Error("files.read requires a valid documentId");params.documentId=documentId;}
- else if(action==="apps.launch"){const packageName=typeof raw.packageName==="string"?raw.packageName.trim():"";if(!/^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName)||packageName.length>200)throw new Error("apps.launch requires a valid Android packageName");params.packageName=packageName;}
+ else if(action==="apps.launch"){const packageName=typeof raw.packageName==="string"?raw.packageName.trim():"";if(!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName)||packageName.length>200)throw new Error("apps.launch requires a valid Android packageName");params.packageName=packageName;}
  return params;
 }
 export function normalizeDevice(input) {
