@@ -51,19 +51,19 @@ The Worker includes a device control plane under `worker/src/device/` for Androi
 
 ### Android device connector
 
-The Android app includes a user-started foreground sync service and a permission-gated connector. Supported chat/voice actions include:
-- Device status and battery information.
-- List installed apps and launch a uniquely matched app by visible name or package name.
-- List, search and read text files inside a folder explicitly selected through Android's Storage Access Framework.
-- Read recent notifications after the user enables Notification Access.
-- Read visible screen text only when explicitly requested and only after the user enables JARVIS Accessibility Service. The service does not monitor or retain screen text in the background.
-- Read contacts and a bounded 30-day calendar window only after the user grants the corresponding Android runtime permissions.
+The Android app includes a user-started foreground sync service and a permission-gated connector. Supported actions include device/battery status, installed-app discovery and launch, approved SAF folder listing/search/text reads, notification listing after Notification Access, on-demand screen-text reads after Accessibility consent, and contacts/calendar reads after runtime permission grants. Screen content is not collected in the background.
 
-Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the current Google account and pair the device. Pair each Android device with the same Google account, configure the desired permissions on each target, update capabilities, and start Device Sync on the target device. See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for setup, API routes, Cloudflare KV bindings, secrets and security boundaries.
+Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the Google account and pair each Android device. Configure permissions on each target, refresh its capabilities, and start Device Sync.
 
-Google sign-in also requires a Google OAuth **Web Client ID** configured as the GitHub Actions secret `GOOGLE_WEB_CLIENT_ID`, plus the matching Google provider Client ID/Client Secret in Supabase Auth. Android CI intentionally fails early when the Web Client ID secret is absent; a successful Gradle build alone is not proof that OAuth is configured.
+### Windows, macOS and Linux desktop connectors
 
-Android OS permissions remain authoritative. Camera capture, screen taps/typing, arbitrary shell, unrestricted filesystem access, silent microphone/camera access, and high-risk system settings changes are not exposed. Windows/macOS/iOS still require separate native companion agents; Worker platform identifiers alone do not constitute working connectors. The deployment workflow runs Worker protocol/security tests before deploying.
+Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery/launch, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses a short-lived setup flow and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
+
+See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for pairing, setup, API routes, CI and security boundaries. iOS/iPadOS, Wear OS, web and IoT remain registry-only; native command agents for those platforms are not included.
+
+Google sign-in requires a Google OAuth **Web Client ID** in GitHub Actions and the matching Client ID/Client Secret in Supabase Auth. These secrets are intentionally deferred; the debug build workflow can compile without them, but Google login will not work until configured.
+
+Android OS permissions remain authoritative. No arbitrary shell, remote code execution, unrestricted filesystem access, silent microphone/camera capture, screen taps/typing or high-risk system settings changes are exposed. The deployment workflow runs Worker protocol/security tests before deploying.
 
 
 ### Modular backend modules
