@@ -48,6 +48,8 @@ Only these actions are accepted by the backend and Android connector:
 - `system.status`
 - `notifications.list`
 - `screen.read` (requires the user to explicitly enable JARVIS Accessibility Service in Android Settings; reads visible text only and does not tap or type)
+- `contacts.list` (requires Android Contacts runtime permission)
+- `calendar.list` (requires Android Calendar runtime permission; reads a bounded 30-day window)
 - `files.list`
 - `files.search` (query limited to 200 characters)
 - `files.read` (SAF document ID limited to 1024 characters; text-only content capped at 64 KB)
