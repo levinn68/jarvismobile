@@ -24,7 +24,7 @@ function base64UrlEncode(value) {
   return btoa(value).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-test("device router rejects request bodies larger than 64 KiB", async () => {
+test("device router rejects request bodies larger than 128 KiB", async () => {
   const accountId = "acct-oversize-test-123";
   const accountToken = await issueAccountToken(accountId, secret);
   const env = {
@@ -45,7 +45,7 @@ test("device router rejects request bodies larger than 64 KiB", async () => {
       "Content-Type": "application/json",
       "Content-Length": String(64 * 1024 + 1)
     },
-    body: JSON.stringify({ deviceId: "android-oversize-01", padding: "x".repeat(64 * 1024) })
+    body: JSON.stringify({ deviceId: "android-oversize-01", padding: "x".repeat(128 * 1024) })
   });
   const response = await handleDeviceRequest(request, env, new URL(request.url));
   assert.equal(response.status, 413);
