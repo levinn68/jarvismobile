@@ -4,6 +4,7 @@ import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
 import { authorizeCapability } from "../src/device/policy.js";
 import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand, getDeviceCommand } from "../src/device/command-service.js";
 import { handleDeviceRequest } from "../src/device/router.js";
+import { issueAccountToken, verifyAccountToken, issueDeviceToken, verifyDeviceToken } from "../src/device/auth.js";
 
 function memoryKv() {
   const store = new Map();
@@ -119,4 +120,23 @@ test("Google-linked account enrollment rejects invalid Supabase sessions", async
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("HMAC account and device tokens round-trip through base64url and scope checks", async () => {
+  const secret = "a-long-enough-test-signing-secret";
+  const accountToken = await issueAccountToken("acct-123456789012", secret);
+  const accountRequest = new Request("https://worker.test", {
+    headers: { Authorization: "Bearer " + accountToken }
+  });
+  const accountClaims = await verifyAccountToken(accountRequest, secret);
+  assert.equal(accountClaims.sub, "acct-123456789012");
+  assert.equal(accountClaims.scope, "account");
+
+  const deviceToken = await issueDeviceToken("android-12345678", secret);
+  const deviceRequest = new Request("https://worker.test", {
+    headers: { Authorization: "Bearer " + deviceToken }
+  });
+  assert.equal((await verifyDeviceToken(deviceRequest, secret, "android-12345678")).scope, "device");
+  assert.equal(await verifyDeviceToken(deviceRequest, secret, "android-otherdevice"), null);
 });
