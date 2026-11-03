@@ -5,7 +5,7 @@ export const SUPPORTED_PLATFORMS = new Set([
 ]);
 
 export const CAPABILITIES = new Set([
-  "files.read", "files.write", "apps.list", "apps.launch", "screen.read",
+  "files.read", "files.write", "apps.list", "apps.launch", "screen.read", "screen.control",
   "camera.capture", "media.read", "notifications.read", "notifications.manage",
   "system.read", "system.settings", "calendar.read", "contacts.read",
   "location.read", "bluetooth.manage", "device.pair"
@@ -13,7 +13,7 @@ export const CAPABILITIES = new Set([
 
 export const SENSITIVE_CAPABILITIES = new Set([
   "files.write", "notifications.manage", "system.settings",
-  "location.read", "camera.capture", "bluetooth.manage"
+  "location.read", "camera.capture", "bluetooth.manage", "screen.control"
 ]);
 
 const ANDROID_ACTIONS = Object.freeze({
@@ -24,6 +24,8 @@ const ANDROID_ACTIONS = Object.freeze({
   "apps.launch": { capability: "apps.launch", params: ["packageName"] },
   "apps.launch_label": { capability: "apps.launch", params: ["appName"] },
   "screen.read": { capability: "screen.read", params: [] },
+  "screen.tap": { capability: "screen.control", params: ["x", "y"] },
+  "screen.type": { capability: "screen.control", params: ["text"] },
   "contacts.list": { capability: "contacts.read", params: [] },
   "calendar.list": { capability: "calendar.read", params: [] },
   "system.status": { capability: "system.read", params: [] },
@@ -74,7 +76,7 @@ function validateParams(action, raw, schema, platform) {
     } else if (action === "apps.launch") {
       const packageName = typeof raw.packageName === "string" ? raw.packageName.trim() : "";
       if (
-        !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
+        !/^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
         packageName.length > 200
       ) {
         throw new Error("apps.launch requires a valid Android packageName");
@@ -82,6 +84,19 @@ function validateParams(action, raw, schema, platform) {
       params.packageName = packageName;
     } else if (action === "files.search") {
       params.query = raw.query.trim();
+    } else if (action === "screen.tap") {
+      if (typeof raw.x !== "number" || !Number.isFinite(raw.x) || raw.x < 0 || raw.x > 1 ||
+          typeof raw.y !== "number" || !Number.isFinite(raw.y) || raw.y < 0 || raw.y > 1) {
+        throw new Error("screen.tap requires normalized x and y coordinates from 0 to 1");
+      }
+      params.x = raw.x;
+      params.y = raw.y;
+    } else if (action === "screen.type") {
+      const value = typeof raw.text === "string" ? raw.text : "";
+      if (!value.trim() || value.length > 500) {
+        throw new Error("screen.type requires text (1-500 characters)");
+      }
+      params.text = value;
     }
     return params;
   }
@@ -186,6 +201,6 @@ export function validateCommand(input, platform = "android") {
     capability: schema.capability,
     params: validateParams(action, input.params, schema, platform),
     createdAt: new Date().toISOString(),
-    requiresConfirmation: false
+    requiresConfirmation: SENSITIVE_CAPABILITIES.has(schema.capability)
   };
 }
