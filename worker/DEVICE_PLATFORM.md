@@ -1,67 +1,86 @@
 # JARVIS Universal Device Platform
 
-The Cloudflare Worker is the control plane. A native connector on each device performs local operations through platform APIs and permissions.
+Cloudflare Worker is the account and command control plane. Each paired device runs a native connector that performs local operations through platform APIs and user-approved permissions.
+
+## Connector coverage
+
+| Platform | Connector | Supported operations |
+| --- | --- | --- |
+| Android | Kotlin app connector | Status, installed-app listing/launch, user-selected SAF file listing/search/text reads, notifications, on-demand visible screen text, contacts and calendar (permission-gated) |
+| Windows | Node.js desktop connector | Status, Start Menu app listing/launch, approved-folder listing/search/text reads |
+| macOS | Node.js desktop connector | Status, Applications listing/launch, approved-folder listing/search/text reads |
+| Linux | Node.js desktop connector | Status, .desktop app listing/launch, approved-folder listing/search/text reads |
+| iOS/iPadOS, Wear OS, web, IoT | Registry vocabulary only | No native command connector shipped |
 
 ## Modules
-- `src/device/protocol.js`: platform/capability vocabulary and strict Android command validation.
+
+- `src/device/protocol.js`: strict platform-specific command schemas.
 - `src/device/auth.js`: HMAC-signed, expiring account and device bearer tokens.
-- `src/device/policy.js`: per-device capability authorization and confirmation gates.
+- `src/device/policy.js`: capability authorization and confirmation gates.
 - `src/device/registry.js`: account ownership, device registration, account indexes and heartbeats.
-- `src/device/router.js`: account creation, enrollment, account device listing, capabilities and command queue.
+- `src/device/command-service.js`: typed command queue and acknowledgement/status lookup.
+- `src/device/router.js`: account enrollment, pairing, device listing and command routes.
+- `../desktop/windows/`: Windows companion agent and path-boundary tests.
+- `../desktop/unix/`: macOS/Linux companion agent and path-boundary tests.
 
-## Cloudflare setup
-Create KV namespaces and bind them:
-- `DEVICE_REGISTRY`: account and device metadata plus account-to-device indexes.
-- `DEVICE_COMMANDS`: command queue with five-minute TTL.
+## Android setup
 
-Configure Worker Secrets:
-- `DEVICE_ENROLLMENT_SECRET`: high-entropy bootstrap credential used only to create a JARVIS account. Never embed it in a public APK.
-- `DEVICE_TOKEN_SECRET`: high-entropy HMAC signing secret for account and device tokens.
+1. Sign in through Google/Supabase in the Android app.
+2. Open Settings → **Akun Google & Akses Perangkat**.
+3. Pair each Android device using the same Google account.
+4. Select an approved folder through Android's Storage Access Framework.
+5. Enable Notification Access, Accessibility, Contacts or Calendar only when needed.
+6. Refresh device capabilities and start the user-visible foreground Device Sync service.
 
-Existing deployments must have both KV bindings and both secrets configured. Google-linked account tokens are signed for one hour and refreshed from the active Supabase session before device-control operations; device tokens are signed for 30 days. Account tokens are bound locally to the Supabase user UUID, and signing out clears the local account token and stops the local sync service. Rotate `DEVICE_TOKEN_SECRET` to invalidate all issued tokens. Account tokens must be treated as passwords and shared only with devices belonging to the same owner.
+Android capabilities are limited to what the operating system and user permissions allow. Screen text is read only after an explicit request; the Accessibility Service does not collect or retain screen events in the background.
 
-## Account and device enrollment
-1. The Android app signs in with Google through Supabase Auth. It sends the short-lived Supabase access token to POST `/v1/accounts/google`.
-2. The Worker validates that token against the configured Supabase Auth `/auth/v1/user` endpoint and derives a stable JARVIS account ID from the verified Supabase user UUID. The response contains a one-hour account token; repeated sign-ins resolve to the same account. The Android app stores the token encrypted with the matching Supabase user UUID and refreshes it before sending control commands.
-3. The legacy POST `/v1/accounts/create` bootstrap-secret route remains available for controlled non-Google provisioning only.
-4. The Android app stores the account token encrypted with Android Keystore and enrolls each device with POST `/v1/devices/enroll`.
-5. The Worker assigns the account ID from the signed account token; it ignores any client-supplied account ownership. Each device stores its device-scoped token in Android Keystore.
-6. GET `/v1/devices` with the account token returns devices owned by that Google account. Account tokens cannot poll or acknowledge device command queues.
+## Desktop setup
 
-## Routes
-- POST `/v1/accounts/google` — validate a Supabase Google session and issue/reuse its account-scoped JARVIS token.
-- POST `/v1/accounts/create` — legacy account creation using the bootstrap secret.
-- POST `/v1/devices/enroll` — enroll a device using its account token.
-- GET `/v1/devices` — list devices owned by the account token.
-- GET `/v1/devices/:deviceId` — read a device record using that device's token.
-- POST `/v1/devices/:deviceId/heartbeat` — update last-seen using that device's token.
-- PUT `/v1/devices/:deviceId/capabilities` — update that device's declared capabilities.
-- POST `/v1/device/command` — enqueue a validated command; account tokens may target only devices owned by the same account.
-- GET `/v1/device/commands?deviceId=...` — device-scoped connector polls its own queue.
-- POST `/v1/device/commands/ack` — device-scoped connector acknowledges its own command.
-- GET `/v1/device/command/status?deviceId=...&commandId=...` — account-scoped status lookup for a command sent to one of the owner's devices.
+### Windows
 
-## Android command allowlist
-Only these actions are accepted by the backend and Android connector:
-- `apps.list`
-- `apps.launch` (requires a syntactically valid Android package name)
-- `apps.launch_label` (resolves a unique installed app by its visible name; ambiguous matches are returned rather than launching the wrong app)
+Run the connector from `desktop/windows` using Node.js 22:
+
+- Pair: `npm run pair`
+- Start: `npm start`
+- Configure `JARVIS_ACCOUNT_TOKEN` only during pairing.
+- Configure `JARVIS_DEVICE_ID` and `JARVIS_DEVICE_TOKEN` for the running agent.
+- Configure `JARVIS_ALLOWED_DIRS` with one or more approved folder paths separated by the Windows path delimiter.
+
+### macOS and Linux
+
+Run the shared connector from `desktop/unix` using Node.js 22:
+
+- Pair: `npm run pair`
+- Start: `npm start`
+- Configure the same device/account variables as Windows.
+- Set `JARVIS_ALLOWED_DIRS` to the exact directories the user approves.
+
+The desktop agent prints the device token once during pairing. Store it in the operating system's credential manager or another local secret manager; do not paste it into source files, commit it, or share it in chat. The current connector reads its runtime token from environment variables.
+
+## Desktop command allowlist
+
 - `system.status`
-- `notifications.list`
-- `screen.read` (requires the user to explicitly enable JARVIS Accessibility Service in Android Settings; reads visible text only and does not tap or type)
-- `contacts.list` (requires Android Contacts runtime permission)
-- `calendar.list` (requires Android Calendar runtime permission; reads a bounded 30-day window)
+- `apps.list`
+- `apps.launch` using an app ID returned by `apps.list`
 - `files.list`
-- `files.search` (query limited to 200 characters)
-- `files.read` (SAF document ID limited to 1024 characters; text-only content capped at 64 KB)
+- `files.search`
+- `files.read` (text-only content capped at 64 KB)
 
-Unknown actions and unknown parameters are rejected before a command is queued. Commands are not arbitrary shell execution.
+Desktop file access is restricted to `JARVIS_ALLOWED_DIRS`. Path traversal and resolved-path escapes are rejected. Windows launches Start Menu shortcuts through a fixed PowerShell invocation with the target passed as an environment variable. macOS and Linux use fixed OS launcher commands with argument arrays. Arbitrary shell commands and remote script execution are not exposed.
 
-## Safety and current limitations
-The backend never executes shell commands, arbitrary code, or direct filesystem operations. It checks declared capabilities and queues typed requests. A queued command is not proof of execution.
+## Account and command security
 
-Android SAF folder selection, Notification Access, and Accessibility Service remain explicit user-granted permissions. The optional screen reader does not monitor or retain screen events. It traverses visible text only when an explicit `screen.read` request arrives; it cannot tap, type, or change settings. The current capability update endpoint accepts self-reported capabilities from the paired device; this is not hardware attestation and must not be treated as proof that a permission is genuine.
+Google sign-in validates the current Supabase session at `POST /v1/accounts/google` and derives a stable JARVIS account ID from the verified Supabase user UUID. The account token is short-lived (one hour) and is refreshed from the active Supabase session. Device tokens are scoped to one device. Device enrollment assigns account ownership from the signed account token, not client-supplied metadata.
 
-Sensitive operations remain blocked until a proper in-app confirmation flow is implemented. Account ownership, account-scoped listing/enrollment, encrypted Android account-token storage, typed command dispatch, and command acknowledgement lookup are implemented. Account-token revocation, device removal, multi-user roles, QR-based pairing, native Windows/macOS/iOS agents, and a broad device-control permission/confirmation console are not implemented yet.
+The Worker uses these KV bindings:
 
-Android/iOS sandboxing and consent remain in force. File, screen, camera, microphone, contacts, notification, location and app access require platform-specific permissions or supported APIs.
+- `DEVICE_REGISTRY`: account and device metadata plus account-to-device indexes.
+- `DEVICE_COMMANDS`: short-lived typed command queue.
+
+The existing Worker secrets `DEVICE_TOKEN_SECRET`, `DEVICE_ENROLLMENT_SECRET` and `SUPABASE_ANON_KEY` are configured outside the repository. OAuth secrets are intentionally deferred and are not needed to run the Worker protocol tests or compile the debug APK.
+
+A queued command is not proof of execution. Capability declarations are reported by the paired connector and are not hardware attestation. Account-token revocation, device removal, multi-user roles and QR-based pairing remain future work.
+
+## Platform and privacy boundaries
+
+No connector exposes arbitrary shell execution, remote code execution, unrestricted filesystem access, silent microphone/camera capture or hidden screen interaction. Android screen taps/typing and settings mutation are not implemented. Camera capture requires a dedicated visible foreground confirmation flow and is not yet available. iOS/iPadOS, Wear OS, web and IoT are not native connectors in this release.
