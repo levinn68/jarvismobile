@@ -86,8 +86,15 @@ async function readJsonBody(request, maxBytes = 128 * 1024) {
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch (_) {
+    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      const error = new Error("Request body must be a JSON object");
+      error.status = 400;
+      throw error;
+    }
+    return parsed;
+  } catch (cause) {
+    if (cause?.status === 400) throw cause;
     const error = new Error("Request body must be valid JSON");
     error.status = 400;
     throw error;
