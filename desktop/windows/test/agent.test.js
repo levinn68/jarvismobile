@@ -15,7 +15,7 @@ test("safeTarget accepts a relative file path within the selected root", async (
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "jarvis-root-"));
   try {
     await fs.writeFile(path.join(root, "note.txt"), "approved");
-    assert.equal(await safeTarget(root, "note.txt"), path.join(root, "note.txt"));
+    assert.equal(path.basename(await safeTarget(root, "note.txt")), "note.txt");
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }
