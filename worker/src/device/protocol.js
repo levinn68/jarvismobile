@@ -26,13 +26,21 @@ const ANDROID_ACTIONS = Object.freeze({
   "notifications.list": { capability: "notifications.read", params: [] }
 });
 
-function validateParams(action, raw) {
+const WINDOWS_ACTIONS = Object.freeze({
+  "files.list": { capability: "files.read", params: ["rootIndex", "relativePath"] },
+  "files.search": { capability: "files.read", params: ["query", "rootIndex"] },
+  "files.read": { capability: "files.read", params: ["rootIndex", "relativePath"] },
+  "apps.list": { capability: "apps.list", params: [] },
+  "apps.launch": { capability: "apps.launch", params: ["appId"] },
+  "system.status": { capability: "system.read", params: [] }
+});
+
+function validateParams(action, raw, schema, platform) {
   if (raw == null) raw = {};
   if (typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("Command params must be a JSON object");
   }
 
-  const schema = ANDROID_ACTIONS[action];
   const unknown = Object.keys(raw).filter((key) => !schema.params.includes(key));
   if (unknown.length) {
     throw new Error("Unsupported parameter for " + action + ": " + unknown[0]);
@@ -45,22 +53,66 @@ function validateParams(action, raw) {
       throw new Error("files.search requires query (1-200 characters)");
     }
     params.query = query;
-  } else if (action === "files.read") {
-    const documentId = typeof raw.documentId === "string" ? raw.documentId.trim() : "";
-    if (!documentId || documentId.length > 1024) {
-      throw new Error("files.read requires a valid documentId");
-    }
-    params.documentId = documentId;
-  } else if (action === "apps.launch") {
-    const packageName = typeof raw.packageName === "string" ? raw.packageName.trim() : "";
-    if (
-      !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
-      packageName.length > 200
-    ) {
-      throw new Error("apps.launch requires a valid Android packageName");
-    }
-    params.packageName = packageName;
   }
+
+  if (platform === "android") {
+    if (action === "files.read") {
+      const documentId = typeof raw.documentId === "string" ? raw.documentId.trim() : "";
+      if (!documentId || documentId.length > 1024) {
+        throw new Error("files.read requires a valid documentId");
+      }
+      params.documentId = documentId;
+    } else if (action === "apps.launch") {
+      const packageName = typeof raw.packageName === "string" ? raw.packageName.trim() : "";
+      if (
+        !/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) ||
+        packageName.length > 200
+      ) {
+        throw new Error("apps.launch requires a valid Android packageName");
+      }
+      params.packageName = packageName;
+    } else if (action === "files.search") {
+      params.query = raw.query.trim();
+    }
+    return params;
+  }
+
+  if (platform === "windows") {
+    if (action === "apps.launch") {
+      const appId = typeof raw.appId === "string" ? raw.appId.trim() : "";
+      if (!/^[A-Za-z0-9_-]{1,512}$/.test(appId)) {
+        throw new Error("apps.launch requires a valid appId returned by apps.list");
+      }
+      params.appId = appId;
+    }
+    if (action.startsWith("files.")) {
+      if (raw.rootIndex !== undefined) {
+        if (!Number.isInteger(raw.rootIndex) || raw.rootIndex < 0 || raw.rootIndex > 19) {
+          throw new Error("rootIndex must be an integer from 0 to 19");
+        }
+        params.rootIndex = raw.rootIndex;
+      }
+      if (action !== "files.search") {
+        const relativePath = raw.relativePath === undefined ? "" :
+          (typeof raw.relativePath === "string" ? raw.relativePath : null);
+        if (relativePath === null || relativePath.length > 1024) {
+          throw new Error(action + " requires a valid relativePath");
+        }
+        if (action === "files.read" && (!relativePath || !Number.isInteger(raw.rootIndex))) {
+          throw new Error("files.read requires rootIndex and relativePath");
+        }
+        if (relativePath) params.relativePath = relativePath;
+      }
+      if (action === "files.search" && raw.rootIndex !== undefined) {
+        params.rootIndex = raw.rootIndex;
+      }
+    }
+    if (action === "files.search" && raw.rootIndex === undefined) {
+      // Search all explicitly configured roots.
+    }
+    return params;
+  }
+
   return params;
 }
 
@@ -100,21 +152,23 @@ export function validateCommand(input, platform = "android") {
   if (!SUPPORTED_PLATFORMS.has(platform)) {
     throw new Error("Unsupported device platform");
   }
-  if (platform !== "android") {
+  const actions = platform === "android" ? ANDROID_ACTIONS :
+    platform === "windows" ? WINDOWS_ACTIONS : null;
+  if (!actions) {
     throw new Error("No command connector is registered for platform: " + platform);
   }
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new Error("Command must be a JSON object");
   }
   const action = typeof input.action === "string" ? input.action : "";
-  const schema = ANDROID_ACTIONS[action];
-  if (!schema) throw new Error("Unsupported Android device action");
+  const schema = actions[action];
+  if (!schema) throw new Error("Unsupported " + platform + " device action");
 
   return {
     commandId: crypto.randomUUID(),
     action,
     capability: schema.capability,
-    params: validateParams(action, input.params),
+    params: validateParams(action, input.params, schema, platform),
     createdAt: new Date().toISOString(),
     requiresConfirmation: false
   };
