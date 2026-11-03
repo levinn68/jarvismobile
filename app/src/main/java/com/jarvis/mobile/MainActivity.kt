@@ -2,6 +2,7 @@ package com.jarvis.mobile
 
 import com.jarvis.mobile.device.JarvisDeviceClient
 import com.jarvis.mobile.device.JarvisDeviceSyncService
+import com.jarvis.mobile.device.DeviceSetupActivity
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -109,6 +110,8 @@ import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 import com.jarvis.mobile.account.SupabaseJarvisClient
 import com.jarvis.mobile.account.SavedConversation
@@ -264,6 +267,24 @@ class MainActivity : ComponentActivity() {
                 refreshHistory()
             } catch (error: Exception) {
                 accountStatus.value = error.message ?: "GOOGLE SIGN-IN GAGAL"
+            } finally { accountBusy.value = false }
+        }
+    }
+
+    private fun openDeviceSetup() {
+        if (!supabaseClient.hasSession()) {
+            accountStatus.value = "MASUK DENGAN GOOGLE SEBELUM MENGHUBUNGKAN PERANGKAT"
+            return
+        }
+        if (accountBusy.value) return
+        accountBusy.value = true
+        lifecycleScope.launch {
+            try {
+                val accessToken = withContext(Dispatchers.IO) { supabaseClient.currentAccessToken() }
+                startActivity(Intent(this@MainActivity, DeviceSetupActivity::class.java)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, accessToken))
+            } catch (error: Exception) {
+                accountStatus.value = "GAGAL MENYIAPKAN AKSES PERANGKAT: " + (error.message ?: "error")
             } finally { accountBusy.value = false }
         }
     }
@@ -442,6 +463,7 @@ class MainActivity : ComponentActivity() {
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
+                onOpenDeviceSetup = { openDeviceSetup() },
                 onDeviceCommand = { action, params, callback ->
                     Thread {
                         val message = try {
@@ -2000,6 +2022,7 @@ private fun JarvisScreen(
     onSearch: (String) -> Unit,
     onSaveGeminiKey: (String) -> Unit,
     onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
+    onOpenDeviceSetup: () -> Unit,
     onDeviceCommand: (String, Map<String, String>, (String) -> Unit) -> Unit,
     onOpenApp: (String) -> Boolean,
     accountEmail: String?,
@@ -3362,14 +3385,24 @@ private fun JarvisScreen(
                             }
                         },
                         text = {
-                            OutlinedTextField(
-                                value = keyDraft,
-                                onValueChange = { keyDraft = it },
-                                singleLine = true,
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                placeholder = { Text("Kunci API Gemini", color = TextMuted) },
-                                label = { Text("API Key Override") }
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = keyDraft,
+                                    onValueChange = { keyDraft = it },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    placeholder = { Text("Kunci API Gemini", color = TextMuted) },
+                                    label = { Text("API Key Override") }
+                                )
+                                OutlinedButton(
+                                    onClick = { settings = false; onOpenDeviceSetup() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Devices, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("AKUN GOOGLE & AKSES PERANGKAT")
+                                }
+                            }
                         },
                         confirmButton = {
                             TextButton(onClick = {
