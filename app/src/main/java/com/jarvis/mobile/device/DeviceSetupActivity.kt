@@ -41,7 +41,7 @@ class DeviceSetupActivity : Activity() {
         }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
         button("Hubungkan akun Google & pair perangkat ini") {
-            if (googleAccessToken.isBlank()) {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
                 status.text = "Buka pengaturan perangkat dari JARVIS setelah masuk dengan Google."
                 return@button
             }
@@ -50,6 +50,9 @@ class DeviceSetupActivity : Activity() {
                 val message = try {
                     val account = client.createOrRestoreAccountWithSupabase(googleAccessToken)
                     val accountId = account.optJSONObject("account")?.optString("accountId").orEmpty()
+                    if (accountId.removePrefix("acct-") != supabaseUserId) {
+                        throw SecurityException("Akun Google berubah saat pairing. Buka ulang pengaturan perangkat.")
+                    }
                     client.pair(client.storedAccountToken(supabaseUserId), Build.MODEL, Build.VERSION.RELEASE)
                     "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
                 } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
@@ -57,6 +60,10 @@ class DeviceSetupActivity : Activity() {
             }
         }
         button("Lihat semua perangkat dalam akun") {
+            if (supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
             status.text = "Memuat daftar perangkat..."
             worker.execute {
                 val message = try {
@@ -114,7 +121,7 @@ class DeviceSetupActivity : Activity() {
         }
         button("Kirim perintah status ke perangkat ini") {
             val id = client.deviceId()
-            if (id.isNullOrBlank() || !client.hasAccountToken(supabaseUserId)) {
+            if (id.isNullOrBlank() || supabaseUserId.isNullOrBlank() || !client.hasAccountToken(supabaseUserId)) {
                 status.text = "Pair perangkat terlebih dahulu"
                 return@button
             }
