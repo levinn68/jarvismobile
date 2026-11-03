@@ -4,7 +4,7 @@ import { publicDevice } from "./policy.js";
 import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand } from "./command-service.js";
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, OPTIONS"}});
 async function readBody(request){try{return await request.json()}catch(_){throw new Error("Request body must be valid JSON")}}
-const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\\s+/i,"");
+const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
 export async function handleDeviceRequest(request,env,url) {
  const path=url.pathname;
  if(path==="/v1/accounts/create"&&request.method==="POST") {
