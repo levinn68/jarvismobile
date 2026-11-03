@@ -57,7 +57,7 @@ Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the Google ac
 
 ### Windows, macOS and Linux desktop connectors
 
-Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery/launch, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses a short-lived setup flow and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
+Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery/launch, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses the one-hour account token copied explicitly from Android Device Setup and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
 
 See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for pairing, setup, API routes, CI and security boundaries. iOS/iPadOS, Wear OS, web and IoT remain registry-only; native command agents for those platforms are not included.
 
