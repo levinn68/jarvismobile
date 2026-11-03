@@ -2106,6 +2106,7 @@ private fun JarvisScreen(
         cancelCurrentRequest = onAskGemini(requestText) { payload ->
             val answer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
                 .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
+            if (!voice && accountEmail != null) onSaveTurn(requestText, answer)
             if (voice) {
                 voiceAnswer = answer
                 voiceProducts.clear()
