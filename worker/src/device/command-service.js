@@ -23,3 +23,13 @@ export async function acknowledgeDeviceCommand({kv,deviceId,commandId,result}) {
  await kv.put(key,JSON.stringify(record),{expirationTtl:86400});
  return {ok:true,commandId,status:record.status};
 }
+
+
+export async function getDeviceCommand({kv,deviceId,commandId}) {
+ if(!kv)throw new Error("DEVICE_COMMANDS KV binding is required");
+ if(!/^[a-zA-Z0-9_-]{8,80}$/.test(deviceId)||!/^[a-f0-9-]{36}$/i.test(commandId))
+  throw new Error("A valid deviceId and commandId are required");
+ const raw=await kv.get("command:"+deviceId+":"+commandId);
+ if(!raw)return null;
+ try{return JSON.parse(raw)}catch(_){return null}
+}
