@@ -14,7 +14,9 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
 
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
-        return rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
+        val result = rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
+        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it) }
+        return result
     }
 
     fun pair(accountToken: String, deviceName: String, osVersion: String, appVersion: String = "0.9.0"): JSONObject {
@@ -27,11 +29,25 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         val token = result.optString("token")
         if (token.isBlank()) throw IllegalStateException("Pairing response did not contain a device token")
         configure(id, token)
+        vault.saveAccountToken(accountToken)
         return result
     }
 
-    fun listAccountDevices(accountToken: String): JSONArray =
-        rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
+    fun listAccountDevices(accountToken: String = vault.accountToken().orEmpty()): JSONArray {
+        require(accountToken.isNotBlank()) { "JARVIS account token is missing" }
+        return rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
+    }
+
+    fun hasAccountToken(): Boolean = !vault.accountToken().isNullOrBlank()
+
+    /** Queue a typed action for a device owned by this JARVIS account. */
+    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject()): JSONObject {
+        require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
+        require(action.length in 1..80) { "Invalid action" }
+        val accountToken = vault.accountToken() ?: throw IllegalStateException("Pair or create a JARVIS account first")
+        val body = JSONObject().put("deviceId", deviceId).put("action", action).put("params", params)
+        return rawRequest("POST", "/v1/device/command", body, accountToken)
+    }
 
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
