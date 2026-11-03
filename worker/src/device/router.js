@@ -13,12 +13,12 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
   }
 });
 
-const MAX_DEVICE_REQUEST_BYTES = 64 * 1024;
+const MAX_DEVICE_REQUEST_BYTES = 128 * 1024;
 
 async function readBody(request) {
   const declaredLength = Number(request.headers.get("Content-Length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_DEVICE_REQUEST_BYTES) {
-    const error = new Error("Request body is too large (maximum 65536 bytes)");
+    const error = new Error("Request body is too large (maximum 131072 bytes)");
     error.status = 413;
     throw error;
   }
@@ -34,7 +34,7 @@ async function readBody(request) {
       total += value.byteLength;
       if (total > MAX_DEVICE_REQUEST_BYTES) {
         await reader.cancel();
-        const error = new Error("Request body is too large (maximum 65536 bytes)");
+        const error = new Error("Request body is too large (maximum 131072 bytes)");
         error.status = 413;
         throw error;
       }
