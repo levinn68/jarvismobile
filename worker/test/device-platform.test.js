@@ -8,7 +8,7 @@ import {
   verifyDeviceToken
 } from "../src/device/auth.js";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
-import { saveDevice, createAccount } from "../src/device/registry.js";
+import { saveDevice, createAccount, listDevicesForAccount } from "../src/device/registry.js";
 import { acknowledgeDeviceCommand } from "../src/device/command-service.js";
 import { handleDeviceRequest } from "../src/device/router.js";
 
@@ -447,4 +447,38 @@ test("inactive account revokes access for every existing device-token route", as
   assert.deepEqual(blocked.map((response) => response.status), [
     403, 403, 403, 403, 403, 403, 403
   ]);
+});
+
+
+test("account device listing follows KV pagination cursors", async () => {
+  const accountId = "acct-pagination-test-123";
+  const firstId = "android-page-device-01";
+  const secondId = "android-page-device-02";
+  const values = new Map([
+    ["device:" + firstId, JSON.stringify({ deviceId: firstId, accountId })],
+    ["device:" + secondId, JSON.stringify({ deviceId: secondId, accountId })]
+  ]);
+  const calls = [];
+  const kv = {
+    async get(key) { return values.get(key) ?? null; },
+    async list(options) {
+      calls.push(options);
+      if (!options.cursor) {
+        return {
+          keys: [{ name: "account-device:" + accountId + ":" + firstId }],
+          list_complete: false,
+          cursor: "page-two"
+        };
+      }
+      return {
+        keys: [{ name: "account-device:" + accountId + ":" + secondId }],
+        list_complete: true
+      };
+    }
+  };
+
+  const devices = await listDevicesForAccount(kv, accountId);
+  assert.deepEqual(devices.map(device => device.deviceId).sort(), [firstId, secondId]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].cursor, "page-two");
 });
