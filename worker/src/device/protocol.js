@@ -1,12 +1,12 @@
 export const DEVICE_PROTOCOL_VERSION = "1.0.0";
 export const SUPPORTED_PLATFORMS = new Set(["android","windows","ios","ipados","wearos","web","iot"]);
 export const CAPABILITIES = new Set(["files.read","files.write","apps.list","apps.launch","screen.read","camera.capture","media.read","notifications.read","notifications.manage","system.read","system.settings","calendar.read","contacts.read","location.read","bluetooth.manage","device.pair"]);
-export const SENSITIVE_CAPABILITIES = new Set(["files.write","notifications.manage","system.settings","contacts.read","location.read","camera.capture","bluetooth.manage"]);
+export const SENSITIVE_CAPABILITIES = new Set(["files.write","notifications.manage","system.settings","location.read","camera.capture","bluetooth.manage"]);
 const ANDROID_ACTIONS = Object.freeze({
  "files.list":{capability:"files.read",params:[]},"files.search":{capability:"files.read",params:["query"]},
  "files.read":{capability:"files.read",params:["documentId"]},"apps.list":{capability:"apps.list",params:[]},
  "apps.launch":{capability:"apps.launch",params:["packageName"]},"system.status":{capability:"system.read",params:[]},
- "notifications.list":{capability:"notifications.read",params:[]},"screen.read":{capability:"screen.read",params:[]}
+ "notifications.list":{capability:"notifications.read",params:[]},"screen.read":{capability:"screen.read",params:[]},"contacts.list":{capability:"contacts.read",params:[]},"calendar.list":{capability:"calendar.read",params:[]}
 });
 function validateParams(action,raw) {
  if(raw==null)raw={};if(typeof raw!=="object"||Array.isArray(raw))throw new Error("Command params must be a JSON object");
