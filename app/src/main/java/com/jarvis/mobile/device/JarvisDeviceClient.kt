@@ -39,6 +39,7 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     }
 
     fun hasAccountToken(): Boolean = !vault.accountToken().isNullOrBlank()
+    fun storedAccountToken(): String = vault.accountToken().orEmpty()
 
     /** Queue a typed action for a device owned by this JARVIS account. */
     fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject()): JSONObject {
