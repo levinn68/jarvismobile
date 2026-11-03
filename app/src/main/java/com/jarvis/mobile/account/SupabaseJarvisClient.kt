@@ -12,7 +12,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
 
 data class JarvisSession(
     val accessToken: String,
@@ -22,65 +21,55 @@ data class JarvisSession(
     val displayName: String?
 )
 
-data class SavedConversation(
-    val id: String,
-    val title: String,
-    val updatedAt: String
-)
+data class SavedConversation(val id: String, val title: String, val updatedAt: String)
+data class SavedMessage(val id: String, val role: String, val content: String, val createdAt: String)
 
-data class SavedMessage(
-    val id: String,
-    val role: String,
-    val content: String,
-    val createdAt: String
-)
-
-/**
- * Supabase Auth + PostgREST adapter.
- * Only the public anon/publishable key is shipped in the Android app.
- * Row Level Security remains the authority for all user-owned records.
- */
+/** Supabase Auth + PostgREST adapter. Client uses only the public anon key; RLS protects user data. */
 class SupabaseJarvisClient(context: Context) {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("jarvis_supabase_session", Context.MODE_PRIVATE)
     private val baseUrl = BuildConfig.SUPABASE_URL.trimEnd('/')
     private val anonKey = BuildConfig.SUPABASE_ANON_KEY
-    private val googleWebClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID\n    private var activeConversationId: String? = prefs.getString("active_conversation_id", null)
+    private val googleWebClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
+    private var activeConversationId: String? = prefs.getString("active_conversation_id", null)
 
-    fun hasSession(): Boolean = prefs.getString("access_token", null).isNullOrBlank().not()
-
+    fun hasSession(): Boolean = !prefs.getString("access_token", null).isNullOrBlank()
     fun currentUserId(): String? = prefs.getString("user_id", null)
     fun currentEmail(): String? = prefs.getString("email", null)
     fun currentName(): String? = prefs.getString("display_name", null)
 
     suspend fun signInWithGoogle(activityContext: Context): JarvisSession {
         require(baseUrl.startsWith("https://") && anonKey.isNotBlank() && googleWebClientId.isNotBlank()) {
-            "Konfigurasi Supabase belum lengkap. Isi SUPABASE_ANON_KEY dan GOOGLE_WEB_CLIENT_ID."
+            "Konfigurasi belum lengkap: SUPABASE_ANON_KEY dan GOOGLE_WEB_CLIENT_ID harus diatur."
         }
-        val googleOption = GetGoogleIdOption.Builder()
+        val option = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(false)
             .setServerClientId(googleWebClientId)
             .setAutoSelectEnabled(false)
             .build()
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleOption)
-            .build()
-        val credential = CredentialManager.create(appContext)
-            .getCredential(appContext, request).credential
-        val googleId = when {
-            credential is CustomCredential &&
-                credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
-                GoogleIdTokenCredential.createFrom(credential.data)
-            else -> throw IllegalStateException("Google Sign-In tidak mengembalikan ID token yang valid.")
+        val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
+        val credential = withContext(Dispatchers.Main) {
+            CredentialManager.create(activityContext).getCredential(activityContext, request).credential
         }
-        val response = request(
-            "/auth/v1/token?grant_type=id_token",
-            "POST",
-            JSONObject()
-                .put("provider", "google")
-                .put("id_token", googleId.idToken)
-        )
-        val user = response.optJSONObject("user") ?: throw IllegalStateException("Supabase tidak mengembalikan profil pengguna.")
+        val googleCredential = if (
+            credential is CustomCredential &&
+            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            GoogleIdTokenCredential.createFrom(credential.data)
+        } else {
+            throw IllegalStateException("Google Sign-In tidak mengembalikan ID token yang valid.")
+        }
+
+        val response = withContext(Dispatchers.IO) {
+            request(
+                "/auth/v1/token?grant_type=id_token",
+                "POST",
+                JSONObject().put("provider", "google").put("id_token", googleCredential.idToken),
+                token = null
+            )
+        }
+        val user = response.optJSONObject("user")
+            ?: throw IllegalStateException("Supabase tidak mengembalikan profil pengguna.")
         val metadata = user.optJSONObject("user_metadata") ?: JSONObject()
         val session = JarvisSession(
             accessToken = response.getString("access_token"),
@@ -96,16 +85,37 @@ class SupabaseJarvisClient(context: Context) {
             .putString("email", session.email)
             .putString("display_name", session.displayName)
             .apply()
-        session
+        return session
     }
 
     suspend fun signOut() = withContext(Dispatchers.IO) {
-        val token = accessToken()
-        runCatching { request("/auth/v1/logout", "POST", JSONObject(), token) }
-        prefs.edit().clear().apply()\n        activeConversationId = null
+        val token = prefs.getString("access_token", null)
+        if (!token.isNullOrBlank()) runCatching {
+            request("/auth/v1/logout", "POST", JSONObject(), token = token)
+        }
+        prefs.edit().clear().apply()
+        activeConversationId = null
     }
 
-    suspend fun startNewConversation() = withContext(Dispatchers.IO) {\n        activeConversationId = null\n        prefs.edit().remove("active_conversation_id").apply()\n    }\n\n    suspend fun saveTurn(userText: String, assistantText: String) = withContext(Dispatchers.IO) {\n        if (!hasSession()) return@withContext\n        var conversationId = activeConversationId\n        if (conversationId == null) {\n            val title = userText.replace(Regex("\\\\s+"), " ").trim().take(64).ifBlank { "Percakapan baru" }\n            conversationId = createConversation(title)\n            activeConversationId = conversationId\n            prefs.edit().putString("active_conversation_id", conversationId).apply()\n        }\n        appendMessage(conversationId, "user", userText)\n        appendMessage(conversationId, "assistant", assistantText)\n    }\n\n    suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
+    suspend fun startNewConversation() = withContext(Dispatchers.IO) {
+        activeConversationId = null
+        prefs.edit().remove("active_conversation_id").apply()
+    }
+
+    suspend fun saveTurn(userText: String, assistantText: String) = withContext(Dispatchers.IO) {
+        if (!hasSession()) return@withContext
+        var conversationId = activeConversationId
+        if (conversationId == null) {
+            val title = userText.replace(Regex("\\s+"), " ").trim().take(64).ifBlank { "Percakapan baru" }
+            conversationId = createConversation(title)
+            activeConversationId = conversationId
+            prefs.edit().putString("active_conversation_id", conversationId).apply()
+        }
+        appendMessage(conversationId, "user", userText)
+        appendMessage(conversationId, "assistant", assistantText)
+    }
+
+    suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
         val rows = requestArray(
             "/rest/v1/jarvis_conversations?select=id,title,updated_at&order=updated_at.desc",
             "GET"
@@ -118,18 +128,35 @@ class SupabaseJarvisClient(context: Context) {
     }
 
     suspend fun createConversation(title: String): String = withContext(Dispatchers.IO) {
-        val row = JSONObject().put("title", title.ifBlank { "Percakapan baru" })
-        val rows = requestArray("/rest/v1/jarvis_conversations?select=id", "POST", JSONArray().put(row), prefer = "return=representation")
+        val rows = requestArray(
+            "/rest/v1/jarvis_conversations?select=id",
+            "POST",
+            JSONArray().put(JSONObject().put("title", title.ifBlank { "Percakapan baru" })),
+            prefer = "return=representation"
+        )
         rows.optJSONObject(0)?.getString("id") ?: throw IllegalStateException("Gagal membuat percakapan.")
     }
 
     suspend fun renameConversation(id: String, title: String) = withContext(Dispatchers.IO) {
-        request("/rest/v1/jarvis_conversations?id=eq.${encode(id)}", "PATCH",
-            JSONObject().put("title", title), prefer = "return=minimal")
+        request(
+            "/rest/v1/jarvis_conversations?id=eq.${encode(id)}",
+            "PATCH",
+            JSONObject().put("title", title),
+            prefer = "return=minimal"
+        )
     }
 
     suspend fun deleteConversation(id: String) = withContext(Dispatchers.IO) {
-        request("/rest/v1/jarvis_conversations?id=eq.${encode(id)}", "DELETE", JSONObject(), prefer = "return=minimal")
+        request(
+            "/rest/v1/jarvis_conversations?id=eq.${encode(id)}",
+            "DELETE",
+            JSONObject(),
+            prefer = "return=minimal"
+        )
+        if (activeConversationId == id) {
+            activeConversationId = null
+            prefs.edit().remove("active_conversation_id").apply()
+        }
     }
 
     suspend fun listMessages(conversationId: String): List<SavedMessage> = withContext(Dispatchers.IO) {
@@ -151,30 +178,45 @@ class SupabaseJarvisClient(context: Context) {
             .put("role", role)
             .put("content", content)
         request("/rest/v1/jarvis_messages", "POST", JSONArray().put(row), prefer = "return=minimal")
-        request("/rest/v1/jarvis_conversations?id=eq.${encode(conversationId)}", "PATCH",
-            JSONObject().put("updated_at", "now()"), prefer = "return=minimal")
     }
 
     private fun accessToken(): String = prefs.getString("access_token", null)
         ?: throw IllegalStateException("Silakan masuk dengan Google terlebih dahulu.")
 
-    private fun requestArray(path: String, method: String, body: JSONArray? = null, prefer: String? = null): JSONArray {
+    private fun requestArray(
+        path: String,
+        method: String,
+        body: JSONArray? = null,
+        prefer: String? = null
+    ): JSONArray {
         val raw = http(path, method, body?.toString(), accessToken(), prefer)
         return JSONArray(raw.ifBlank { "[]" })
     }
 
-    private fun request(path: String, method: String, body: JSONObject, token: String? = null, prefer: String? = null): JSONObject {
+    private fun request(
+        path: String,
+        method: String,
+        body: JSONObject,
+        token: String? = null,
+        prefer: String? = null
+    ): JSONObject {
         val raw = http(path, method, body.toString(), token ?: accessToken(), prefer)
         return if (raw.startsWith("{")) JSONObject(raw) else JSONObject()
     }
 
-    private fun request(path: String, method: String, body: JSONArray, token: String? = null, prefer: String? = null): JSONArray {
+    private fun request(
+        path: String,
+        method: String,
+        body: JSONArray,
+        token: String? = null,
+        prefer: String? = null
+    ): JSONArray {
         val raw = http(path, method, body.toString(), token ?: accessToken(), prefer)
         return if (raw.startsWith("[")) JSONArray(raw) else JSONArray()
     }
 
     private fun http(path: String, method: String, body: String?, token: String?, prefer: String?): String {
-        val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection)
+        val connection = URL(baseUrl + path).openConnection() as HttpURLConnection
         try {
             connection.requestMethod = method
             connection.connectTimeout = 20000
@@ -191,7 +233,10 @@ class SupabaseJarvisClient(context: Context) {
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (code !in 200..299) {
-                val message = runCatching { JSONObject(response).optString("message").ifBlank { JSONObject(response).optString("error_description") } }.getOrNull()
+                val message = runCatching {
+                    val json = JSONObject(response)
+                    json.optString("message").ifBlank { json.optString("error_description") }
+                }.getOrNull()
                 throw IllegalStateException(message?.takeIf { it.isNotBlank() } ?: "Supabase HTTP $code")
             }
             return response
