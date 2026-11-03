@@ -13,7 +13,14 @@ import org.json.JSONObject
 class FileController(private val context: Context) {
     companion object { const val PREFS = "jarvis_device_secure"; const val TREE_URI = "selected_tree_uri" }
 
-    fun hasSelectedFolder(): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null) != null
+    fun hasSelectedFolder(): Boolean {
+        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null)
+            ?: return false
+        val selectedUri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        return context.contentResolver.persistedUriPermissions.any { permission ->
+            permission.uri == selectedUri && permission.isReadPermission
+        }
+    }
     fun saveSelectedFolder(uri: Uri) {
         context.contentResolver.takePersistableUriPermission(uri,
             android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
