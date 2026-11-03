@@ -9,6 +9,7 @@ import {
 } from "../src/device/auth.js";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
 import { acknowledgeDeviceCommand } from "../src/device/command-service.js";
+import { handleDeviceRequest } from "../src/device/router.js";
 
 const secret = "test-only-secret-with-at-least-32-characters-long";
 
@@ -191,4 +192,79 @@ test("command acknowledgement is idempotent", async () => {
   assert.equal(first.ok, true);
   assert.equal(second.ok, true);
   assert.equal(second.alreadyAcknowledged, true);
+});
+
+
+test("account enrollment, Windows command queue, polling and acknowledgement work end to end", async () => {
+  class MemoryKV {
+    constructor() { this.values = new Map(); }
+    async get(key) { return this.values.get(key) ?? null; }
+    async put(key, value) { this.values.set(key, value); }
+    async list({ prefix = "", limit = 100 }) {
+      return {
+        keys: [...this.values.keys()].filter((key) => key.startsWith(prefix)).slice(0, limit).map((name) => ({ name }))
+      };
+    }
+  }
+
+  const env = {
+    DEVICE_ENROLLMENT_SECRET: "bootstrap-secret-for-integration-tests",
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: new MemoryKV(),
+    DEVICE_COMMANDS: new MemoryKV()
+  };
+
+  async function call(method, path, token, body) {
+    const request = new Request("https://jarvis.test" + path, {
+      method,
+      headers: { Authorization: "Bearer " + token, ...(body ? { "Content-Type": "application/json" } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {})
+    });
+    return handleDeviceRequest(request, env, new URL(request.url));
+  }
+
+  const created = await call("POST", "/v1/accounts/create", env.DEVICE_ENROLLMENT_SECRET, {});
+  assert.equal(created.status, 201);
+  const accountPayload = await created.json();
+  const accountToken = accountPayload.accountToken;
+  assert.ok(accountToken);
+
+  const enrolled = await call("POST", "/v1/devices/enroll", accountToken, {
+    deviceId: "windows-test-device-01",
+    platform: "windows",
+    name: "Test Windows",
+    capabilities: ["apps.list", "system.read", "files.read"]
+  });
+  assert.equal(enrolled.status, 201);
+  const devicePayload = await enrolled.json();
+  const deviceToken = devicePayload.token;
+  assert.ok(deviceToken);
+
+  const queued = await call("POST", "/v1/device/command", accountToken, {
+    deviceId: "windows-test-device-01",
+    action: "system.status",
+    params: {}
+  });
+  assert.equal(queued.status, 200);
+  const queuePayload = await queued.json();
+  assert.equal(queuePayload.status, "queued");
+
+  const accountPoll = await call("GET", "/v1/device/commands?deviceId=windows-test-device-01", accountToken);
+  assert.equal(accountPoll.status, 401);
+
+  const devicePoll = await call("GET", "/v1/device/commands?deviceId=windows-test-device-01", deviceToken);
+  assert.equal(devicePoll.status, 200);
+  const commands = (await devicePoll.json()).commands;
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].action, "system.status");
+
+  const ack = await call("POST", "/v1/device/commands/ack", deviceToken, {
+    deviceId: "windows-test-device-01",
+    commandId: commands[0].commandId,
+    result: { ok: true }
+  });
+  assert.equal(ack.status, 200);
+
+  const afterAck = await call("GET", "/v1/device/commands?deviceId=windows-test-device-01", deviceToken);
+  assert.equal((await afterAck.json()).commands.length, 0);
 });
