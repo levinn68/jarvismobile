@@ -77,7 +77,7 @@ function constantTimeEqual(leftValue, rightValue) {
 const bearer = request => {
   const value = request.headers.get("Authorization") || "";
   if (value.length > 4096) return "";
-  const match = value.trim().match(/^Bearer\\s+(\\S+)$/i);
+  const match = value.trim().match(/^Bearer\s+(\S+)$/i);
   return match ? match[1] : "";
 };
 
