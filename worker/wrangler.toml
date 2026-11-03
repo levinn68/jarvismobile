@@ -1,0 +1,15 @@
+name = "jarvis-api"
+main = "src/index.js"
+compatibility_date = "2026-10-31"
+
+[vars]
+FISH_VOICE_ID = "612b878b113047d9a770c069c8b4fdfe"
+FISH_MODEL = "s2.1-pro-free"
+
+[[kv_namespaces]]
+binding = "DEVICE_REGISTRY"
+id = "9d3eb996a9d643eca41bf4f46be73fcc"
+
+[[kv_namespaces]]
+binding = "DEVICE_COMMANDS"
+id = "58bc583f2c684c349c5beef542fd1954"
