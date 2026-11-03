@@ -42,6 +42,8 @@ test("validates only typed Android actions and strict parameters", () => {
   assert.throws(() => validateCommand({ action: "files.search", params: { query: "" } }));
   assert.throws(() => validateCommand({ action: "system.status", params: { unexpected: true } }));
   assert.equal(validateCommand({ action: "screen.read" }).capability, "screen.read");
+  assert.equal(validateCommand({ action: "contacts.list" }).capability, "contacts.read");
+  assert.equal(validateCommand({ action: "calendar.list" }).capability, "calendar.read");
 });
 
 test("capability policy blocks undeclared and sensitive actions without confirmation", () => {
