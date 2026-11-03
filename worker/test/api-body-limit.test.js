@@ -31,3 +31,19 @@ test("TTS endpoint rejects JSON bodies above 64 KiB before calling the provider"
   assert.equal(response.status, 413);
   assert.match((await response.json()).detail, /too large/);
 });
+
+test("public API rejects JSON null and array bodies with HTTP 400", async () => {
+  const nullResponse = await worker.fetch(new Request("https://jarvis.test/v1/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "null"
+  }), {});
+  assert.equal(nullResponse.status, 400);
+
+  const arrayResponse = await worker.fetch(new Request("https://jarvis.test/v1/search/images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "[]"
+  }), {});
+  assert.equal(arrayResponse.status, 400);
+});
