@@ -98,11 +98,46 @@ test("Android commands reject malformed package names and unknown parameters", (
   assert.throws(() => validateCommand({ action: "shell.exec", params: { command: "id" } }));
 });
 
-test("commands cannot be sent to platforms without a native connector", () => {
-  assert.throws(
-    () => validateCommand({ action: "apps.list", params: {} }, "windows"),
-    /No command connector is registered/
-  );
+test("Windows connector validates app and file commands", () => {
+  const app = validateCommand({ action: "apps.launch", params: { appId: "QWERTY_123" } }, "windows");
+  assert.equal(app.params.appId, "QWERTY_123");
+
+  const list = validateCommand({
+    action: "files.list",
+    params: { rootIndex: 1, relativePath: "Reports/2026" }
+  }, "windows");
+  assert.equal(list.params.rootIndex, 1);
+  assert.equal(list.params.relativePath, "Reports/2026");
+
+  const read = validateCommand({
+    action: "files.read",
+    params: { rootIndex: 0, relativePath: "report.txt" }
+  }, "windows");
+  assert.equal(read.params.relativePath, "report.txt");
+});
+
+test("Windows connector rejects invalid app IDs, paths, and unknown commands", () => {
+  assert.throws(() => validateCommand({
+    action: "apps.launch",
+    params: { appId: "../powershell" }
+  }, "windows"));
+  assert.throws(() => validateCommand({
+    action: "files.read",
+    params: { relativePath: "report.txt" }
+  }, "windows"));
+  assert.throws(() => validateCommand({
+    action: "shell.exec",
+    params: { command: "whoami" }
+  }, "windows"));
+});
+
+test("macOS and Linux remain blocked until their native connectors exist", () => {
+  for (const platform of ["macos", "linux"]) {
+    assert.throws(
+      () => validateCommand({ action: "apps.list", params: {} }, platform),
+      /No command connector is registered/
+    );
+  }
 });
 
 test("device normalization accepts the supported desktop platforms", () => {
