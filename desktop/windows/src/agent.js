@@ -30,15 +30,34 @@ async function apiRequest(method, endpoint, token, body) {
 }
 
 async function pair() {
+  const pairingCode = (process.env.JARVIS_PAIRING_CODE || "").trim();
   const accountToken = process.env.JARVIS_ACCOUNT_TOKEN || "";
-  if (!accountToken) throw new Error("Set JARVIS_ACCOUNT_TOKEN before running the pair command.");
   const deviceId = "windows-" + randomUUID();
-  const result = await apiRequest("POST", "/v1/devices/enroll", accountToken, {
+  const payload = {
     deviceId, platform: "windows", name: process.env.COMPUTERNAME || os.hostname(),
     osVersion: os.release(), appVersion: "1.0.0",
     capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
-  });
-  process.stdout.write("Pairing succeeded.\nDevice ID: " + deviceId + "\nDevice token (store securely; shown only once):\n" + result.token + "\n");
+  };
+
+  let result;
+  if (pairingCode) {
+    const response = await fetch(API + "/v1/pairing/redeem", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ code: pairingCode, ...payload }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const text = await response.text();
+    result = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(result.error || ("HTTP " + response.status));
+  } else if (accountToken) {
+    result = await apiRequest("POST", "/v1/devices/enroll", accountToken, payload);
+  } else {
+    throw new Error("Set JARVIS_PAIRING_CODE (from Android QR) or JARVIS_ACCOUNT_TOKEN before pairing.");
+  }
+
+  const enrolledId = result.device?.deviceId || deviceId;
+  process.stdout.write("Pairing succeeded.\nDevice ID: " + enrolledId + "\nDevice token (store securely; shown only once):\n" + result.token + "\n");
   process.stdout.write("Set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN before starting the agent.\n");
 }
 
@@ -185,8 +204,6 @@ async function launchApp(appId) {
   const apps = await startMenuShortcuts();
   if (!apps.some((app) => app.appId === appId)) return { ok: false, error: "App is not in the Windows Start Menu allowlist. Refresh apps.list first." };
   const target = appIndex.get(appId);
-  // Fixed PowerShell command. The target is passed as an environment variable,
-  // never interpolated into executable code or a shell command string.
   const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "Start-Process -LiteralPath $env:JARVIS_TARGET"], {
     windowsHide: true, stdio: "ignore", env: { ...process.env, JARVIS_TARGET: target }
   });
