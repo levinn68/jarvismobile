@@ -60,13 +60,14 @@ class DeviceSetupActivity : Activity() {
             }
         }
         button("Lihat semua perangkat dalam akun") {
-            if (supabaseUserId.isNullOrBlank()) {
+            if (supabaseUserId.isNullOrBlank() || googleAccessToken.isBlank()) {
                 status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
                 return@button
             }
             status.text = "Memuat daftar perangkat..."
             worker.execute {
                 val message = try {
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
                     val devices = client.listAccountDevices(supabaseUserId)
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
@@ -121,13 +122,14 @@ class DeviceSetupActivity : Activity() {
         }
         button("Kirim perintah status ke perangkat ini") {
             val id = client.deviceId()
-            if (id.isNullOrBlank() || supabaseUserId.isNullOrBlank() || !client.hasAccountToken(supabaseUserId)) {
+            if (id.isNullOrBlank() || supabaseUserId.isNullOrBlank() || googleAccessToken.isBlank() || !client.hasAccountToken(supabaseUserId)) {
                 status.text = "Pair perangkat terlebih dahulu"
                 return@button
             }
             status.text = "Mengirim perintah status..."
             worker.execute {
                 val message = try {
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
                     val queued = client.queueCommand(id, "system.status", expectedSupabaseUserId = supabaseUserId)
                     if (queued.optBoolean("ok")) "Perintah masuk antrean. Pastikan sinkronisasi aktif untuk mengeksekusi."
                     else "Perintah ditolak: ${queued.optString("reason", queued.optString("error", "tidak diizinkan"))}"
