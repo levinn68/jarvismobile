@@ -15,6 +15,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun createOrRestoreAccountWithSupabase(accessToken: String): JSONObject {
         require(accessToken.isNotBlank()) { "Google/Supabase session is required" }
         val result = rawRequest("POST", "/v1/accounts/google", null, accessToken)
+        val accountId = result.optJSONObject("account")?.optString("accountId").orEmpty()
+        val supabaseUserId = accountId.removePrefix("acct-")
+        val accountToken = result.optString("accountToken")
+        if (accountToken.isNotBlank()) vault.saveAccountToken(accountToken, supabaseUserId)
         return result
     }
 
