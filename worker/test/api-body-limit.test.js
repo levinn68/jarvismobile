@@ -47,3 +47,30 @@ test("public API rejects JSON null and array bodies with HTTP 400", async () => 
   }), {});
   assert.equal(arrayResponse.status, 400);
 });
+
+
+test("public API rejects non-string chat, search, and TTS text fields", async () => {
+  const chatResponse = await worker.fetch(new Request("https://jarvis.test/v1/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: { prompt: "unexpected object" } })
+  }), {});
+  assert.equal(chatResponse.status, 400);
+  assert.match((await chatResponse.json()).error, /message must be a string/);
+
+  const searchResponse = await worker.fetch(new Request("https://jarvis.test/v1/search/images", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: ["unexpected", "array"] })
+  }), {});
+  assert.equal(searchResponse.status, 400);
+  assert.match((await searchResponse.json()).error, /query must be a string/);
+
+  const ttsResponse = await worker.fetch(new Request("https://jarvis.test/v1/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: { unexpected: "object" } })
+  }), { FISH_API_KEY: "test-key" });
+  assert.equal(ttsResponse.status, 400);
+  assert.match((await ttsResponse.json()).error, /text must be a string/);
+});
