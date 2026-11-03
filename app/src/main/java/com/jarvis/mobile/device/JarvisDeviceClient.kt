@@ -13,6 +13,7 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
     private val pendingAcknowledgements = ConcurrentHashMap<String, JSONObject>()
+    @Volatile private var closed = false
 
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
@@ -44,6 +45,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun deviceId() = vault.deviceId()
     private fun token() = vault.token()
     fun clearCredentials() { vault.clear() }
+    fun close() {
+        closed = true
+        io.shutdownNow()
+    }
 
     fun updateCapabilities(capabilities: List<String>): JSONObject {
         require(capabilities.size <= 40)
@@ -56,7 +61,7 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         request("POST", "/v1/device/commands/ack", JSONObject().put("deviceId", deviceId()).put("commandId", commandId).put("result", result))
 
     fun pollOnce(executor: DeviceCommandExecutor, onResult: (String) -> Unit = {}) {
-        if (!isConfigured()) return
+        if (closed || !isConfigured()) return
         io.execute {
             try {
                 heartbeat()
