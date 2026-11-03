@@ -7,9 +7,9 @@ Cloudflare Worker is the account and command control plane. Each paired device r
 | Platform | Connector | Supported operations |
 | --- | --- | --- |
 | Android | Kotlin app connector | Status, installed-app listing/launch, user-selected SAF file listing/search/text reads, notifications, on-demand visible screen text, contacts and calendar (permission-gated) |
-| Windows | Node.js desktop connector | Status, Start Menu app listing/launch, approved-folder listing/search/text reads |
-| macOS | Node.js desktop connector | Status, Applications listing/launch, approved-folder listing/search/text reads |
-| Linux | Node.js desktop connector | Status, .desktop app listing/launch, approved-folder listing/search/text reads |
+| Windows | Node.js desktop connector | Status, Start Menu app listing/launch by app ID or unique visible name, approved-folder listing/search/text reads |
+| macOS | Node.js desktop connector | Status, Applications listing/launch by app ID or unique visible name, approved-folder listing/search/text reads |
+| Linux | Node.js desktop connector | Status, .desktop app listing/launch by app ID or unique visible name, approved-folder listing/search/text reads |
 | iOS/iPadOS, Wear OS, web, IoT | Registry vocabulary only | No native command connector shipped |
 
 ## Modules
@@ -62,6 +62,7 @@ The desktop agent prints the device token once during pairing. Store it in the o
 - `system.status`
 - `apps.list`
 - `apps.launch` using an app ID returned by `apps.list`
+- `apps.launch_label` using an exact, unique visible application name
 - `files.list`
 - `files.search`
 - `files.read` (text-only content capped at 64 KB)
