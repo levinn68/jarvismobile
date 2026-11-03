@@ -54,6 +54,13 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         return rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
     }
 
+    fun removeDevice(deviceId: String, expectedSupabaseUserId: String): JSONObject {
+        require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        return rawRequest("DELETE", "/v1/devices/$deviceId", null, accountToken)
+    }
+
     fun hasAccountToken(expectedSupabaseUserId: String? = null): Boolean = !vault.accountToken(expectedSupabaseUserId).isNullOrBlank()
     fun storedAccountToken(expectedSupabaseUserId: String? = null): String = vault.accountToken(expectedSupabaseUserId).orEmpty()
     fun storedAccountUserId(): String? = vault.accountUserId()
