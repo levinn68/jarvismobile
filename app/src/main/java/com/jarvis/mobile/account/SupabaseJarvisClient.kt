@@ -1,5 +1,7 @@
 package com.jarvis.mobile.account
 
+import com.jarvis.mobile.BuildConfig
+
 import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
