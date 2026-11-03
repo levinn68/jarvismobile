@@ -1972,15 +1972,21 @@ private fun JarvisScreen(
                 return@LaunchedEffect
             }
             val request = heard.replaceFirst(wake, "").trim()
-            if (request.isBlank() || Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
+            // Saying only "Jarvis" (or "Jarvis,") is not the activation phrase.
+            // Stay silent and resume listening; acknowledge only the explicit "Jarvis, open".
+            if (request.isBlank()) {
+                voiceStatusNote = "WAITING FOR JARVIS, OPEN"
+                kotlinx.coroutines.delay(300)
+                onStartListening()
+                return@LaunchedEffect
+            }
+            if (Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
                 voiceStatusNote = "READY FOR COMMAND"
-                // Every explicit wake-only activation gets an acknowledgement.
-                // Speech completion restarts the recognizer for the next command.
                 wakeAcknowledged = true
                 val readyReply = if (detectEnglishContent(heard)) {
                     "Ready, Sir. I'm listening for your command."
                 } else {
-                    "Siap, Sir. Saya sudah aktif dan siap menerima perintah."
+                    "Siap, Sir. Saya aktif dan mendengarkan perintah Anda."
                 }
                 onSpeak(readyReply)
                 return@LaunchedEffect
