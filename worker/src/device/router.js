@@ -58,7 +58,7 @@ async function readBody(request) {
   }
 }
 
-const bearer = request => { const value = request.headers.get("Authorization") || ""; return value.slice(0, 7).toLowerCase() === "bearer " ? value.slice(7).trim() : value.trim(); };
+const bearer = request => { const value = request.headers.get("Authorization") || ""; if (value.length > 4096) return ""; return value.slice(0, 7).toLowerCase() === "bearer " ? value.slice(7).trim() : value.trim(); };
 
 async function accountIsActive(kv, accountId) {
   const account = await getAccount(kv, accountId);
