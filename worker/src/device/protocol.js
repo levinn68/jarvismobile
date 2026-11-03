@@ -36,6 +36,7 @@ const DESKTOP_ACTIONS = Object.freeze({
   "files.read": { capability: "files.read", params: ["rootIndex", "relativePath"] },
   "apps.list": { capability: "apps.list", params: [] },
   "apps.launch": { capability: "apps.launch", params: ["appId"] },
+  "apps.launch_label": { capability: "apps.launch", params: ["appName"] },
   "system.status": { capability: "system.read", params: [] }
 });
 
@@ -86,6 +87,13 @@ function validateParams(action, raw, schema, platform) {
   }
 
   if (["windows", "macos", "linux"].includes(platform)) {
+    if (action === "apps.launch_label") {
+      const appName = typeof raw.appName === "string" ? raw.appName.trim() : "";
+      if (!appName || appName.length > 100) {
+        throw new Error("apps.launch_label requires appName (1-100 characters)");
+      }
+      params.appName = appName;
+    }
     if (action === "apps.launch") {
       const appId = typeof raw.appId === "string" ? raw.appId.trim() : "";
       if (!/^[A-Za-z0-9_-]{1,512}$/.test(appId)) {
