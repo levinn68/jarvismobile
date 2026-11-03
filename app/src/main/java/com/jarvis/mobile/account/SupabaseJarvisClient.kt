@@ -91,6 +91,12 @@ class SupabaseJarvisClient(context: Context) {
             .put(JSONObject().put("conversation_id", conversation).put("role", "user").put("content", userText))
             .put(JSONObject().put("conversation_id", conversation).put("role", "assistant").put("content", assistantText))
         requestArray("/rest/v1/jarvis_messages", "POST", batch, prefer = "return=minimal")
+        // Touch conversation so cross-device history sorts by latest activity.
+        requestJson(
+            "/rest/v1/jarvis_conversations?id=eq.${encode(conversation)}",
+            "PATCH",
+            JSONObject().put("updated_at", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date()))
+        )
     }
 
     suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
