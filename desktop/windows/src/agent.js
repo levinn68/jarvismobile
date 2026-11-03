@@ -58,8 +58,18 @@ async function resolvedRoots() {
   return roots.slice(0, 20);
 }
 
+function normalizedForComparison(value) {
+  let resolved = path.resolve(value);
+  if (process.platform === "win32") {
+    resolved = resolved.replace(/^\\\\\\?\\/, "").toLocaleLowerCase("en-US");
+  }
+  return resolved;
+}
+
 export function isInside(root, target) {
-  const relative = path.relative(root, target);
+  const safeRoot = normalizedForComparison(root);
+  const safeTargetPath = normalizedForComparison(target);
+  const relative = path.relative(safeRoot, safeTargetPath);
   return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
 }
 
