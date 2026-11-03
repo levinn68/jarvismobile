@@ -138,5 +138,5 @@ class DeviceSetupActivity : Activity() {
             } catch (e: Exception) { status.text = "Gagal menyimpan izin: ${e.message}" }
         }
     }
-    override fun onDestroy() { worker.shutdown(); super.onDestroy() }
+    override fun onDestroy() { worker.shutdown(); client.close(); super.onDestroy() }
 }
