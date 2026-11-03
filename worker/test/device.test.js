@@ -146,3 +146,41 @@ test("HMAC account and device tokens round-trip through base64url and scope chec
   assert.equal((await verifyDeviceToken(deviceRequest, secret, "android-12345678")).scope, "device");
   assert.equal(await verifyDeviceToken(deviceRequest, secret, "android-otherdevice"), null);
 });
+
+
+test("validates Windows, macOS and Linux commands against platform-specific schemas", () => {
+  for (const platform of ["windows", "macos", "linux"]) {
+    const app = validateCommand({ action: "apps.launch", params: { appId: "APP_123" } }, platform);
+    assert.equal(app.params.appId, "APP_123");
+    const list = validateCommand({
+      action: "files.list",
+      params: { rootIndex: 1, relativePath: "Documents/Reports" }
+    }, platform);
+    assert.equal(list.params.rootIndex, 1);
+    assert.equal(list.params.relativePath, "Documents/Reports");
+    const read = validateCommand({
+      action: "files.read",
+      params: { rootIndex: 0, relativePath: "report.txt" }
+    }, platform);
+    assert.equal(read.params.relativePath, "report.txt");
+    assert.throws(() => validateCommand({ action: "shell.exec", params: { command: "id" } }, platform));
+  }
+});
+
+test("desktop command validation rejects traversal-shaped and malformed parameters", () => {
+  assert.throws(() => validateCommand({
+    action: "apps.launch",
+    params: { appId: "../powershell" }
+  }, "windows"));
+  assert.throws(() => validateCommand({
+    action: "files.read",
+    params: { relativePath: "report.txt" }
+  }, "macos"));
+  assert.throws(() => validateCommand({
+    action: "files.search",
+    params: { query: "", rootIndex: 0 }
+  }, "linux"));
+  for (const platform of ["ios", "ipados", "wearos", "web", "iot"]) {
+    assert.throws(() => validateCommand({ action: "apps.list" }, platform), /No command connector is registered/);
+  }
+});
