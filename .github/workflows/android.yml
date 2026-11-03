@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
     steps:
