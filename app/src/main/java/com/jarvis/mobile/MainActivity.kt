@@ -1,5 +1,8 @@
 package com.jarvis.mobile
 
+import com.jarvis.mobile.device.JarvisDeviceClient
+import com.jarvis.mobile.device.JarvisDeviceSyncService
+import com.jarvis.mobile.device.DeviceSetupActivity
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -107,6 +110,12 @@ import java.net.URLEncoder
 import org.json.JSONObject
 import org.json.JSONArray
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
+import com.jarvis.mobile.account.SupabaseJarvisClient
+import com.jarvis.mobile.account.SavedConversation
+import com.jarvis.mobile.account.SavedMessage
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -221,6 +230,14 @@ private fun detectEnglishContent(text: String): Boolean {
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var supabaseClient: SupabaseJarvisClient
+    private val accountEmail = mutableStateOf<String?>(null)
+    private val accountName = mutableStateOf<String?>(null)
+    private val accountBusy = mutableStateOf(false)
+    private val accountStatus = mutableStateOf("")
+    private val conversationsState = mutableStateOf<List<SavedConversation>>(emptyList())
+    private val historyBusy = mutableStateOf(false)
+    private val restoreConversation = mutableStateOf<Pair<String?, List<SavedMessage>>?>(null)
     private var tts: TextToSpeech? = null
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
@@ -235,6 +252,119 @@ class MainActivity : ComponentActivity() {
 
     private fun stopVoiceForegroundService() {
         runCatching { stopService(Intent(this, JarvisVoiceService::class.java)) }
+    }
+
+    private fun signInGoogle() {
+        if (accountBusy.value) return
+        accountBusy.value = true
+        accountStatus.value = "MENGHUBUNGKAN GOOGLE..."
+        lifecycleScope.launch {
+            try {
+                val session = supabaseClient.signInWithGoogle(this@MainActivity)
+                accountEmail.value = session.email
+                accountName.value = session.displayName
+                accountStatus.value = "AKUN GOOGLE TERSAMBUNG"
+                refreshHistory()
+            } catch (error: Exception) {
+                accountStatus.value = error.message ?: "GOOGLE SIGN-IN GAGAL"
+            } finally { accountBusy.value = false }
+        }
+    }
+
+    private fun openDeviceSetup() {
+        if (!supabaseClient.hasSession()) {
+            accountStatus.value = "MASUK DENGAN GOOGLE SEBELUM MENGHUBUNGKAN PERANGKAT"
+            return
+        }
+        if (accountBusy.value) return
+        accountBusy.value = true
+        lifecycleScope.launch {
+            try {
+                val accessToken = withContext(Dispatchers.IO) { supabaseClient.currentAccessToken() }
+                startActivity(Intent(this@MainActivity, DeviceSetupActivity::class.java)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, accessToken)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_USER_ID, supabaseClient.currentUserId()))
+            } catch (error: Exception) {
+                accountStatus.value = "GAGAL MENYIAPKAN AKSES PERANGKAT: " + (error.message ?: "error")
+            } finally { accountBusy.value = false }
+        }
+    }
+
+    private fun signOutGoogle() {
+        if (accountBusy.value) return
+        accountBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.signOut()
+                JarvisDeviceSyncService.stop(this@MainActivity)
+                JarvisDeviceClient(this@MainActivity).clearAccountToken()
+                accountEmail.value = null
+                accountName.value = null
+                conversationsState.value = emptyList()
+                restoreConversation.value = null
+                accountStatus.value = "KELUAR DARI AKUN"
+            } catch (error: Exception) { accountStatus.value = error.message ?: "GAGAL KELUAR" }
+            finally { accountBusy.value = false }
+        }
+    }
+
+    private fun refreshHistory() {
+        if (historyBusy.value) return
+        if (!supabaseClient.hasSession()) { conversationsState.value = emptyList(); return }
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                conversationsState.value = supabaseClient.listConversations()
+                accountStatus.value = "RIWAYAT CHAT DIPERBARUI"
+            } catch (error: Exception) { accountStatus.value = "GAGAL MEMUAT RIWAYAT: " + (error.message ?: "error") }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun openConversation(id: String) {
+        if (!supabaseClient.hasSession() || historyBusy.value) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                val messages = supabaseClient.listMessages(id)
+                supabaseClient.setActiveConversation(id)
+                restoreConversation.value = id to messages
+                accountStatus.value = "PERCAKAPAN DIMUAT"
+            } catch (error: Exception) { accountStatus.value = "GAGAL MEMBUKA CHAT: " + (error.message ?: "error") }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun newConversation() {
+        lifecycleScope.launch {
+            try { supabaseClient.startNewConversation(); restoreConversation.value = null to emptyList() }
+            catch (error: Exception) { accountStatus.value = error.message ?: "GAGAL MEMBUAT CHAT BARU" }
+        }
+    }
+
+    private fun deleteConversation(id: String) {
+        if (historyBusy.value) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.deleteConversation(id)
+                conversationsState.value = conversationsState.value.filterNot { it.id == id }
+                accountStatus.value = "PERCAKAPAN DIHAPUS"
+            } catch (error: Exception) { accountStatus.value = "GAGAL MENGHAPUS CHAT: " + (error.message ?: "error") }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun saveChatTurn(userText: String, assistantText: String) {
+        if (!supabaseClient.hasSession()) return
+        lifecycleScope.launch {
+            try {
+                supabaseClient.saveTurn(userText, assistantText)
+                accountStatus.value = "CHAT TERSIMPAN"
+                // Refresh list only after the successful write; no polling in the background.
+                conversationsState.value = supabaseClient.listConversations()
+            } catch (error: Exception) { accountStatus.value = "CHAT BELUM TERSINKRON: " + (error.message ?: "error") }
+        }
     }
     private val voiceText = mutableStateOf("")
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
@@ -264,6 +394,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        supabaseClient = SupabaseJarvisClient(this)
+        accountEmail.value = supabaseClient.currentEmail()
+        accountName.value = supabaseClient.currentName()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         tts = TextToSpeech(this) { result ->
@@ -287,6 +420,24 @@ class MainActivity : ComponentActivity() {
             }
         }
         createSpeechRecognizer()
+        if (supabaseClient.hasSession()) {
+            lifecycleScope.launch {
+                if (supabaseClient.restoreSession()) {
+                    accountEmail.value = supabaseClient.currentEmail()
+                    accountName.value = supabaseClient.currentName()
+                    try {
+                        conversationsState.value = supabaseClient.listConversations()
+                        accountStatus.value = "SESI GOOGLE DIPULIHKAN"
+                    } catch (error: Exception) {
+                        accountStatus.value = "RIWAYAT BELUM TERMUAT: " + (error.message ?: "error")
+                    }
+                } else {
+                    accountEmail.value = null
+                    accountName.value = null
+                    accountStatus.value = "SILAKAN MASUK KEMBALI DENGAN GOOGLE"
+                }
+            }
+        }
 
         setContent {
             JarvisScreen(
@@ -315,7 +466,63 @@ class MainActivity : ComponentActivity() {
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
-                onOpenApp = { q -> openRequestedApp(q) }
+                onOpenDeviceSetup = { openDeviceSetup() },
+                onDeviceCommand = { action, params, callback ->
+                    Thread {
+                        val message = try {
+                            val client = JarvisDeviceClient(this)
+                            val localId = client.deviceId()
+                                ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
+                            val deviceId = getSharedPreferences("jarvis_device_secure", MODE_PRIVATE)
+                                .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
+                            val accessToken = supabaseClient.currentAccessToken() // Refresh/validate Google session.
+                            client.createOrRestoreAccountWithSupabase(accessToken) // Rotate the one-hour device-control token.
+                            val userId = supabaseClient.currentUserId() ?: throw IllegalStateException("Masuk dengan Google terlebih dahulu.")
+                            val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId)
+                            if (queued.optBoolean("ok")) {
+                                if (deviceId == localId) JarvisDeviceSyncService.start(this)
+                                val commandId = queued.optString("commandId")
+                                var completed: org.json.JSONObject? = null
+                                for (attempt in 0 until 20) {
+                                    Thread.sleep(1500)
+                                    val state = client.commandStatus(deviceId, commandId, userId)
+                                    val record = state.optJSONObject("command")
+                                    if (record?.optString("status") == "completed") {
+                                        completed = record
+                                        break
+                                    }
+                                }
+                                val record = completed
+                                if (record != null) {
+                                    val result = record.optJSONObject("result")
+                                    if (result != null) "Hasil perintah ${action}: ${result}" else "Perintah ${action} selesai pada perangkat."
+                                } else {
+                                    "Perintah ${action} sudah masuk antrean, tetapi belum ada acknowledgement. Pastikan sinkronisasi JARVIS aktif pada perangkat target."
+                                }
+                            } else {
+                                "Perintah tidak dapat dijalankan: ${queued.optString("reason", queued.optString("error", "izin kemampuan belum aktif"))}"
+                            }
+                        } catch (error: Exception) {
+                            "Kontrol perangkat gagal: ${error.message ?: "koneksi atau pairing belum siap"}"
+                        }
+                        runOnUiThread { callback(message) }
+                    }.start()
+                },
+                onOpenApp = { q -> openRequestedApp(q) },
+                accountEmail = accountEmail.value,
+                accountName = accountName.value,
+                accountBusy = accountBusy.value,
+                accountStatus = accountStatus.value,
+                conversations = conversationsState.value,
+                historyBusy = historyBusy.value,
+                restoredMessages = restoreConversation.value,
+                onGoogleSignIn = { signInGoogle() },
+                onGoogleSignOut = { signOutGoogle() },
+                onRefreshHistory = { refreshHistory() },
+                onOpenConversation = { id -> openConversation(id) },
+                onNewConversation = { newConversation() },
+                onDeleteConversation = { id -> deleteConversation(id) },
+                onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) }
             )
         }
     }
@@ -1821,7 +2028,23 @@ private fun JarvisScreen(
     onSearch: (String) -> Unit,
     onSaveGeminiKey: (String) -> Unit,
     onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
-    onOpenApp: (String) -> Boolean
+    onOpenDeviceSetup: () -> Unit,
+    onDeviceCommand: (String, Map<String, String>, (String) -> Unit) -> Unit,
+    onOpenApp: (String) -> Boolean,
+    accountEmail: String?,
+    accountName: String?,
+    accountBusy: Boolean,
+    accountStatus: String,
+    conversations: List<SavedConversation>,
+    historyBusy: Boolean,
+    restoredMessages: Pair<String?, List<SavedMessage>>?,
+    onGoogleSignIn: () -> Unit,
+    onGoogleSignOut: () -> Unit,
+    onRefreshHistory: () -> Unit,
+    onOpenConversation: (String) -> Unit,
+    onNewConversation: () -> Unit,
+    onDeleteConversation: (String) -> Unit,
+    onSaveTurn: (String, String) -> Unit
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
@@ -1882,8 +2105,21 @@ private fun JarvisScreen(
     var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
     var processStage by remember { mutableStateOf("MENAMPILKAN HASIL...") }
     var settings by remember { mutableStateOf(false) }
+    var accountPanel by remember { mutableStateOf(false) }
+    var historyPanel by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     val lines = remember { mutableStateListOf<Line>() }
+    LaunchedEffect(restoredMessages?.first) {
+        val restored = restoredMessages ?: return@LaunchedEffect
+        lines.clear()
+        restored.second.forEach { message ->
+            val row = Line(user = message.role == "user", text = message.content)
+            row.displayText.value = message.content
+            row.revealed.value = true
+            lines.add(row)
+        }
+        historyPanel = false
+    }
     val revealScope = rememberCoroutineScope()
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     val clipboard = LocalClipboardManager.current
@@ -1915,6 +2151,52 @@ private fun JarvisScreen(
         val closing = if (english) " I have displayed the available options on your screen." else " Semua pilihannya sudah saya tampilkan di layar."
         return (lead + detail + closing).take(900)
     }
+    fun parseDeviceCommand(raw: String): Pair<String, Map<String, String>>? {
+        val value = raw.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        return when (value) {
+            "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai",
+            "cek kondisi hp", "info perangkat" ->
+                "system.status" to emptyMap()
+            "daftar aplikasi", "list aplikasi", "aplikasi terpasang", "list apps", "lihat aplikasi" ->
+                "apps.list" to emptyMap()
+            "lihat notifikasi", "cek notifikasi", "notifikasi terbaru", "daftar notifikasi" ->
+                "notifications.list" to emptyMap()
+            "daftar file", "list file", "lihat file", "file saya" ->
+                "files.list" to emptyMap()
+            "baca layar", "baca isi layar", "apa yang tampil di layar", "ringkas layar", "lihat isi layar" ->
+                "screen.read" to emptyMap()
+            "daftar kontak", "lihat kontak", "cari kontak saya" ->
+                "contacts.list" to emptyMap()
+            "jadwal kalender", "agenda saya", "lihat kalender", "acara mendatang" ->
+                "calendar.list" to emptyMap()
+            else -> {
+                val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
+                val launch = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
+                val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
+                val appLabelLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) aplikasi (.+)$").matchEntire(value)
+                when {
+                    search != null -> {
+                        val query = search.groupValues[1].trim().take(200)
+                        if (query.isBlank()) null else "files.search" to mapOf("query" to query)
+                    }
+                    launch != null -> {
+                        val packageName = when (launch.groupValues[1]) {
+                            "whatsapp" -> "com.whatsapp"
+                            "youtube" -> "com.google.android.youtube"
+                            "chrome" -> "com.android.chrome"
+                            "roblox" -> "com.roblox.client"
+                            else -> null
+                        }
+                        packageName?.let { "apps.launch" to mapOf("packageName" to it) }
+                    }
+                    packageLaunch != null -> "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
+                    appLabelLaunch != null -> "apps.launch_label" to mapOf("appName" to appLabelLaunch.groupValues[1].trim().take(100))
+                    else -> null
+                }
+            }
+        }
+    }
+
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
         val files = pendingAttachments.toList()
@@ -1933,6 +2215,22 @@ private fun JarvisScreen(
 
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis", "open", "buka")) return
+        val deviceCommand = parseDeviceCommand(q)
+        if (deviceCommand != null) {
+            busy = true
+            processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
+            onDeviceCommand(deviceCommand.first, deviceCommand.second) { result ->
+                if (voice) {
+                    voiceAnswer = result
+                    onSpeak(result)
+                } else {
+                    showJarvis(result)
+                }
+                busy = false
+                processStage = "SIAP"
+            }
+            return
+        }
         // Do not infer app-launch actions from ordinary words such as "open" or short utterances.
         // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
         busy = true
@@ -1940,6 +2238,7 @@ private fun JarvisScreen(
         cancelCurrentRequest = onAskGemini(requestText) { payload ->
             val answer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
                 .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
+            if (!voice && accountEmail != null) onSaveTurn(requestText, answer)
             if (voice) {
                 voiceAnswer = answer
                 voiceProducts.clear()
@@ -2140,6 +2439,28 @@ private fun JarvisScreen(
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
+                            Row(
+                                Modifier.padding(bottom = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (accountEmail != null) (accountName ?: accountEmail).take(16) else "ACCOUNT",
+                                    color = if (accountEmail != null) Color(0xFF78DDB4) else Cyan,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(7.dp))
+                                        .background(Color(0xFF0A2236))
+                                        .border(0.6.dp, Cyan.copy(alpha = 0.42f), RoundedCornerShape(7.dp))
+                                        .clickable { accountPanel = true }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                                Text(
+                                    "HISTORY", color = TextMuted, fontSize = 8.sp,
+                                    modifier = Modifier.clickable { historyPanel = true; onRefreshHistory() }
+                                        .padding(horizontal = 3.dp, vertical = 5.dp)
+                                )
+                            }
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -3015,6 +3336,56 @@ private fun JarvisScreen(
                     }
                 }
 
+                if (accountPanel) {
+                    AlertDialog(
+                        onDismissRequest = { accountPanel = false },
+                        containerColor = Color(0xFF0B1826),
+                        title = { Text("J.A.R.V.I.S. ACCOUNT", color = Ice, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(accountEmail ?: "Belum masuk dengan Google", color = Ice, fontSize = 13.sp)
+                                if (accountStatus.isNotBlank()) Text(accountStatus, color = TextMuted, fontSize = 11.sp)
+                                Text(if (accountEmail == null) "Masuk dengan Google untuk menyimpan dan menyinkronkan chat antarperangkat." else "Riwayat percakapan tersimpan di akun ini dan dibatasi oleh Row Level Security.", color = TextMuted, fontSize = 12.sp)
+                            }
+                        },
+                        confirmButton = { TextButton(enabled = !accountBusy, onClick = { if (accountEmail == null) onGoogleSignIn() else onGoogleSignOut() }) { Text(if (accountEmail == null) "MASUK DENGAN GOOGLE" else "KELUAR", color = Cyan) } },
+                        dismissButton = { TextButton(onClick = { accountPanel = false }) { Text("TUTUP", color = TextMuted) } }
+                    )
+                }
+
+                if (historyPanel) {
+                    AlertDialog(
+                        onDismissRequest = { historyPanel = false },
+                        containerColor = Color(0xFF0B1826),
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("CHAT HISTORY", color = Ice, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                TextButton(onClick = onRefreshHistory) { Text("REFRESH", color = Cyan, fontSize = 10.sp) }
+                            }
+                        },
+                        text = {
+                            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                when {
+                                    accountEmail == null -> Text("Masuk dengan Google untuk melihat riwayat chat.", color = TextMuted, fontSize = 12.sp)
+                                    historyBusy -> Text("Memuat percakapan...", color = TextMuted, fontSize = 12.sp)
+                                    conversations.isEmpty() -> Text("Belum ada percakapan tersimpan.", color = TextMuted, fontSize = 12.sp)
+                                    else -> conversations.forEach { item ->
+                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF102536)).border(1.dp, Color(0x3358DCEC), RoundedCornerShape(10.dp)).clickable { onOpenConversation(item.id); historyPanel = false }.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(item.title, color = Ice, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                Text(item.updatedAt.take(16).replace("T", " "), color = TextMuted, fontSize = 9.sp)
+                                            }
+                                            TextButton(onClick = { onDeleteConversation(item.id) }) { Text("HAPUS", color = Color(0xFFFF8A8A), fontSize = 9.sp) }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { TextButton(onClick = { onNewConversation(); historyPanel = false }) { Text("CHAT BARU", color = Cyan) } },
+                        dismissButton = { TextButton(onClick = { historyPanel = false }) { Text("TUTUP", color = TextMuted) } }
+                    )
+                }
+
                 if (settings) {
                     AlertDialog(
                         onDismissRequest = { settings = false },
@@ -3028,14 +3399,24 @@ private fun JarvisScreen(
                             }
                         },
                         text = {
-                            OutlinedTextField(
-                                value = keyDraft,
-                                onValueChange = { keyDraft = it },
-                                singleLine = true,
-                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                                placeholder = { Text("Kunci API Gemini", color = TextMuted) },
-                                label = { Text("API Key Override") }
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = keyDraft,
+                                    onValueChange = { keyDraft = it },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    placeholder = { Text("Kunci API Gemini", color = TextMuted) },
+                                    label = { Text("API Key Override") }
+                                )
+                                OutlinedButton(
+                                    onClick = { settings = false; onOpenDeviceSetup() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Devices, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("AKUN GOOGLE & AKSES PERANGKAT")
+                                }
+                            }
                         },
                         confirmButton = {
                             TextButton(onClick = {

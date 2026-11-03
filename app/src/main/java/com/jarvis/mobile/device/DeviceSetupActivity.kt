@@ -1,9 +1,12 @@
 package com.jarvis.mobile.device
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.os.Bundle
 import android.os.Build
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Color
 import android.view.ViewGroup
 import android.widget.*
@@ -30,55 +33,68 @@ class DeviceSetupActivity : Activity() {
         fun button(text: String, action: () -> Unit) = Button(this).apply {
             this.text = text; setOnClickListener { action() }; layout.addView(this)
         }
-        val bootstrapSecret = EditText(this).apply {
-            hint = "Bootstrap secret (khusus membuat akun)"
-            inputType = 0x00000081
-            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-            layout.addView(this)
-        }
-        val accountToken = EditText(this).apply {
-            hint = "JARVIS account token (bisa dipakai di perangkat lain)"
+        val googleAccessToken = intent.getStringExtra(EXTRA_SUPABASE_ACCESS_TOKEN).orEmpty()
+        val supabaseUserId = intent.getStringExtra(EXTRA_SUPABASE_USER_ID)
+        val targetDevice = EditText(this).apply {
+            hint = "ID perangkat target (kosong = perangkat ini)"
             inputType = 0x00000001
             setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
-            setTextIsSelectable(true)
+            setText(getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).getString("target_device_id", ""))
             layout.addView(this)
         }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
-        button("Buat akun JARVIS") {
-            val value = bootstrapSecret.text.toString()
-            bootstrapSecret.text.clear()
-            if (value.isBlank()) { status.text = "Masukkan bootstrap secret"; return@button }
-            status.text = "Membuat akun..."
-            worker.execute {
-                try {
-                    val result = client.createAccount(value)
-                    val token = result.optString("accountToken")
-                    runOnUiThread {
-                        accountToken.setText(token)
-                        status.text = "Akun dibuat: ${result.optJSONObject("account")?.optString("accountId")}. Simpan account token untuk pairing perangkat lain."
-                    }
-                } catch (e: Exception) { runOnUiThread { status.text = "Gagal membuat akun: ${e.message}" } }
+        button("Hubungkan akun Google & pair perangkat ini") {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Buka pengaturan perangkat dari JARVIS setelah masuk dengan Google."
+                return@button
             }
-        }
-        button("Pair perangkat ke akun") {
-            val value = accountToken.text.toString().trim()
-            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
-            status.text = "Menghubungkan perangkat ke akun..."
+            status.text = "Memverifikasi sesi Google dan memasangkan perangkat..."
             worker.execute {
                 val message = try {
-                    client.pair(value, Build.MODEL, Build.VERSION.RELEASE)
-                    "Pairing berhasil: ${client.deviceId()}"
-                } catch (e: Exception) { "Pairing gagal: ${e.message}" }
+                    val account = client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    val accountId = account.optJSONObject("account")?.optString("accountId").orEmpty()
+                    if (accountId.removePrefix("acct-") != supabaseUserId) {
+                        throw SecurityException("Akun Google berubah saat pairing. Buka ulang pengaturan perangkat.")
+                    }
+                    client.pair(client.storedAccountToken(supabaseUserId), Build.MODEL, Build.VERSION.RELEASE)
+                    "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
+                } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
         }
+        button("Salin token pairing desktop (berlaku 1 jam)") {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            status.text = "Memperbarui token pairing..."
+            worker.execute {
+                val token = try {
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    client.storedAccountToken(supabaseUserId).takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("Token akun tidak tersedia")
+                } catch (e: Exception) { null }
+                runOnUiThread {
+                    if (token.isNullOrBlank()) {
+                        status.text = "Gagal menyiapkan token pairing. Periksa koneksi dan sesi Google."
+                    } else {
+                        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("JARVIS desktop pairing token", token))
+                        status.text = "Token pairing disalin. Berlaku 1 jam; gunakan hanya saat menjalankan perintah pair pada desktop."
+                    }
+                }
+            }
+        }
         button("Lihat semua perangkat dalam akun") {
-            val value = accountToken.text.toString().trim()
-            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
+            if (supabaseUserId.isNullOrBlank() || googleAccessToken.isBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
             status.text = "Memuat daftar perangkat..."
             worker.execute {
                 val message = try {
-                    val devices = client.listAccountDevices(value)
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    val devices = client.listAccountDevices(supabaseUserId)
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
                         val item = devices.optJSONObject(i) ?: continue
@@ -91,11 +107,65 @@ class DeviceSetupActivity : Activity() {
                 runOnUiThread { status.text = message }
             }
         }
+        button("Gunakan perangkat target untuk perintah chat") {
+            val target = targetDevice.text.toString().trim()
+            if (target.isNotEmpty() && !target.matches(Regex("[A-Za-z0-9_-]{8,80}"))) {
+                status.text = "Format ID perangkat tidak valid"
+                return@button
+            }
+            getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).edit()
+                .putString("target_device_id", target.ifBlank { client.deviceId().orEmpty() }).apply()
+            status.text = if (target.isBlank()) "Target diatur ke perangkat ini" else "Target perangkat disimpan: $target"
+        }
+
+        button("Cabut akses perangkat target dari akun") {
+            val id = targetDevice.text.toString().trim().ifBlank { client.deviceId().orEmpty() }
+            if (!id.matches(Regex("[A-Za-z0-9_-]{8,80}"))) {
+                status.text = "Masukkan ID perangkat yang valid terlebih dahulu"
+                return@button
+            }
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Cabut akses perangkat?")
+                .setMessage("Perangkat $id akan dikeluarkan dari akun JARVIS dan tidak dapat lagi mengambil perintah.")
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Cabut akses") { _, _ ->
+                    status.text = "Mencabut akses perangkat..."
+                    worker.execute {
+                        val message = try {
+                            client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                            val result = client.removeDevice(id, supabaseUserId)
+                            if (result.optBoolean("revoked")) {
+                                if (id == client.deviceId()) {
+                                    JarvisDeviceSyncService.stop(this@DeviceSetupActivity)
+                                    client.clearCredentials()
+                                }
+                                "Akses perangkat $id berhasil dicabut dari akun."
+                            } else {
+                                "Server tidak mengonfirmasi pencabutan perangkat."
+                            }
+                        } catch (e: Exception) {
+                            "Gagal mencabut akses perangkat: ${e.message}"
+                        }
+                        runOnUiThread { status.text = message }
+                    }
+                }
+                .show()
+        }
         button("Pilih folder yang boleh diakses") {
             startActivityForResult(FileController(this).folderPickerIntent(), 501)
         }
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
+        }
+        button("Pengaturan aksesibilitas (baca layar)") {
+            startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        button("Izinkan akses kontak & kalender") {
+            requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.READ_CALENDAR), 602)
         }
         button("Perbarui izin & kemampuan perangkat") {
             if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
@@ -104,10 +174,30 @@ class DeviceSetupActivity : Activity() {
                 val capabilities = mutableListOf("apps.list", "apps.launch", "system.read")
                 if (FileController(this).hasSelectedFolder()) capabilities.add("files.read")
                 if (NotificationController(this).list().optBoolean("ok")) capabilities.add("notifications.read")
+                if (DevicePermissionManager(this).isGranted("screen.read")) capabilities.add("screen.read")
+                if (DevicePermissionManager(this).isGranted("contacts.read")) capabilities.add("contacts.read")
+                if (DevicePermissionManager(this).isGranted("calendar.read")) capabilities.add("calendar.read")
                 val message = try {
                     client.updateCapabilities(capabilities)
                     "Kemampuan aktif: ${capabilities.joinToString()}"
                 } catch (e: Exception) { "Gagal memperbarui kemampuan: ${e.message}" }
+                runOnUiThread { status.text = message }
+            }
+        }
+        button("Kirim perintah status ke perangkat ini") {
+            val id = client.deviceId()
+            if (id.isNullOrBlank() || supabaseUserId.isNullOrBlank() || googleAccessToken.isBlank() || !client.hasAccountToken(supabaseUserId)) {
+                status.text = "Pair perangkat terlebih dahulu"
+                return@button
+            }
+            status.text = "Mengirim perintah status..."
+            worker.execute {
+                val message = try {
+                    client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                    val queued = client.queueCommand(id, "system.status", expectedSupabaseUserId = supabaseUserId)
+                    if (queued.optBoolean("ok")) "Perintah masuk antrean. Pastikan sinkronisasi aktif untuk mengeksekusi."
+                    else "Perintah ditolak: ${queued.optString("reason", queued.optString("error", "tidak diizinkan"))}"
+                } catch (e: Exception) { "Gagal mengirim perintah: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
         }
@@ -139,4 +229,5 @@ class DeviceSetupActivity : Activity() {
         }
     }
     override fun onDestroy() { worker.shutdown(); super.onDestroy() }
+    companion object { const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token"; const val EXTRA_SUPABASE_USER_ID = "jarvis_supabase_user_id" }
 }

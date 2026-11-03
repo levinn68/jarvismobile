@@ -33,15 +33,42 @@ class DeviceCredentialVault(context: Context) {
             .putString("device_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
     }
     fun deviceId(): String? = prefs.getString("device_id", null)
-    fun token(): String? = try {
-        val data = prefs.getString("device_token_cipher", null) ?: return null
-        val iv = prefs.getString("device_token_iv", null) ?: return null
+    fun saveAccountToken(token: String, supabaseUserId: String) {
+        require(token.isNotBlank() && token.length <= 4096)
+        require(supabaseUserId.matches(Regex("[A-Fa-f0-9-]{36}"))) { "A valid Supabase user ID is required" }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
-        String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8)
-    } catch (_: Exception) { null }
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+        prefs.edit().putString("account_token_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString("account_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString("account_supabase_user_id", supabaseUserId).apply()
+    }
+    fun accountUserId(): String? = prefs.getString("account_supabase_user_id", null)
+    fun accountToken(expectedSupabaseUserId: String? = null): String? {
+        return try {
+            val storedUserId = accountUserId()
+            if (expectedSupabaseUserId != null && storedUserId != expectedSupabaseUserId) return null
+            val data = prefs.getString("account_token_cipher", null) ?: return null
+            val iv = prefs.getString("account_token_iv", null) ?: return null
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+            String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) { null }
+    }
+    fun token(): String? {
+        return try {
+            val data = prefs.getString("device_token_cipher", null) ?: return null
+            val iv = prefs.getString("device_token_iv", null) ?: return null
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+            String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8)
+        } catch (_: Exception) { null }
+    }
+    fun clearAccountToken() {
+        prefs.edit().remove("account_token_cipher").remove("account_token_iv").remove("account_supabase_user_id").apply()
+    }
     fun clear() {
-        prefs.edit().remove("device_id").remove("device_token_cipher").remove("device_token_iv").apply()
+        prefs.edit().remove("device_id").remove("device_token_cipher").remove("device_token_iv").remove("account_token_cipher").remove("account_token_iv").remove("account_supabase_user_id").apply()
         try { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias) } catch (_: Exception) {}
     }
 }

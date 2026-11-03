@@ -1,7 +1,28 @@
 name: Build J.A.R.V.I.S. Android Client
 on:
   push:
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - "gradle.properties"
+      - "JarvisMobile-source.zip"
+      - ".github/workflows/android.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - "gradle.properties"
+      - "JarvisMobile-source.zip"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
+concurrency:
+  group: jarvis-android-${{ github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -10,6 +31,8 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -18,6 +41,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Check optional OAuth configuration
+        run: |
+          if [ -z "$GOOGLE_WEB_CLIENT_ID" ]; then
+            echo "::warning::GOOGLE_WEB_CLIENT_ID is not configured. The APK can be compiled, but Google sign-in will remain unavailable until OAuth is configured."
+          else
+            echo "Google OAuth Web Client ID is present."
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::warning::SUPABASE_ANON_KEY is not configured in GitHub Actions. The app will use its build-time public fallback; configure the project key before production use."
+          fi
       - name: Locate Android SDK
         run: |
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"

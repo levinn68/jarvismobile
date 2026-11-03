@@ -6,15 +6,33 @@ import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Account-scoped enrollment and per-device command transport. */
-class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
+class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") : AutoCloseable {
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
 
+    fun createOrRestoreAccountWithSupabase(accessToken: String): JSONObject {
+        require(accessToken.isNotBlank()) { "Google/Supabase session is required" }
+        val result = rawRequest("POST", "/v1/accounts/google", null, accessToken)
+        val accountId = result.optJSONObject("account")?.optString("accountId").orEmpty()
+        val supabaseUserId = accountId.removePrefix("acct-")
+        val accountToken = result.optString("accountToken")
+        require(supabaseUserId.matches(Regex("[A-Fa-f0-9-]{36}")) && accountToken.isNotBlank()) {
+            "Worker returned an invalid Google-linked account session"
+        }
+        vault.saveAccountToken(accountToken, supabaseUserId)
+        return result
+    }
+
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
-        return rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
+        val result = rawRequest("POST", "/v1/accounts/create", null, enrollmentSecret)
+        val accountId = result.optJSONObject("account")?.optString("accountId").orEmpty()
+        val supabaseUserId = accountId.removePrefix("acct-")
+        result.optString("accountToken").takeIf { it.isNotBlank() }?.let { vault.saveAccountToken(it, supabaseUserId) }
+        return result
     }
 
     fun pair(accountToken: String, deviceName: String, osVersion: String, appVersion: String = "0.9.0"): JSONObject {
@@ -30,8 +48,32 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         return result
     }
 
-    fun listAccountDevices(accountToken: String): JSONArray =
-        rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
+    fun listAccountDevices(expectedSupabaseUserId: String? = null): JSONArray {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account. Reconnect the device.")
+        return rawRequest("GET", "/v1/devices", null, accountToken).optJSONArray("devices") ?: JSONArray()
+    }
+
+    fun removeDevice(deviceId: String, expectedSupabaseUserId: String): JSONObject {
+        require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        return rawRequest("DELETE", "/v1/devices/$deviceId", null, accountToken)
+    }
+
+    fun hasAccountToken(expectedSupabaseUserId: String? = null): Boolean = !vault.accountToken(expectedSupabaseUserId).isNullOrBlank()
+    fun storedAccountToken(expectedSupabaseUserId: String? = null): String = vault.accountToken(expectedSupabaseUserId).orEmpty()
+    fun storedAccountUserId(): String? = vault.accountUserId()
+    fun clearAccountToken() = vault.clearAccountToken()
+
+    /** Queue a typed action for a device owned by this JARVIS account. */
+    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null): JSONObject {
+        require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
+        require(action.length in 1..80) { "Invalid action" }
+        val accountToken = vault.accountToken(expectedSupabaseUserId) ?: throw IllegalStateException("Pair this device with the currently signed-in Google account first")
+        val body = JSONObject().put("deviceId", deviceId).put("action", action).put("params", params)
+        return rawRequest("POST", "/v1/device/command", body, accountToken)
+    }
 
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
@@ -52,6 +94,13 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun pollCommands(): JSONArray = request("GET", "/v1/device/commands?deviceId=${deviceId()}").optJSONArray("commands") ?: JSONArray()
     fun acknowledge(commandId: String, result: JSONObject): JSONObject =
         request("POST", "/v1/device/commands/ack", JSONObject().put("deviceId", deviceId()).put("commandId", commandId).put("result", result))
+
+    fun commandStatus(targetDeviceId: String, commandId: String, expectedSupabaseUserId: String? = null): JSONObject {
+        require(targetDeviceId.matches(Regex("[A-Za-z0-9_-]{8,80}")))
+        require(commandId.matches(Regex("[A-Fa-f0-9-]{36}")))
+        val accountToken = vault.accountToken(expectedSupabaseUserId) ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        return rawRequest("GET", "/v1/device/command/status?deviceId=$targetDeviceId&commandId=$commandId", null, accountToken)
+    }
 
     fun pollOnce(executor: DeviceCommandExecutor, onResult: (String) -> Unit = {}) {
         if (!isConfigured()) return
@@ -97,5 +146,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
             if (code !in 200..299) throw IllegalStateException("JARVIS API HTTP $code: ${result.optString("error", "Request failed")}")
             return result
         } finally { connection.disconnect() }
+    }
+
+    override fun close() {
+        io.shutdownNow()
+        try { io.awaitTermination(2, TimeUnit.SECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
     }
 }

@@ -47,9 +47,23 @@ The existing AI providers, visual search, API routes, Android client contract an
 
 ## Universal multi-device foundation
 
-The Worker now includes a first device control-plane foundation under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT connectors. It provides device enrollment, HMAC device tokens, per-device capability declarations, heartbeat, typed command validation and a short-lived KV command queue.
+The Worker includes a device control plane under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT platform identities. It provides Google-linked account enrollment through Supabase Auth, HMAC account/device tokens, per-device capabilities, heartbeat, typed command validation, a short-lived KV command queue, acknowledgement and command-status lookup.
 
-See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes and security boundaries. This is the backend control plane only; native device connectors still need to be implemented per platform and must enforce local OS permissions. No arbitrary shell or remote code execution is exposed.
+### Android device connector
+
+The Android app includes a user-started foreground sync service and a permission-gated connector. Supported actions include device/battery status, installed-app discovery and launch by unique visible name, approved SAF folder listing/search/text reads, notification listing after Notification Access, on-demand screen-text reads after Accessibility consent, and contacts/calendar reads after runtime permission grants. Screen content is not collected in the background.
+
+Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the Google account and pair each Android device. Configure permissions on each target, refresh its capabilities, and start Device Sync. Device Setup also provides a one-hour desktop pairing token and an owner-confirmed device revocation control.
+
+### Windows, macOS and Linux desktop connectors
+
+Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery and launch by exact visible name, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses the one-hour account token copied explicitly from Android Device Setup and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
+
+See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for pairing, setup, API routes, CI and security boundaries. iOS/iPadOS, Wear OS, web and IoT remain registry-only; native command agents for those platforms are not included.
+
+Google sign-in requires a Google OAuth **Web Client ID** in GitHub Actions and the matching Client ID/Client Secret in Supabase Auth. These secrets are intentionally deferred; the debug build workflow can compile without them, but Google login will not work until configured.
+
+Android OS permissions remain authoritative. No arbitrary shell, remote code execution, unrestricted filesystem access, silent microphone/camera capture, screen taps/typing or high-risk system settings changes are exposed. The deployment workflow runs Worker protocol/security tests before deploying.
 
 
 ### Modular backend modules
