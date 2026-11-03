@@ -1,13 +1,17 @@
 package com.jarvis.mobile.device
 
 import android.accessibilityservice.AccessibilityService
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import org.json.JSONObject
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
- * Optional, user-enabled accessibility bridge.
- * Screen text is kept in memory and returned only after an explicit JARVIS screen.read command.
+ * Optional user-enabled bridge. It does not inspect screen events in the background.
+ * Visible text is traversed only after an explicit screen.read command.
  */
 class JarvisAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
@@ -16,22 +20,25 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val root = rootInActiveWindow ?: event?.source ?: return
-        val text = StringBuilder()
-        collectVisibleText(root, text, 0)
-        synchronized(lock) {
-            latestText = text.toString().take(MAX_CHARS)
-            capturedAt = System.currentTimeMillis()
-        }
+        // Deliberately do not collect or retain screen text from background events.
     }
 
-    override fun onInterrupt() {
-        synchronized(lock) { latestText = "" }
-    }
+    override fun onInterrupt() {}
 
     override fun onDestroy() {
         if (instance === this) instance = null
         super.onDestroy()
+    }
+
+    private fun readVisibleScreen(): JSONObject {
+        val root = rootInActiveWindow
+            ?: return JSONObject().put("ok", false).put("error", "Tidak ada jendela aktif yang dapat dibaca.")
+        val text = StringBuilder()
+        collectVisibleText(root, text, 0)
+        return JSONObject().put("ok", true)
+            .put("text", text.toString().take(MAX_CHARS))
+            .put("characters", text.length.coerceAtMost(MAX_CHARS))
+            .put("privacy", "Teks dibaca hanya untuk permintaan ini dan tidak disimpan sebagai riwayat layar.")
     }
 
     private fun collectVisibleText(node: AccessibilityNodeInfo?, out: StringBuilder, depth: Int) {
@@ -51,26 +58,26 @@ class JarvisAccessibilityService : AccessibilityService() {
     companion object {
         private const val MAX_CHARS = 8000
         private const val MAX_DEPTH = 24
-        private val lock = Any()
+        private val mainHandler = Handler(Looper.getMainLooper())
         @Volatile private var instance: JarvisAccessibilityService? = null
-        private var latestText = ""
-        private var capturedAt = 0L
 
         fun isActive(): Boolean = instance != null
 
-        fun snapshot(): JSONObject = synchronized(lock) {
-            val service = instance
-            if (service == null) {
-                JSONObject().put("ok", false).put("requiresUserPermission", true)
-                    .put("error", "Aktifkan JARVIS Accessibility Service di Pengaturan Aksesibilitas Android.")
-            } else if (latestText.isBlank()) {
-                JSONObject().put("ok", true).put("text", "")
-                    .put("note", "Belum ada teks layar yang terbaca. Buka layar aplikasi yang ingin dianalisis lalu coba lagi.")
-            } else {
-                JSONObject().put("ok", true).put("text", latestText)
-                    .put("capturedAt", capturedAt).put("characters", latestText.length)
-                    .put("privacy", "Teks layar hanya diambil saat diminta dan disimpan sementara di memori perangkat.")
+        fun snapshot(): JSONObject {
+            val service = instance ?: return JSONObject()
+                .put("ok", false).put("requiresUserPermission", true)
+                .put("error", "Aktifkan JARVIS Accessibility Service di Pengaturan Aksesibilitas Android.")
+            if (Looper.myLooper() == Looper.getMainLooper()) return service.readVisibleScreen()
+            val latch = CountDownLatch(1)
+            var result: JSONObject? = null
+            mainHandler.post {
+                result = service.readVisibleScreen()
+                latch.countDown()
             }
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                return JSONObject().put("ok", false).put("error", "Pembacaan layar timeout. Coba lagi.")
+            }
+            return result ?: JSONObject().put("ok", false).put("error", "Gagal membaca layar.")
         }
     }
 }
