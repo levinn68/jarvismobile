@@ -282,7 +282,8 @@ class MainActivity : ComponentActivity() {
             try {
                 val accessToken = withContext(Dispatchers.IO) { supabaseClient.currentAccessToken() }
                 startActivity(Intent(this@MainActivity, DeviceSetupActivity::class.java)
-                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, accessToken))
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, accessToken)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_USER_ID, supabaseClient.currentUserId()))
             } catch (error: Exception) {
                 accountStatus.value = "GAGAL MENYIAPKAN AKSES PERANGKAT: " + (error.message ?: "error")
             } finally { accountBusy.value = false }
@@ -295,6 +296,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 supabaseClient.signOut()
+                JarvisDeviceSyncService.stop(this@MainActivity)
+                JarvisDeviceClient(this@MainActivity).clearAccountToken()
                 accountEmail.value = null
                 accountName.value = null
                 conversationsState.value = emptyList()
@@ -472,14 +475,15 @@ class MainActivity : ComponentActivity() {
                                 ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
                             val deviceId = getSharedPreferences("jarvis_device_secure", MODE_PRIVATE)
                                 .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
-                            val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params))
+                            val userId = supabaseClient.currentUserId() ?: throw IllegalStateException("Masuk dengan Google terlebih dahulu.")
+                            val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId)
                             if (queued.optBoolean("ok")) {
                                 if (deviceId == localId) JarvisDeviceSyncService.start(this)
                                 val commandId = queued.optString("commandId")
                                 var completed: org.json.JSONObject? = null
                                 for (attempt in 0 until 20) {
                                     Thread.sleep(1500)
-                                    val state = client.commandStatus(deviceId, commandId)
+                                    val state = client.commandStatus(deviceId, commandId, userId)
                                     val record = state.optJSONObject("command")
                                     if (record?.optString("status") == "completed") {
                                         completed = record
