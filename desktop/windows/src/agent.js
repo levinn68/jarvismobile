@@ -80,10 +80,11 @@ export async function safeTarget(root, relativePath, mustExist = true) {
   if (typeof relativePath !== "string" || relativePath.includes("\0") || path.isAbsolute(relativePath)) {
     throw new Error("A relative path inside an approved folder is required.");
   }
-  const target = path.resolve(root, relativePath || ".");
-  if (!isInside(root, target)) throw new Error("Path escapes the approved folder.");
+  const canonicalRoot = mustExist ? await fs.realpath(root) : path.resolve(root);
+  const target = path.resolve(canonicalRoot, relativePath || ".");
+  if (!isInside(canonicalRoot, target)) throw new Error("Path escapes the approved folder.");
   const real = mustExist ? await fs.realpath(target) : target;
-  if (!isInside(root, real)) throw new Error("Resolved path escapes the approved folder.");
+  if (!isInside(canonicalRoot, real)) throw new Error("Resolved path escapes the approved folder.");
   return real;
 }
 
