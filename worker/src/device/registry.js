@@ -56,13 +56,19 @@ async function listAllKeys(kv, prefix) {
     const page = await kv.list(options);
     keys.push(...(page.keys || []));
 
-    if (page.list_complete !== false || !page.cursor || seenCursors.has(page.cursor)) {
-      break;
+    if (page.list_complete !== false) return keys;
+    if (!page.cursor) {
+      throw new Error("KV pagination is incomplete but no continuation cursor was returned");
     }
+    if (seenCursors.has(page.cursor)) {
+      throw new Error("KV pagination returned a repeated continuation cursor");
+    }
+
     seenCursors.add(page.cursor);
     cursor = page.cursor;
   }
-  return keys;
+
+  throw new Error("KV pagination exceeded the 100-page safety limit");
 }
 
 export async function listDevicesForAccount(kv, accountId) {
