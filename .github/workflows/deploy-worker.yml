@@ -5,6 +5,9 @@ on:
       - "worker/**"
       - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
+concurrency:
+  group: jarvis-worker-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
