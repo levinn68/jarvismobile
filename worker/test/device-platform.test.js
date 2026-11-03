@@ -98,6 +98,13 @@ test("Android commands reject malformed package names and unknown parameters", (
   assert.throws(() => validateCommand({ action: "shell.exec", params: { command: "id" } }));
 });
 
+test("commands cannot be sent to platforms without a native connector", () => {
+  assert.throws(
+    () => validateCommand({ action: "apps.list", params: {} }, "windows"),
+    /No command connector is registered/
+  );
+});
+
 test("device normalization accepts the supported desktop platforms", () => {
   for (const platform of ["android", "windows", "macos", "linux", "ios", "web"]) {
     const device = normalizeDevice({
