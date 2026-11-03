@@ -10,6 +10,8 @@ class DeviceCommandExecutor(context: Context) {
     private val appController = AppController(context)
     private val fileController = FileController(context)
     private val deviceController = DeviceController(context)
+    private val notificationController = NotificationController(context)
+    private val cameraController = CameraController(context)
 
     fun execute(command: JSONObject): JSONObject {
         val action = command.optString("action")
@@ -18,6 +20,8 @@ class DeviceCommandExecutor(context: Context) {
             "apps.list" -> appController.listApps()
             "apps.launch" -> appController.launch(params.optString("packageName"))
             "system.status" -> deviceController.status()
+            "notifications.list" -> notificationController.list()
+            "camera.capture" -> JSONObject().put("ok", false).put("requiresForegroundUi", true).put("error", "Camera capture must be launched from an Activity after a visible user confirmation")
             "files.list", "files.search", "files.read" ->
                 fileController.execute(action, params)
             else -> JSONObject().put("ok", false).put("error", "Unsupported action on this Android connector")
