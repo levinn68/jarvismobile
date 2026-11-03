@@ -1,0 +1,38 @@
+name: Package JARVIS All-in-One Source Bundle
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "worker/**"
+      - "desktop/**"
+      - "supabase/**"
+      - "skills/**"
+      - "docs/**"
+      - ".env.example"
+      - ".github/workflows/package-source-bundle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create source bundle
+        run: |
+          zip -r JARVIS-ALL-IN-ONE-SOURCE.zip . \
+            -x ".git/*" "*/build/*" "*/.gradle/*" "*/node_modules/*" \
+               "*/.env" "*/.env.local" "*/.env.production" "*/.env.development" \
+               "*/local.properties" "*/secrets.properties"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-ALL-IN-ONE-SOURCE
+          path: JARVIS-ALL-IN-ONE-SOURCE.zip
+          if-no-files-found: error
+          retention-days: 30
