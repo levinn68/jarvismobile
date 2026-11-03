@@ -57,7 +57,7 @@ Unknown actions and unknown parameters are rejected before a command is queued. 
 ## Safety and current limitations
 The backend never executes shell commands, arbitrary code, or direct filesystem operations. It checks declared capabilities and queues typed requests. A queued command is not proof of execution.
 
-Android SAF folder selection, Notification Access, and Accessibility Service remain explicit user-granted permissions. The optional screen reader stores only a short in-memory snapshot and returns it only after an explicit `screen.read` request; it cannot tap, type, or change settings. The current capability update endpoint accepts self-reported capabilities from the paired device; this is not hardware attestation and must not be treated as proof that a permission is genuine.
+Android SAF folder selection, Notification Access, and Accessibility Service remain explicit user-granted permissions. The optional screen reader does not monitor or retain screen events. It traverses visible text only when an explicit `screen.read` request arrives; it cannot tap, type, or change settings. The current capability update endpoint accepts self-reported capabilities from the paired device; this is not hardware attestation and must not be treated as proof that a permission is genuine.
 
 Sensitive operations remain blocked until a proper in-app confirmation flow is implemented. Account ownership, account-scoped listing/enrollment, encrypted Android account-token storage, typed command dispatch, and command acknowledgement lookup are implemented. Account-token revocation, device removal, multi-user roles, QR-based pairing, native Windows/macOS/iOS agents, and a broad device-control permission/confirmation console are not implemented yet.
 
