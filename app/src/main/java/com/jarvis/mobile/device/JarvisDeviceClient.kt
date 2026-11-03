@@ -12,17 +12,17 @@ import java.util.concurrent.Executors
  * Device tokens are stored in app-private preferences; never embed bootstrap secrets in the APK.
  */
 class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
-    private val prefs = context.getSharedPreferences("jarvis_device_secure", Context.MODE_PRIVATE)
+    private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(token.isNotBlank()) { "Device token is required" }
-        prefs.edit().putString("device_id", deviceId).putString("device_token", token).apply()
+        vault.save(deviceId, token)
     }
     fun isConfigured() = !deviceId().isNullOrBlank() && !token().isNullOrBlank()
-    fun deviceId() = prefs.getString("device_id", null)
-    private fun token() = prefs.getString("device_token", null)
-    fun clearCredentials() { prefs.edit().remove("device_id").remove("device_token").apply() }
+    fun deviceId() = vault.deviceId()
+    private fun token() = vault.token()
+    fun clearCredentials() { vault.clear() }
 
     fun heartbeat(): JSONObject = request("POST", "/v1/devices/${deviceId()}/heartbeat")
     fun pollCommands(): JSONArray = request("GET", "/v1/device/commands?deviceId=${deviceId()}").optJSONArray("commands") ?: JSONArray()
