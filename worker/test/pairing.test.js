@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createPairingSession, redeemPairingSession } from "../src/device/pairing.js";
+import { createPairingSession, redeemPairingSession, getPairingSession } from "../src/device/pairing.js";
 
 function memoryKv() {
   const store = new Map();
@@ -78,4 +78,50 @@ test("invalid pairing codes are rejected", async () => {
     }),
     /Invalid pairing code/
   );
+});
+
+test("pairing code locks after too many failed attempts", async () => {
+  const kv = memoryKv();
+  const accountId = "acct-33333333-3333-3333-3333-333333333333";
+  const session = await createPairingSession({ kv, accountId });
+
+  for (let i = 0; i < 8; i++) {
+    await assert.rejects(
+      () => redeemPairingSession({
+        kv,
+        code: session.code,
+        deviceInput: { platform: "not-a-platform", name: "x" },
+        saveDevice: async (input) => input,
+        issueDeviceToken: async () => "x",
+        tokenSecret: "test-secret"
+      }),
+      /Unsupported|locked|invalid/i
+    );
+  }
+
+  await assert.rejects(
+    () => redeemPairingSession({
+      kv,
+      code: session.code,
+      deviceInput: { platform: "linux", name: "late" },
+      saveDevice: async (input) => input,
+      issueDeviceToken: async () => "x",
+      tokenSecret: "test-secret"
+    }),
+    /locked|already been used|invalid/i
+  );
+});
+
+test("getPairingSession is account-scoped", async () => {
+  const kv = memoryKv();
+  const accountId = "acct-44444444-4444-4444-4444-444444444444";
+  const session = await createPairingSession({ kv, accountId });
+  const own = await getPairingSession({ kv, code: session.code, accountId });
+  assert.equal(own?.status, "pending");
+  const foreign = await getPairingSession({
+    kv,
+    code: session.code,
+    accountId: "acct-99999999-9999-9999-9999-999999999999"
+  });
+  assert.equal(foreign, null);
 });
