@@ -7,6 +7,27 @@ async function readBody(request){try{return await request.json()}catch(_){throw 
 const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
 export async function handleDeviceRequest(request,env,url) {
  const path=url.pathname;
+ if(path==="/v1/accounts/google"&&request.method==="POST") {
+  if(!env.SUPABASE_URL||!env.SUPABASE_ANON_KEY||!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)
+   return json({ok:false,error:"Google-linked device enrollment is not configured on the Worker."},503);
+  const accessToken=bearer(request);
+  if(!accessToken)return json({ok:false,error:"A Supabase Google session is required"},401);
+  try {
+   const response=await fetch(env.SUPABASE_URL.replace(/\\/$/,"")+"/auth/v1/user",{
+    headers:{apikey:env.SUPABASE_ANON_KEY,Authorization:"Bearer "+accessToken,Accept:"application/json"}
+   });
+   if(!response.ok)return json({ok:false,error:"Supabase session is invalid or expired"},401);
+   const user=await response.json();
+   const userId=String(user.id||"");
+   if(!/^[a-f0-9-]{36}$/i.test(userId))return json({ok:false,error:"Supabase user identity is invalid"},401);
+   const accountId="acct-"+userId;
+   let account=await getAccount(env.DEVICE_REGISTRY,accountId);
+   if(!account)account=await createAccount(env.DEVICE_REGISTRY,accountId);
+   if(account.status!=="active")return json({ok:false,error:"JARVIS account is inactive"},403);
+   const accountToken=await issueAccountToken(accountId,env.DEVICE_TOKEN_SECRET);
+   return json({ok:true,account:{accountId,createdAt:account.createdAt},accountToken,tokenType:"Bearer",expiresIn:31536000,provider:"supabase-google"},200);
+  } catch(e) { return json({ok:false,error:String(e.message||e).slice(0,200)},502); }
+ }
  if(path==="/v1/accounts/create"&&request.method==="POST") {
   if(!env.DEVICE_ENROLLMENT_SECRET||!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Account enrollment is not configured."},503);
   if(bearer(request)!==env.DEVICE_ENROLLMENT_SECRET)return json({ok:false,error:"Unauthorized bootstrap secret"},401);
