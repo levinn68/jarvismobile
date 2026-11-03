@@ -40,9 +40,10 @@ Android capabilities are limited to what the operating system and user permissio
 
 Run the connector from `desktop/windows` using Node.js 22:
 
+- In Android JARVIS Device Setup, tap **Salin token pairing desktop (berlaku 1 jam)**.
+- Set the copied value as `JARVIS_ACCOUNT_TOKEN` only for the pairing command.
 - Pair: `npm run pair`
-- Start: `npm start`
-- Configure `JARVIS_ACCOUNT_TOKEN` only during pairing.
+- Start: `npm start`.
 - Configure `JARVIS_DEVICE_ID` and `JARVIS_DEVICE_TOKEN` for the running agent.
 - Configure `JARVIS_ALLOWED_DIRS` with one or more approved folder paths separated by the Windows path delimiter.
 
@@ -50,6 +51,8 @@ Run the connector from `desktop/windows` using Node.js 22:
 
 Run the shared connector from `desktop/unix` using Node.js 22:
 
+- Copy the one-hour account token from Android JARVIS Device Setup using **Salin token pairing desktop (berlaku 1 jam)**.
+- Set it as `JARVIS_ACCOUNT_TOKEN` only for the pairing command.
 - Pair: `npm run pair`
 - Start: `npm start`
 - Configure the same device/account variables as Windows.
