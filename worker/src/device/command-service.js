@@ -19,6 +19,7 @@ export async function acknowledgeDeviceCommand({kv,deviceId,commandId,result}) {
  if(!kv)throw new Error("DEVICE_COMMANDS KV binding is required");
  const key="command:"+deviceId+":"+commandId,raw=await kv.get(key);if(!raw)return {ok:false,error:"Command not found or expired"};
  let record;try{record=JSON.parse(raw)}catch(_){return {ok:false,error:"Command record is invalid"}}
+ if(record.status==="completed")return {ok:true,commandId,status:"completed",alreadyAcknowledged:true};
  record.status="completed";record.completedAt=new Date().toISOString();record.result=result??null;
  await kv.put(key,JSON.stringify(record),{expirationTtl:86400});
  return {ok:true,commandId,status:record.status};
