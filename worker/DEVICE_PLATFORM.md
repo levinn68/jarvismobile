@@ -72,7 +72,7 @@ Desktop file access is restricted to `JARVIS_ALLOWED_DIRS`. Path traversal and r
 
 Google sign-in validates the current Supabase session at `POST /v1/accounts/google` and derives a stable JARVIS account ID from the verified Supabase user UUID. The account token is short-lived (one hour) and is refreshed from the active Supabase session. Device tokens are scoped to one device. Device enrollment assigns account ownership from the signed account token, not client-supplied metadata.
 
-The Worker uses these KV bindings:
+The account owner can revoke a paired device with `DELETE /v1/devices/:deviceId`. The endpoint checks account ownership, removes the device registry and account index entries, and the connector's next poll/acknowledgement is rejected because the device is no longer registered. This is exposed in Android Device Setup as **Cabut akses perangkat target dari akun**.\n\nThe Worker uses these KV bindings:
 
 - `DEVICE_REGISTRY`: account and device metadata plus account-to-device indexes.
 - `DEVICE_COMMANDS`: short-lived typed command queue.
