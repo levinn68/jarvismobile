@@ -15,9 +15,10 @@ test("safeTarget accepts a relative file path within the selected root", async (
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "jarvis-root-"));
   try {
     await fs.writeFile(path.join(root, "note.txt"), "approved");
+    const canonicalRoot = await fs.realpath(root);
     const real = await fs.realpath(path.join(root, "note.txt"));
-    assert.equal(isInside(root, real), true, JSON.stringify({
-      root, real, normalizedRoot: normalizedForComparison(root),
+    assert.equal(isInside(canonicalRoot, real), true, JSON.stringify({
+      canonicalRoot, real, normalizedRoot: normalizedForComparison(canonicalRoot),
       normalizedReal: normalizedForComparison(real)
     }));
     assert.equal(path.basename(await safeTarget(root, "note.txt")), "note.txt");
