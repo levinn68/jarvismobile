@@ -30,23 +30,64 @@ class DeviceSetupActivity : Activity() {
         fun button(text: String, action: () -> Unit) = Button(this).apply {
             this.text = text; setOnClickListener { action() }; layout.addView(this)
         }
-        val secret = EditText(this).apply {
-            hint = "Enrollment secret (tidak disimpan)"
+        val bootstrapSecret = EditText(this).apply {
+            hint = "Bootstrap secret (khusus membuat akun)"
             inputType = 0x00000081
             setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
             layout.addView(this)
         }
+        val accountToken = EditText(this).apply {
+            hint = "JARVIS account token (bisa dipakai di perangkat lain)"
+            inputType = 0x00000001
+            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
+            setTextIsSelectable(true)
+            layout.addView(this)
+        }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
-        button("Pair perangkat") {
-            val value = secret.text.toString()
-            secret.text.clear()
-            if (value.isBlank()) { status.text = "Masukkan enrollment secret"; return@button }
-            status.text = "Menghubungkan..."
+        button("Buat akun JARVIS") {
+            val value = bootstrapSecret.text.toString()
+            bootstrapSecret.text.clear()
+            if (value.isBlank()) { status.text = "Masukkan bootstrap secret"; return@button }
+            status.text = "Membuat akun..."
+            worker.execute {
+                try {
+                    val result = client.createAccount(value)
+                    val token = result.optString("accountToken")
+                    runOnUiThread {
+                        accountToken.setText(token)
+                        status.text = "Akun dibuat: ${result.optJSONObject("account")?.optString("accountId")}. Simpan account token untuk pairing perangkat lain."
+                    }
+                } catch (e: Exception) { runOnUiThread { status.text = "Gagal membuat akun: ${e.message}" } }
+            }
+        }
+        button("Pair perangkat ke akun") {
+            val value = accountToken.text.toString().trim()
+            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
+            status.text = "Menghubungkan perangkat ke akun..."
             worker.execute {
                 val message = try {
                     client.pair(value, Build.MODEL, Build.VERSION.RELEASE)
                     "Pairing berhasil: ${client.deviceId()}"
                 } catch (e: Exception) { "Pairing gagal: ${e.message}" }
+                runOnUiThread { status.text = message }
+            }
+        }
+        button("Lihat semua perangkat dalam akun") {
+            val value = accountToken.text.toString().trim()
+            if (value.isBlank()) { status.text = "Masukkan account token"; return@button }
+            status.text = "Memuat daftar perangkat..."
+            worker.execute {
+                val message = try {
+                    val devices = client.listAccountDevices(value)
+                    val output = StringBuilder("Total perangkat: ${devices.length()}")
+                    for (i in 0 until devices.length()) {
+                        val item = devices.optJSONObject(i) ?: continue
+                        output.append("\\n• ").append(item.optString("name"))
+                            .append(" — ").append(item.optString("platform"))
+                            .append("\\n  ").append(item.optString("deviceId"))
+                    }
+                    output.toString()
+                } catch (e: Exception) { "Gagal memuat perangkat: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
         }
