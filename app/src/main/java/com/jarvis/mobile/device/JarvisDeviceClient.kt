@@ -6,9 +6,10 @@ import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /** Account-scoped enrollment and per-device command transport. */
-class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
+class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") : AutoCloseable {
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
 
@@ -138,5 +139,10 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
             if (code !in 200..299) throw IllegalStateException("JARVIS API HTTP $code: ${result.optString("error", "Request failed")}")
             return result
         } finally { connection.disconnect() }
+    }
+
+    override fun close() {
+        io.shutdownNow()
+        try { io.awaitTermination(2, TimeUnit.SECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
     }
 }
