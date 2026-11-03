@@ -394,6 +394,24 @@ class MainActivity : ComponentActivity() {
             }
         }
         createSpeechRecognizer()
+        if (supabaseClient.hasSession()) {
+            lifecycleScope.launch {
+                if (supabaseClient.restoreSession()) {
+                    accountEmail.value = supabaseClient.currentEmail()
+                    accountName.value = supabaseClient.currentName()
+                    try {
+                        conversationsState.value = supabaseClient.listConversations()
+                        accountStatus.value = "SESI GOOGLE DIPULIHKAN"
+                    } catch (error: Exception) {
+                        accountStatus.value = "RIWAYAT BELUM TERMUAT: " + (error.message ?: "error")
+                    }
+                } else {
+                    accountEmail.value = null
+                    accountName.value = null
+                    accountStatus.value = "SILAKAN MASUK KEMBALI DENGAN GOOGLE"
+                }
+            }
+        }
 
         setContent {
             JarvisScreen(
