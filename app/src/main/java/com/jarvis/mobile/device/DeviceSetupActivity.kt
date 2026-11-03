@@ -41,6 +41,7 @@ class DeviceSetupActivity : Activity() {
             inputType = 0x00000001
             setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
             setTextIsSelectable(true)
+            setText(client.storedAccountToken())
             layout.addView(this)
         }
         status = label(if (client.isConfigured()) "Terhubung: ${client.deviceId()}" else "Belum pairing")
@@ -108,6 +109,22 @@ class DeviceSetupActivity : Activity() {
                     client.updateCapabilities(capabilities)
                     "Kemampuan aktif: ${capabilities.joinToString()}"
                 } catch (e: Exception) { "Gagal memperbarui kemampuan: ${e.message}" }
+                runOnUiThread { status.text = message }
+            }
+        }
+        button("Kirim perintah status ke perangkat ini") {
+            val id = client.deviceId()
+            if (id.isNullOrBlank() || !client.hasAccountToken()) {
+                status.text = "Pair perangkat terlebih dahulu"
+                return@button
+            }
+            status.text = "Mengirim perintah status..."
+            worker.execute {
+                val message = try {
+                    val queued = client.queueCommand(id, "system.status")
+                    if (queued.optBoolean("ok")) "Perintah masuk antrean. Pastikan sinkronisasi aktif untuk mengeksekusi."
+                    else "Perintah ditolak: ${queued.optString("reason", queued.optString("error", "tidak diizinkan"))}"
+                } catch (e: Exception) { "Gagal mengirim perintah: ${e.message}" }
                 runOnUiThread { status.text = message }
             }
         }
