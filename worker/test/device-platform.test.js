@@ -25,19 +25,27 @@ function base64UrlEncode(value) {
 }
 
 test("device router rejects request bodies larger than 64 KiB", async () => {
+  const accountId = "acct-oversize-test-123";
+  const accountToken = await issueAccountToken(accountId, secret);
   const env = {
-    DEVICE_ENROLLMENT_SECRET: "bootstrap-secret-for-integration-tests",
     DEVICE_TOKEN_SECRET: secret,
-    DEVICE_REGISTRY: { async get() { return null; }, async put() {} }
+    DEVICE_REGISTRY: {
+      async get(key) {
+        return key === "account:" + accountId
+          ? JSON.stringify({ accountId, status: "active" })
+          : null;
+      },
+      async put() {}
+    }
   };
-  const request = new Request("https://jarvis.test/v1/accounts/create", {
+  const request = new Request("https://jarvis.test/v1/devices/enroll", {
     method: "POST",
     headers: {
-      Authorization: "Bearer " + env.DEVICE_ENROLLMENT_SECRET,
+      Authorization: "Bearer " + accountToken,
       "Content-Type": "application/json",
       "Content-Length": String(64 * 1024 + 1)
     },
-    body: JSON.stringify({ padding: "x".repeat(64 * 1024) })
+    body: JSON.stringify({ deviceId: "android-oversize-01", padding: "x".repeat(64 * 1024) })
   });
   const response = await handleDeviceRequest(request, env, new URL(request.url));
   assert.equal(response.status, 413);
