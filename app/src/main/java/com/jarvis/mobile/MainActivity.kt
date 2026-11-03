@@ -2167,6 +2167,7 @@ private fun JarvisScreen(
                 val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
                 val launch = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
                 val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
+                val appLabelLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) aplikasi (.+)$").matchEntire(value)
                 when {
                     search != null -> {
                         val query = search.groupValues[1].trim().take(200)
@@ -2183,6 +2184,7 @@ private fun JarvisScreen(
                         packageName?.let { "apps.launch" to mapOf("packageName" to it) }
                     }
                     packageLaunch != null -> "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
+                    appLabelLaunch != null -> "apps.launch_label" to mapOf("appName" to appLabelLaunch.groupValues[1].trim().take(100))
                     else -> null
                 }
             }
