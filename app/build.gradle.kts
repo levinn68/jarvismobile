@@ -31,6 +31,11 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    // Keep legacy Kotlin stdlib bridge artifacts aligned with the Kotlin 2.1.20 compiler.
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.20")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.20")
+    }
     implementation(platform("androidx.compose:compose-bom:2025.02.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.credentials:credentials:1.5.0")
