@@ -1,3 +1,9 @@
 import { SENSITIVE_CAPABILITIES } from "./protocol.js";
-export function authorizeCapability(device,capability,request={}){if(!device?.capabilities?.includes(capability))return {allowed:false,reason:"Capability has not been granted on this device."};if(SENSITIVE_CAPABILITIES.has(capability)&&request.userConfirmed!==true)return {allowed:false,requiresConfirmation:true,reason:"This action requires explicit user confirmation on the device."};return {allowed:true};}
-export function publicDevice(d){return {deviceId:d.deviceId,platform:d.platform,name:d.name,osVersion:d.osVersion,appVersion:d.appVersion,capabilities:d.capabilities,lastSeen:d.lastSeen,protocolVersion:d.protocolVersion};}
+export function authorizeCapability(device,capability,request={}) {
+ if(!device?.capabilities?.includes(capability))return {allowed:false,reason:"Capability has not been granted on this device."};
+ if(SENSITIVE_CAPABILITIES.has(capability)&&request.userConfirmed!==true)return {allowed:false,requiresConfirmation:true,reason:"This action requires explicit user confirmation on the device."};
+ return {allowed:true};
+}
+export function publicDevice(d) {
+ return {deviceId:d.deviceId,accountId:d.accountId,platform:d.platform,name:d.name,osVersion:d.osVersion,appVersion:d.appVersion,capabilities:d.capabilities,lastSeen:d.lastSeen,protocolVersion:d.protocolVersion};
+}
