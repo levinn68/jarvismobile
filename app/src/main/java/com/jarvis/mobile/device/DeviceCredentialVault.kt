@@ -33,6 +33,21 @@ class DeviceCredentialVault(context: Context) {
             .putString("device_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
     }
     fun deviceId(): String? = prefs.getString("device_id", null)
+    fun saveAccountToken(token: String) {
+        require(token.isNotBlank() && token.length <= 4096)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key())
+        val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+        prefs.edit().putString("account_token_cipher", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString("account_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
+    }
+    fun accountToken(): String? = try {
+        val data = prefs.getString("account_token_cipher", null) ?: return null
+        val iv = prefs.getString("account_token_iv", null) ?: return null
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP)))
+        String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8)
+    } catch (_: Exception) { null }
     fun token(): String? = try {
         val data = prefs.getString("device_token_cipher", null) ?: return null
         val iv = prefs.getString("device_token_iv", null) ?: return null
@@ -41,7 +56,7 @@ class DeviceCredentialVault(context: Context) {
         String(cipher.doFinal(Base64.decode(data, Base64.NO_WRAP)), Charsets.UTF_8)
     } catch (_: Exception) { null }
     fun clear() {
-        prefs.edit().remove("device_id").remove("device_token_cipher").remove("device_token_iv").apply()
+        prefs.edit().remove("device_id").remove("device_token_cipher").remove("device_token_iv").remove("account_token_cipher").remove("account_token_iv").apply()
         try { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias) } catch (_: Exception) {}
     }
 }
