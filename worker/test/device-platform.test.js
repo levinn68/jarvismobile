@@ -8,6 +8,7 @@ import {
   verifyDeviceToken
 } from "../src/device/auth.js";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
+import { acknowledgeDeviceCommand } from "../src/device/command-service.js";
 
 const secret = "test-only-secret-with-at-least-32-characters-long";
 
@@ -149,4 +150,36 @@ test("device normalization accepts the supported desktop platforms", () => {
     });
     assert.equal(device.platform, platform);
   }
+});
+
+
+test("command acknowledgement is idempotent", async () => {
+  const values = new Map();
+  const kv = {
+    async get(key) { return values.get(key) ?? null; },
+    async put(key, value) { values.set(key, value); }
+  };
+  const key = "command:android-test-device-01:command-123";
+  values.set(key, JSON.stringify({
+    commandId: "command-123",
+    deviceId: "android-test-device-01",
+    status: "queued"
+  }));
+
+  const first = await acknowledgeDeviceCommand({
+    kv,
+    deviceId: "android-test-device-01",
+    commandId: "command-123",
+    result: { ok: true }
+  });
+  const second = await acknowledgeDeviceCommand({
+    kv,
+    deviceId: "android-test-device-01",
+    commandId: "command-123",
+    result: { ok: true }
+  });
+
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(second.alreadyAcknowledged, true);
 });
