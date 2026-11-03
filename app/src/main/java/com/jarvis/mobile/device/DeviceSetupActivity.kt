@@ -31,6 +31,7 @@ class DeviceSetupActivity : Activity() {
             this.text = text; setOnClickListener { action() }; layout.addView(this)
         }
         val googleAccessToken = intent.getStringExtra(EXTRA_SUPABASE_ACCESS_TOKEN).orEmpty()
+        val supabaseUserId = intent.getStringExtra(EXTRA_SUPABASE_USER_ID)
         val targetDevice = EditText(this).apply {
             hint = "ID perangkat target (kosong = perangkat ini)"
             inputType = 0x00000001
@@ -49,7 +50,7 @@ class DeviceSetupActivity : Activity() {
                 val message = try {
                     val account = client.createOrRestoreAccountWithSupabase(googleAccessToken)
                     val accountId = account.optJSONObject("account")?.optString("accountId").orEmpty()
-                    client.pair(client.storedAccountToken(), Build.MODEL, Build.VERSION.RELEASE)
+                    client.pair(client.storedAccountToken(supabaseUserId), Build.MODEL, Build.VERSION.RELEASE)
                     "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
                 } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
                 runOnUiThread { status.text = message }
@@ -59,7 +60,7 @@ class DeviceSetupActivity : Activity() {
             status.text = "Memuat daftar perangkat..."
             worker.execute {
                 val message = try {
-                    val devices = client.listAccountDevices()
+                    val devices = client.listAccountDevices(supabaseUserId)
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
                         val item = devices.optJSONObject(i) ?: continue
@@ -113,14 +114,14 @@ class DeviceSetupActivity : Activity() {
         }
         button("Kirim perintah status ke perangkat ini") {
             val id = client.deviceId()
-            if (id.isNullOrBlank() || !client.hasAccountToken()) {
+            if (id.isNullOrBlank() || !client.hasAccountToken(supabaseUserId)) {
                 status.text = "Pair perangkat terlebih dahulu"
                 return@button
             }
             status.text = "Mengirim perintah status..."
             worker.execute {
                 val message = try {
-                    val queued = client.queueCommand(id, "system.status")
+                    val queued = client.queueCommand(id, "system.status", expectedSupabaseUserId = supabaseUserId)
                     if (queued.optBoolean("ok")) "Perintah masuk antrean. Pastikan sinkronisasi aktif untuk mengeksekusi."
                     else "Perintah ditolak: ${queued.optString("reason", queued.optString("error", "tidak diizinkan"))}"
                 } catch (e: Exception) { "Gagal mengirim perintah: ${e.message}" }
@@ -155,5 +156,5 @@ class DeviceSetupActivity : Activity() {
         }
     }
     override fun onDestroy() { worker.shutdown(); super.onDestroy() }
-    companion object { const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token" }
+    companion object { const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token"; const val EXTRA_SUPABASE_USER_ID = "jarvis_supabase_user_id" }
 }
