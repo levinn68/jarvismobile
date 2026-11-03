@@ -88,6 +88,9 @@ class DeviceSetupActivity : Activity() {
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
         }
+        button("Pengaturan aksesibilitas (baca layar)") {
+            startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
         button("Perbarui izin & kemampuan perangkat") {
             if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
             status.text = "Memeriksa izin Android..."
@@ -95,6 +98,7 @@ class DeviceSetupActivity : Activity() {
                 val capabilities = mutableListOf("apps.list", "apps.launch", "system.read")
                 if (FileController(this).hasSelectedFolder()) capabilities.add("files.read")
                 if (NotificationController(this).list().optBoolean("ok")) capabilities.add("notifications.read")
+                if (DevicePermissionManager(this).isGranted("screen.read")) capabilities.add("screen.read")
                 val message = try {
                     client.updateCapabilities(capabilities)
                     "Kemampuan aktif: ${capabilities.joinToString()}"
