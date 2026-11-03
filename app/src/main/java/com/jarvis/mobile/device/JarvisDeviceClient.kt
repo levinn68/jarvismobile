@@ -48,6 +48,23 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         return result
     }
 
+    /**
+     * Creates a short-lived one-time pairing code for desktop agents.
+     * The code is bound to the current Google-linked account and expires in ~5 minutes.
+     */
+    fun createPairingSession(expectedSupabaseUserId: String, deviceHintName: String = "Desktop"): JSONObject {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        val body = JSONObject().put("deviceHint", JSONObject().put("name", deviceHintName.take(80)))
+        return rawRequest("POST", "/v1/pairing/sessions", body, accountToken)
+    }
+
+    fun pairingSessionStatus(code: String, expectedSupabaseUserId: String): JSONObject {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        return rawRequest("GET", "/v1/pairing/sessions/status?code=${java.net.URLEncoder.encode(code, "UTF-8")}", null, accountToken)
+    }
+
     fun listAccountDevices(expectedSupabaseUserId: String? = null): JSONArray {
         val accountToken = vault.accountToken(expectedSupabaseUserId)
             ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account. Reconnect the device.")
@@ -66,7 +83,6 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun storedAccountUserId(): String? = vault.accountUserId()
     fun clearAccountToken() = vault.clearAccountToken()
 
-    /** Queue a typed action for a device owned by this JARVIS account. */
     fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null): JSONObject {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(action.length in 1..80) { "Invalid action" }
@@ -117,7 +133,6 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
                     } catch (e: Exception) {
                         JSONObject().put("ok", false).put("error", e.message ?: "Execution failed")
                     }
-                    // Screen control opens a local approval UI. Final ack is owned by that activity.
                     if (result.optBoolean("pendingApproval", false)) {
                         onResult("Menunggu persetujuan pengguna untuk ${command.optString("action")}")
                         continue
