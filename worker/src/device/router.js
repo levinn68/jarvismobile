@@ -1,7 +1,7 @@
 import { issueAccountToken, issueDeviceToken, verifyAccountToken, verifyDeviceToken } from "./auth.js";
 import { createAccount, getAccount, getDevice, listDevicesForAccount, saveDevice, touchDevice } from "./registry.js";
 import { publicDevice } from "./policy.js";
-import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand } from "./command-service.js";
+import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand, getDeviceCommand } from "./command-service.js";
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, OPTIONS"}});
 async function readBody(request){try{return await request.json()}catch(_){throw new Error("Request body must be valid JSON")}}
 const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
@@ -76,6 +76,19 @@ export async function handleDeviceRequest(request,env,url) {
    const result=await enqueueDeviceCommand({kv:env.DEVICE_COMMANDS,device,input:body,context:{userConfirmed:false}});
    return json(result,result.ok?200:403);
   } catch(e){return json({ok:false,error:e.message},400)}
+ }
+ if(path==="/v1/device/command/status"&&request.method==="GET") {
+  const id=url.searchParams.get("deviceId")||"",commandId=url.searchParams.get("commandId")||"";
+  const accountClaims=await verifyAccountToken(request,env.DEVICE_TOKEN_SECRET);
+  const deviceClaims=accountClaims?null:await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id);
+  if(!accountClaims&&!deviceClaims)return json({ok:false,error:"Account or matching device token required"},401);
+  const device=await getDevice(env.DEVICE_REGISTRY,id);
+  if(!device)return json({ok:false,error:"Device not registered"},404);
+  if(accountClaims&&device.accountId!==accountClaims.sub)return json({ok:false,error:"Device belongs to another account"},403);
+  try {
+   const command=await getDeviceCommand({kv:env.DEVICE_COMMANDS,deviceId:id,commandId});
+   return command?json({ok:true,command}):json({ok:false,error:"Command not found or expired"},404);
+  } catch(e){return json({ok:false,error:e.message},503)}
  }
  if(path==="/v1/device/commands"&&request.method==="GET") {
   const id=url.searchParams.get("deviceId")||"";
