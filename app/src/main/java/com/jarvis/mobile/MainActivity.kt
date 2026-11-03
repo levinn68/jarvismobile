@@ -1,5 +1,7 @@
 package com.jarvis.mobile
 
+import com.jarvis.mobile.device.JarvisDeviceClient
+import com.jarvis.mobile.device.JarvisDeviceSyncService
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -440,6 +442,25 @@ class MainActivity : ComponentActivity() {
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
                 onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
+                onDeviceCommand = { action, params, callback ->
+                    Thread {
+                        val message = try {
+                            val client = JarvisDeviceClient(this)
+                            val deviceId = client.deviceId()
+                                ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
+                            val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params))
+                            if (queued.optBoolean("ok")) {
+                                JarvisDeviceSyncService.start(this)
+                                "Perintah ${action} masuk antrean perangkat. Sinkronisasi sedang dijalankan; hasil baru dapat dipastikan setelah perangkat mengirim acknowledgement."
+                            } else {
+                                "Perintah tidak dapat dijalankan: ${queued.optString("reason", queued.optString("error", "izin kemampuan belum aktif"))}"
+                            }
+                        } catch (error: Exception) {
+                            "Kontrol perangkat gagal: ${error.message ?: "koneksi atau pairing belum siap"}"
+                        }
+                        runOnUiThread { callback(message) }
+                    }.start()
+                },
                 onOpenApp = { q -> openRequestedApp(q) },
                 accountEmail = accountEmail.value,
                 accountName = accountName.value,
@@ -1960,6 +1981,7 @@ private fun JarvisScreen(
     onSearch: (String) -> Unit,
     onSaveGeminiKey: (String) -> Unit,
     onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
+    onDeviceCommand: (String, Map<String, String>, (String) -> Unit) -> Unit,
     onOpenApp: (String) -> Boolean,
     accountEmail: String?,
     accountName: String?,
@@ -2081,6 +2103,31 @@ private fun JarvisScreen(
         val closing = if (english) " I have displayed the available options on your screen." else " Semua pilihannya sudah saya tampilkan di layar."
         return (lead + detail + closing).take(900)
     }
+    fun parseDeviceCommand(raw: String): Pair<String, Map<String, String>>? {
+        val value = raw.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        return when (value) {
+            "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai" ->
+                "system.status" to emptyMap()
+            "daftar aplikasi", "list aplikasi", "aplikasi terpasang", "list apps" ->
+                "apps.list" to emptyMap()
+            "lihat notifikasi", "cek notifikasi", "notifikasi terbaru" ->
+                "notifications.list" to emptyMap()
+            "daftar file", "list file", "lihat file" ->
+                "files.list" to emptyMap()
+            else -> {
+                val match = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
+                val packageName = when (match?.groupValues?.getOrNull(1)) {
+                    "whatsapp" -> "com.whatsapp"
+                    "youtube" -> "com.google.android.youtube"
+                    "chrome" -> "com.android.chrome"
+                    "roblox" -> "com.roblox.client"
+                    else -> null
+                }
+                packageName?.let { "apps.launch" to mapOf("packageName" to it) }
+            }
+        }
+    }
+
     fun send(raw: String, voice: Boolean = false) {
         val q = raw.trim()
         val files = pendingAttachments.toList()
@@ -2099,6 +2146,21 @@ private fun JarvisScreen(
 
         val norm = q.lowercase(Locale.ROOT)
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis", "open", "buka")) return
+        val deviceCommand = parseDeviceCommand(q)
+        if (deviceCommand != null) {
+            busy = true
+            processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
+            onDeviceCommand(deviceCommand.first, deviceCommand.second) { result ->
+                showJarvis(result)
+                busy = false
+                processStage = "SIAP"
+                if (voice) {
+                    voiceAnswer = result
+                    onSpeak(result)
+                }
+            }
+            return
+        }
         // Do not infer app-launch actions from ordinary words such as "open" or short utterances.
         // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
         busy = true
