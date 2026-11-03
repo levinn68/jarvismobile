@@ -6,11 +6,13 @@ import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 
 /** Account-scoped enrollment and per-device command transport. */
 class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") {
     private val vault = DeviceCredentialVault(context)
     private val io = Executors.newSingleThreadExecutor()
+    private val pendingAcknowledgements = ConcurrentHashMap<String, JSONObject>()
 
     fun createAccount(enrollmentSecret: String): JSONObject {
         require(enrollmentSecret.isNotBlank()) { "Bootstrap secret is required" }
@@ -63,9 +65,13 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
                     val command = commands.optJSONObject(i) ?: continue
                     val id = command.optString("commandId")
                     if (id.isBlank()) continue
-                    val result = try { executor.execute(command) }
+                    val result = pendingAcknowledgements[id] ?: try { executor.execute(command) }
                     catch (e: Exception) { JSONObject().put("ok", false).put("error", e.message ?: "Execution failed") }
-                    try { acknowledge(id, result) } catch (e: Exception) { onResult("Acknowledgement failed: ${e.message}") }
+                    pendingAcknowledgements[id] = result
+                    try {
+                        acknowledge(id, result)
+                        pendingAcknowledgements.remove(id)
+                    } catch (e: Exception) { onResult("Acknowledgement failed: ${e.message}") }
                 }
                 onResult("Device sync completed")
             } catch (e: Exception) { onResult("Device sync failed: ${e.message}") }
