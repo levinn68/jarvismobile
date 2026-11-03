@@ -61,6 +61,8 @@ The Android app includes a user-started foreground sync service and a permission
 
 Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the current Google account and pair the device. Pair each Android device with the same Google account, configure the desired permissions on each target, update capabilities, and start Device Sync on the target device. See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for setup, API routes, Cloudflare KV bindings, secrets and security boundaries.
 
+Google sign-in also requires a Google OAuth **Web Client ID** configured as the GitHub Actions secret `GOOGLE_WEB_CLIENT_ID`, plus the matching Google provider Client ID/Client Secret in Supabase Auth. Android CI intentionally fails early when the Web Client ID secret is absent; a successful Gradle build alone is not proof that OAuth is configured.
+
 Android OS permissions remain authoritative. Camera capture, screen taps/typing, arbitrary shell, unrestricted filesystem access, silent microphone/camera access, and high-risk system settings changes are not exposed. Windows/macOS/iOS still require separate native companion agents; Worker platform identifiers alone do not constitute working connectors. The deployment workflow runs Worker protocol/security tests before deploying.
 
 
