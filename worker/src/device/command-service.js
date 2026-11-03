@@ -2,7 +2,7 @@ import { validateCommand } from "./protocol.js";
 import { authorizeCapability } from "./policy.js";
 export async function enqueueDeviceCommand({kv,device,input,context={}}) {
  if(!kv)throw new Error("DEVICE_COMMANDS KV binding is required");
- const command=validateCommand(input);
+ const command=validateCommand(input,device.platform);
  const decision=authorizeCapability(device,command.capability,{userConfirmed:context.userConfirmed});
  if(!decision.allowed)return {ok:false,status:"blocked",...decision};
  const record={...command,deviceId:device.deviceId,status:"queued"};
