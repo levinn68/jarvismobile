@@ -633,3 +633,32 @@ test("command acknowledgement rejects a mismatched stored command identity", asy
   const result = await acknowledgeDeviceCommand({ kv, deviceId, commandId, result: { ok: true } });
   assert.deepEqual(result, { ok: false, error: "Command identity does not match" });
 });
+
+test("device enrollment rejects JSON null and array bodies", async () => {
+  const accountId = "acct-invalid-body-123";
+  const token = await issueAccountToken(accountId, secret);
+  const env = {
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: {
+      async get(key) {
+        return key === "account:" + accountId
+          ? JSON.stringify({ accountId, status: "active" })
+          : null;
+      }
+    }
+  };
+
+  for (const body of ["null", "[]"]) {
+    const request = new Request("https://jarvis.test/v1/devices/enroll", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body
+    });
+    const response = await handleDeviceRequest(request, env, new URL(request.url));
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /JSON object/);
+  }
+});
