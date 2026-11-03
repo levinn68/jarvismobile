@@ -1,4 +1,5 @@
 import { buildPersonalityPrompt } from "./personality.js";
+import { handleDeviceRequest } from "./device/router.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -620,6 +621,8 @@ export default {
         return json({ ok: false, success: false, error: "Internal JARVIS error", detail, reply, response: reply, message: reply }, 500);
       }
     }
+    const deviceResponse = await handleDeviceRequest(request, env, url);
+    if (deviceResponse) return deviceResponse;
     return json({ error: "Not found" }, 404);
   },
 };
