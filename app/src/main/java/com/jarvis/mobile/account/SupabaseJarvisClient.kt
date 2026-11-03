@@ -53,7 +53,7 @@ class SupabaseJarvisClient(context: Context) {
     fun currentEmail(): String? = prefs.getString("email", null)
     fun currentName(): String? = prefs.getString("display_name", null)
 
-    suspend fun signInWithGoogle(): JarvisSession {
+    suspend fun signInWithGoogle(activityContext: Context): JarvisSession {
         require(baseUrl.startsWith("https://") && anonKey.isNotBlank() && googleWebClientId.isNotBlank()) {
             "Konfigurasi Supabase belum lengkap. Isi SUPABASE_ANON_KEY dan GOOGLE_WEB_CLIENT_ID."
         }
