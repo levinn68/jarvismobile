@@ -10,8 +10,8 @@ android {
         applicationId = "com.jarvis.mobile.assistant"
         minSdk = 23
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.9.1"
+        versionCode = 11
+        versionName = "0.9.2"
         buildConfigField("String", "SUPABASE_URL", "\"https://agwaxaejnnszunccmftm.supabase.co\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${System.getenv("SUPABASE_ANON_KEY")?.takeIf { it.isNotBlank() } ?: "sb_publishable_BtFlJ2XJc4SW4kNSmIZ8bA_WcTQgFq-"}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\"")
