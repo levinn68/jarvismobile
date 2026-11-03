@@ -45,6 +45,7 @@ Existing deployments must have both KV bindings and both secrets configured. Acc
 Only these actions are accepted by the backend and Android connector:
 - `apps.list`
 - `apps.launch` (requires a syntactically valid Android package name)
+- `apps.launch_label` (resolves a unique installed app by its visible name; ambiguous matches are returned rather than launching the wrong app)
 - `system.status`
 - `notifications.list`
 - `screen.read` (requires the user to explicitly enable JARVIS Accessibility Service in Android Settings; reads visible text only and does not tap or type)
