@@ -8,6 +8,7 @@ import {
   verifyDeviceToken
 } from "../src/device/auth.js";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
+import { saveDevice, createAccount } from "../src/device/registry.js";
 import { acknowledgeDeviceCommand } from "../src/device/command-service.js";
 import { handleDeviceRequest } from "../src/device/router.js";
 
@@ -283,4 +284,34 @@ test("account enrollment, Windows command queue, polling and acknowledgement wor
 
   const afterAck = await call("GET", "/v1/device/commands?deviceId=windows-test-device-01", deviceToken);
   assert.equal((await afterAck.json()).commands.length, 0);
+});
+
+
+test("device ID cannot be re-enrolled into a different account", async () => {
+  class MemoryKV {
+    constructor() { this.values = new Map(); }
+    async get(key) { return this.values.get(key) ?? null; }
+    async put(key, value) { this.values.set(key, value); }
+  }
+  const kv = new MemoryKV();
+  await createAccount(kv, "acct-test-account-123");
+  await createAccount(kv, "acct-other-account-456");
+
+  const first = await saveDevice(kv, {
+    deviceId: "android-test-device-01",
+    accountId: "acct-test-account-123",
+    platform: "android",
+    capabilities: ["system.read"]
+  });
+  assert.equal(first.accountId, "acct-test-account-123");
+
+  await assert.rejects(
+    () => saveDevice(kv, {
+      deviceId: "android-test-device-01",
+      accountId: "acct-other-account-456",
+      platform: "android",
+      capabilities: ["system.read"]
+    }),
+    /already enrolled in another account/
+  );
 });
