@@ -52,6 +52,7 @@ async function verifyToken(request, secret, scope, expectedSubject) {
   if (!secret || typeof secret !== "string") return null;
 
   const authorization = request.headers.get("Authorization") || "";
+  if (authorization.length > 4096) return null;
   const match = authorization.trim().match(/^Bearer\s+(\S+)$/i);
   if (!match) return null;
 
