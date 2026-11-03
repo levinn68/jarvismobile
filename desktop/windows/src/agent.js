@@ -61,7 +61,9 @@ async function resolvedRoots() {
 function normalizedForComparison(value) {
   let resolved = path.resolve(value);
   if (process.platform === "win32") {
-    resolved = resolved.replace(/^\\\\\\?\\/, "").toLocaleLowerCase("en-US");
+    const extendedPathPrefix = "\\\\?\\";
+    if (resolved.startsWith(extendedPathPrefix)) resolved = resolved.slice(extendedPathPrefix.length);
+    resolved = resolved.toLocaleLowerCase("en-US");
   }
   return resolved;
 }
