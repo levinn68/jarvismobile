@@ -74,3 +74,17 @@ test("public API rejects non-string chat, search, and TTS text fields", async ()
   assert.equal(ttsResponse.status, 400);
   assert.match((await ttsResponse.json()).error, /text must be a string/);
 });
+
+
+test("CORS preflight permits the device capability PUT method", async () => {
+  const response = await worker.fetch(new Request("https://jarvis.test/v1/devices/android-test-device/capabilities", {
+    method: "OPTIONS",
+    headers: {
+      Origin: "https://jarvis-client.test",
+      "Access-Control-Request-Method": "PUT",
+      "Access-Control-Request-Headers": "authorization,content-type"
+    }
+  }), {});
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("Access-Control-Allow-Methods") || "", /\\bPUT\\b/);
+});
