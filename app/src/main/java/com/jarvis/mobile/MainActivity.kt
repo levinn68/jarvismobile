@@ -2125,24 +2125,37 @@ private fun JarvisScreen(
     fun parseDeviceCommand(raw: String): Pair<String, Map<String, String>>? {
         val value = raw.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
         return when (value) {
-            "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai" ->
+            "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai",
+            "cek kondisi hp", "info perangkat" ->
                 "system.status" to emptyMap()
-            "daftar aplikasi", "list aplikasi", "aplikasi terpasang", "list apps" ->
+            "daftar aplikasi", "list aplikasi", "aplikasi terpasang", "list apps", "lihat aplikasi" ->
                 "apps.list" to emptyMap()
-            "lihat notifikasi", "cek notifikasi", "notifikasi terbaru" ->
+            "lihat notifikasi", "cek notifikasi", "notifikasi terbaru", "daftar notifikasi" ->
                 "notifications.list" to emptyMap()
-            "daftar file", "list file", "lihat file" ->
+            "daftar file", "list file", "lihat file", "file saya" ->
                 "files.list" to emptyMap()
             else -> {
-                val match = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
-                val packageName = when (match?.groupValues?.getOrNull(1)) {
-                    "whatsapp" -> "com.whatsapp"
-                    "youtube" -> "com.google.android.youtube"
-                    "chrome" -> "com.android.chrome"
-                    "roblox" -> "com.roblox.client"
+                val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
+                val launch = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
+                val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
+                when {
+                    search != null -> {
+                        val query = search.groupValues[1].trim().take(200)
+                        if (query.isBlank()) null else "files.search" to mapOf("query" to query)
+                    }
+                    launch != null -> {
+                        val packageName = when (launch.groupValues[1]) {
+                            "whatsapp" -> "com.whatsapp"
+                            "youtube" -> "com.google.android.youtube"
+                            "chrome" -> "com.android.chrome"
+                            "roblox" -> "com.roblox.client"
+                            else -> null
+                        }
+                        packageName?.let { "apps.launch" to mapOf("packageName" to it) }
+                    }
+                    packageLaunch != null -> "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
                     else -> null
                 }
-                packageName?.let { "apps.launch" to mapOf("packageName" to it) }
             }
         }
     }
