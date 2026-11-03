@@ -59,12 +59,13 @@ async function resolvedRoots() {
 }
 
 function normalizedForComparison(value) {
-  let resolved = path.resolve(value);
+  let input = String(value);
   if (process.platform === "win32") {
     const extendedPathPrefix = "\\\\?\\";
-    if (resolved.startsWith(extendedPathPrefix)) resolved = resolved.slice(extendedPathPrefix.length);
-    resolved = resolved.toLocaleLowerCase("en-US");
+    if (input.startsWith(extendedPathPrefix)) input = input.slice(extendedPathPrefix.length);
   }
+  let resolved = path.resolve(input);
+  if (process.platform === "win32") resolved = resolved.toLocaleLowerCase("en-US");
   return resolved;
 }
 
