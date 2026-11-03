@@ -18,7 +18,7 @@ async function readBody(request) {
   catch (_) { throw new Error("Request body must be valid JSON"); }
 }
 
-const bearer = request => (request.headers.get("Authorization") || "").replace(/^Bearer\\s+/i, "");
+const bearer = request => { const value = request.headers.get("Authorization") || ""; return value.slice(0, 7).toLowerCase() === "bearer " ? value.slice(7).trim() : value.trim(); };
 
 async function accountIsActive(kv, accountId) {
   const account = await getAccount(kv, accountId);
