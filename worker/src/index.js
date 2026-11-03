@@ -3,7 +3,7 @@ import { handleDeviceRequest } from "./device/router.js";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS, GET",
+  "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
