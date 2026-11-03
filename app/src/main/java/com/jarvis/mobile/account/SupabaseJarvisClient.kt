@@ -34,6 +34,7 @@ class SupabaseJarvisClient(context: Context) {
     fun currentEmail(): String? = vault.read()?.optString("email")?.takeIf { it.isNotBlank() }
     fun currentName(): String? = vault.read()?.optString("display_name")?.takeIf { it.isNotBlank() }
     fun activeConversationId(): String? = activeConversationId
+    fun currentAccessToken(): String = accessToken()
 
     suspend fun signInWithGoogle(activityContext: Context): JarvisSession {
         require(baseUrl.startsWith("https://") && anonKey.isNotBlank() && googleWebClientId.isNotBlank()) {
