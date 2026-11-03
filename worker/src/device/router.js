@@ -1,8 +1,8 @@
 import { issueAccountToken, issueDeviceToken, verifyAccountToken, verifyDeviceToken } from "./auth.js";
-import { createAccount, getAccount, getDevice, listDevicesForAccount, saveDevice, touchDevice } from "./registry.js";
+import { createAccount, getAccount, getDevice, listDevicesForAccount, saveDevice, touchDevice, removeDevice } from "./registry.js";
 import { publicDevice } from "./policy.js";
 import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand, getDeviceCommand } from "./command-service.js";
-const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, OPTIONS"}});
+const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, DELETE, OPTIONS"}});
 async function readBody(request){try{return await request.json()}catch(_){throw new Error("Request body must be valid JSON")}}
 const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
 export async function handleDeviceRequest(request,env,url) {
@@ -64,7 +64,19 @@ export async function handleDeviceRequest(request,env,url) {
  }
  const match=path.match(/^\/v1\/devices\/([a-zA-Z0-9_-]{8,80})(?:\/(heartbeat|capabilities))?$/);
  if(match) {
-  const [,id,action]=match,claims=await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id);
+  const [,id,action]=match;
+  if(!action&&request.method==="DELETE") {
+   const accountClaims=await verifyAccountToken(request,env.DEVICE_TOKEN_SECRET);
+   if(!accountClaims)return json({ok:false,error:"Account token required to revoke a device"},401);
+   const existing=await getDevice(env.DEVICE_REGISTRY,id);
+   if(!existing)return json({ok:false,error:"Device not registered"},404);
+   if(existing.accountId!==accountClaims.sub)return json({ok:false,error:"Device belongs to another account"},403);
+   try {
+    await removeDevice(env.DEVICE_REGISTRY,id,accountClaims.sub);
+    return json({ok:true,deviceId:id,revoked:true});
+   } catch(e) { return json({ok:false,error:e.message},500); }
+  }
+  const claims=await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id);
   if(!claims)return json({ok:false,error:"Unauthorized device token"},401);
   const device=await getDevice(env.DEVICE_REGISTRY,id);
   if(!device)return json({ok:false,error:"Device not registered"},404);
@@ -114,6 +126,7 @@ export async function handleDeviceRequest(request,env,url) {
  if(path==="/v1/device/commands"&&request.method==="GET") {
   const id=url.searchParams.get("deviceId")||"";
   if(!await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id))return json({ok:false,error:"Unauthorized"},401);
+  if(!await getDevice(env.DEVICE_REGISTRY,id))return json({ok:false,error:"Device has been revoked"},404);
   try{return json({ok:true,commands:await listDeviceCommands({kv:env.DEVICE_COMMANDS,deviceId:id})});}
   catch(e){return json({ok:false,error:e.message},503)}
  }
@@ -121,6 +134,7 @@ export async function handleDeviceRequest(request,env,url) {
   try {
    const body=await readBody(request),id=String(body.deviceId||"");
    if(!await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id))return json({ok:false,error:"Unauthorized"},401);
+   if(!await getDevice(env.DEVICE_REGISTRY,id))return json({ok:false,error:"Device has been revoked"},404);
    const result=await acknowledgeDeviceCommand({kv:env.DEVICE_COMMANDS,deviceId:id,commandId:String(body.commandId||""),result:body.result});
    return json(result,result.ok?200:404);
   } catch(e){return json({ok:false,error:e.message},400)}
