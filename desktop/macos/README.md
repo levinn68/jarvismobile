@@ -1,21 +1,15 @@
 # JARVIS Desktop Agent — macOS
 
-Node.js agent for macOS. Pairing, heartbeat, file/app commands with path containment.
-
-## Quick start
+**Recommended:** run the shared Linux/macOS agent:
 
 ```bash
-# Option A: use shared unix agent (already supports darwin/macos)
-cd ../unix && npm start
-
-# Option B: reconstruct full agent.js if src/agent.js is a stub
-bash RECONSTRUCT_AGENT.sh
+cd ../unix
 npm start
+# or pair: npm run pair -- <CODE>
 ```
 
-Pair:
-```bash
-npm run pair -- <PAIRING_CODE>
-```
+`desktop/unix/src/agent.js` already returns `platform: macos` on Darwin.
 
-Credentials are stored under `~/.config/jarvis/device-credentials.json` (mode 0600).
+Alternatively reconstruct `src/agent.js` from the release ZIP (`desktop/macos/src/agent.js`) which contains the full poll/execute loop.
+
+Credentials: `~/.config/jarvis/device-credentials.json` (mode 0600).
