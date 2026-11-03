@@ -19,7 +19,7 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         val id = "android-" + java.util.UUID.randomUUID().toString()
         val body = JSONObject().put("deviceId", id).put("platform", "android")
             .put("name", deviceName.take(80)).put("osVersion", osVersion.take(40))
-            .put("appVersion", appVersion).put("capabilities", JSONArray(listOf("files.read", "apps.list", "apps.launch", "system.read", "notifications.read")))
+            .put("appVersion", appVersion).put("capabilities", JSONArray(listOf("apps.list", "apps.launch", "system.read")))
         val connection = (URL(baseUrl.trimEnd('/') + "/v1/devices/enroll").openConnection() as HttpURLConnection)
         try {
             connection.requestMethod = "POST"; connection.connectTimeout = 12000; connection.readTimeout = 20000; connection.doOutput = true
