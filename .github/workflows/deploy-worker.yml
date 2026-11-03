@@ -1,6 +1,7 @@
 name: Deploy JARVIS Cloudflare Worker
 on:
   push:
+    branches: [main]
     paths:
       - "worker/**"
       - ".github/workflows/deploy-worker.yml"
