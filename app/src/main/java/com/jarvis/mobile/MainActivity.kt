@@ -585,7 +585,7 @@ class MainActivity : ComponentActivity() {
                         voiceStatus.value = "HEARING: ${partial.take(28)}"
                     }
                 }
-                override fun onEvent(eventType: Int, params: Bundle?) {})
+                override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
     private fun restartListeningSession() {
