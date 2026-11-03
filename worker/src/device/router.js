@@ -26,7 +26,7 @@ export async function handleDeviceRequest(request,env,url) {
    return json({ok:true,device:publicDevice(device),token,tokenType:"Bearer"},201);
   } catch(e){return json({ok:false,error:e.message},400)}
  }
- const match=path.match(/^\\/v1\\/devices\\/([a-zA-Z0-9_-]{8,80})(?:\\/(heartbeat|capabilities))?$/);
+ const match=path.match(/^\/v1\/devices\/([a-zA-Z0-9_-]{8,80})(?:\/(heartbeat|capabilities))?$/);
  if(match) {
   const [,id,action]=match,claims=await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id);
   if(!claims)return json({ok:false,error:"Unauthorized device token"},401);
