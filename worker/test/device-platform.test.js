@@ -482,3 +482,36 @@ test("account device listing follows KV pagination cursors", async () => {
   assert.equal(calls.length, 2);
   assert.equal(calls[1].cursor, "page-two");
 });
+
+
+test("device registry pagination fails closed when continuation cursor is missing", async () => {
+  const kv = {
+    async list() {
+      return { keys: [{ name: "account-device:acct-test:device-01" }], list_complete: false };
+    }
+  };
+  await assert.rejects(
+    () => listDevicesForAccount(kv, "acct-test"),
+    /no continuation cursor was returned/
+  );
+});
+
+
+test("device registry pagination fails closed when a cursor repeats", async () => {
+  let calls = 0;
+  const kv = {
+    async list() {
+      calls += 1;
+      return {
+        keys: [{ name: "account-device:acct-test:device-" + calls }],
+        list_complete: false,
+        cursor: "same-cursor"
+      };
+    }
+  };
+  await assert.rejects(
+    () => listDevicesForAccount(kv, "acct-test"),
+    /repeated continuation cursor/
+  );
+  assert.equal(calls, 2);
+});
