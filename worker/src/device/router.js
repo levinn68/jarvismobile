@@ -52,8 +52,13 @@ async function readBody(request) {
       bytes.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
-  } catch (_) {
+    const parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Request body must be a JSON object");
+    }
+    return parsed;
+  } catch (error) {
+    if (error.message === "Request body must be a JSON object") throw error;
     throw new Error("Request body must be valid JSON");
   }
 }
