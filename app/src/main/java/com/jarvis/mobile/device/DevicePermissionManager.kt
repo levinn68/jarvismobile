@@ -17,8 +17,7 @@ class DevicePermissionManager(private val context: Context) {
     }
     fun isGranted(capability: String): Boolean {
         if (capability == "files.read" || capability == "files.write")
-            return context.getSharedPreferences(FileController.PREFS, Context.MODE_PRIVATE)
-                .getString(FileController.TREE_URI, null) != null
+            return FileController(context).hasSelectedFolder()
         if (capability == "notifications.read") return android.provider.Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")?.contains(context.packageName) == true
         return requiredFor(capability).all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
