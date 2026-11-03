@@ -24,6 +24,26 @@ function base64UrlEncode(value) {
   return btoa(value).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
+test("device router rejects request bodies larger than 64 KiB", async () => {
+  const env = {
+    DEVICE_ENROLLMENT_SECRET: "bootstrap-secret-for-integration-tests",
+    DEVICE_TOKEN_SECRET: secret,
+    DEVICE_REGISTRY: { async get() { return null; }, async put() {} }
+  };
+  const request = new Request("https://jarvis.test/v1/accounts/create", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + env.DEVICE_ENROLLMENT_SECRET,
+      "Content-Type": "application/json",
+      "Content-Length": String(64 * 1024 + 1)
+    },
+    body: JSON.stringify({ padding: "x".repeat(64 * 1024) })
+  });
+  const response = await handleDeviceRequest(request, env, new URL(request.url));
+  assert.equal(response.status, 413);
+  assert.match((await response.json()).error, /too large/);
+});
+
 test("account token round-trips with Bearer authorization", async () => {
   const token = await issueAccountToken("acct-test-account-123", secret);
   assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
