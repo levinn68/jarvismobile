@@ -1,0 +1,61 @@
+name: Restore MainActivity Baseline
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "feature/qr-pairing-v1" ]
+    paths:
+      - ".github/workflows/restore-mainactivity-baseline.yml"
+permissions:
+  contents: write
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          ref: feature/qr-pairing-v1
+          fetch-depth: 0
+
+      - name: Restore MainActivity from known good commit
+        run: |
+          set -euo pipefail
+          TARGET="app/src/main/java/com/jarvis/mobile/MainActivity.kt"
+          # Commit that still contained MainActivity.kt (blob 190820259e153fd74903d1d508f149b690ee9ae6)
+          SRC_COMMIT="04c33d43a5b0dcc60d31b12a99f659fc68878c9d"
+          EXPECTED_BLOB="190820259e153fd74903d1d508f149b690ee9ae6"
+
+          if [[ -f "$TARGET" ]]; then
+            CURRENT_BLOB=$(git hash-object "$TARGET")
+            echo "MainActivity already present, blob=$CURRENT_BLOB"
+            if [[ "$CURRENT_BLOB" == "$EXPECTED_BLOB" ]]; then
+              echo "Already at baseline blob; nothing to do"
+              exit 0
+            fi
+            echo "Present but different blob; will not overwrite with baseline automatically"
+            exit 0
+          fi
+
+          echo "Restoring $TARGET from $SRC_COMMIT"
+          git checkout "$SRC_COMMIT" -- "$TARGET"
+
+          ACTUAL_BLOB=$(git hash-object "$TARGET")
+          echo "Restored blob=$ACTUAL_BLOB expected=$EXPECTED_BLOB"
+          if [[ "$ACTUAL_BLOB" != "$EXPECTED_BLOB" ]]; then
+            echo "ERROR: blob SHA mismatch after checkout"
+            exit 1
+          fi
+
+          # Sanity: file must be non-trivial Kotlin source
+          BYTES=$(wc -c < "$TARGET")
+          echo "Size=$BYTES bytes"
+          test "$BYTES" -gt 100000
+          grep -q "class MainActivity" "$TARGET"
+          grep -q "package com.jarvis.mobile" "$TARGET"
+
+          git config user.name "jarvis-restore-bot"
+          git config user.email "jarvis-restore@users.noreply.github.com"
+          git add "$TARGET"
+          git commit -m "fix(android): restore MainActivity.kt baseline from blob ${EXPECTED_BLOB}"
+          git push origin feature/qr-pairing-v1
+          echo "RESTORE COMMITTED AND PUSHED"
