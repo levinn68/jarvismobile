@@ -21,14 +21,16 @@ Configure Worker Secrets:
 Existing deployments must have both KV bindings and both secrets configured. Account tokens are signed for one year; device tokens are signed for 30 days. Rotate `DEVICE_TOKEN_SECRET` to invalidate all issued tokens. Account tokens must be treated as passwords and shared only with devices belonging to the same owner.
 
 ## Account and device enrollment
-1. POST `/v1/accounts/create` with Authorization Bearer `DEVICE_ENROLLMENT_SECRET`. The response contains an `accountId` and one-year `accountToken`.
-2. Store the account token securely. It is required to enroll additional devices and list devices belonging to the account.
-3. POST `/v1/devices/enroll` with Authorization Bearer `accountToken` and device metadata. The Worker assigns the account ID from the signed token; it ignores any client-supplied account ownership.
-4. The response returns a device-scoped token. Each device stores only its own token in Android Keystore.
-5. GET `/v1/devices` with the account token returns devices owned by that account. Account tokens cannot poll or acknowledge device command queues.
+1. The Android app signs in with Google through Supabase Auth. It sends the short-lived Supabase access token to POST `/v1/accounts/google`.
+2. The Worker validates that token against the configured Supabase Auth `/auth/v1/user` endpoint and derives a stable JARVIS account ID from the verified Supabase user UUID. The response contains an account token; repeated sign-ins resolve to the same account.
+3. The legacy POST `/v1/accounts/create` bootstrap-secret route remains available for controlled non-Google provisioning only.
+4. The Android app stores the account token encrypted with Android Keystore and enrolls each device with POST `/v1/devices/enroll`.
+5. The Worker assigns the account ID from the signed account token; it ignores any client-supplied account ownership. Each device stores its device-scoped token in Android Keystore.
+6. GET `/v1/devices` with the account token returns devices owned by that Google account. Account tokens cannot poll or acknowledge device command queues.
 
 ## Routes
-- POST `/v1/accounts/create` — create an account using the bootstrap secret.
+- POST `/v1/accounts/google` — validate a Supabase Google session and issue/reuse its account-scoped JARVIS token.
+- POST `/v1/accounts/create` — legacy account creation using the bootstrap secret.
 - POST `/v1/devices/enroll` — enroll a device using its account token.
 - GET `/v1/devices` — list devices owned by the account token.
 - GET `/v1/devices/:deviceId` — read a device record using that device's token.
@@ -37,6 +39,7 @@ Existing deployments must have both KV bindings and both secrets configured. Acc
 - POST `/v1/device/command` — enqueue a validated command; account tokens may target only devices owned by the same account.
 - GET `/v1/device/commands?deviceId=...` — device-scoped connector polls its own queue.
 - POST `/v1/device/commands/ack` — device-scoped connector acknowledges its own command.
+- GET `/v1/device/command/status?deviceId=...&commandId=...` — account-scoped status lookup for a command sent to one of the owner's devices.
 
 ## Android command allowlist
 Only these actions are accepted by the backend and Android connector:
