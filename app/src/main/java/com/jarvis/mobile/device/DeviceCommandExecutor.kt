@@ -21,6 +21,7 @@ class DeviceCommandExecutor(context: Context) {
             "apps.launch" -> appController.launch(params.optString("packageName"))
             "system.status" -> deviceController.status()
             "notifications.list" -> notificationController.list()
+            "screen.read" -> JarvisAccessibilityService.snapshot()
             "camera.capture" -> JSONObject().put("ok", false).put("requiresForegroundUi", true).put("error", "Camera capture must be launched from an Activity after a visible user confirmation")
             "files.list", "files.search", "files.read" ->
                 fileController.execute(action, params)
