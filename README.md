@@ -50,3 +50,7 @@ The existing AI providers, visual search, API routes, Android client contract an
 The Worker now includes a first device control-plane foundation under `worker/src/device/` for Android, Windows, iOS/iPadOS, Wear OS, web and IoT connectors. It provides device enrollment, HMAC device tokens, per-device capability declarations, heartbeat, typed command validation and a short-lived KV command queue.
 
 See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for Cloudflare KV bindings, secrets, API routes and security boundaries. This is the backend control plane only; native device connectors still need to be implemented per platform and must enforce local OS permissions. No arbitrary shell or remote code execution is exposed.
+
+
+### Modular backend modules
+The backend also contains modular core orchestration, provider routing/key rotation helpers, device command lifecycle, platform connector capability metadata, skill registry, Fish Audio configuration helpers, visual-state/card normalization, and KV storage utilities under `worker/src/`. These modules provide reusable backend services; platform-native operations still require a separately implemented and permissioned connector on each OS.
