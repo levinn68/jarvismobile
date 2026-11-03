@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
                 accountBusy = accountBusy.value,
                 accountStatus = accountStatus.value,
                 onGoogleSignIn = { signInGoogle() },
-                onGoogleSignOut = { signOutGoogle() }
+                onGoogleSignOut = { signOutGoogle() },\n                onSaveTurn = { userText, assistantText -> saveChatTurn(userText, assistantText) }
             )
         }
     }
@@ -348,7 +348,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun signOutGoogle() {
+    private fun saveChatTurn(userText: String, assistantText: String) {\n        if (!supabaseClient.hasSession()) return\n        lifecycleScope.launch {\n            runCatching { supabaseClient.saveTurn(userText, assistantText) }\n                .onFailure { accountStatus.value = "CHAT BELUM TERSINKRON: " + (it.message ?: "error") }\n                .onSuccess { accountStatus.value = "CHAT TERSIMPAN" }\n        }\n    }\n\n    private fun signOutGoogle() {
         lifecycleScope.launch {
             runCatching { supabaseClient.signOut() }
             accountEmail.value = null
