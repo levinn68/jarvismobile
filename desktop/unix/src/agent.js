@@ -36,15 +36,44 @@ async function apiRequest(method, endpoint, token, body) {
 }
 
 async function pair() {
+  const pairingCode = (process.env.JARVIS_PAIRING_CODE || "").trim();
   const accountToken = process.env.JARVIS_ACCOUNT_TOKEN || "";
-  if (!accountToken) throw new Error("Set JARVIS_ACCOUNT_TOKEN before running the pair command.");
   const platform = platformName();
   const deviceId = platform + "-" + randomUUID();
-  const result = await apiRequest("POST", "/v1/devices/enroll", accountToken, {
-    deviceId, platform, name: os.hostname(), osVersion: os.release(), appVersion: "1.0.0",
-    capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
-  });
-  process.stdout.write("Pairing succeeded.\nDevice ID: " + deviceId + "\nDevice token (store securely; shown only once):\n" + result.token + "\n");
+
+  let result;
+  if (pairingCode) {
+    // Preferred: one-time code from Android QR / manual display.
+    result = await fetch(API + "/v1/pairing/redeem", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        code: pairingCode,
+        deviceId,
+        platform,
+        name: os.hostname(),
+        osVersion: os.release(),
+        appVersion: "1.0.0",
+        capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
+      }),
+      signal: AbortSignal.timeout(15000)
+    }).then(async (response) => {
+      const text = await response.text();
+      const parsed = text ? JSON.parse(text) : {};
+      if (!response.ok) throw new Error(parsed.error || ("HTTP " + response.status));
+      return parsed;
+    });
+  } else if (accountToken) {
+    result = await apiRequest("POST", "/v1/devices/enroll", accountToken, {
+      deviceId, platform, name: os.hostname(), osVersion: os.release(), appVersion: "1.0.0",
+      capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
+    });
+  } else {
+    throw new Error("Set JARVIS_PAIRING_CODE (from Android QR) or JARVIS_ACCOUNT_TOKEN before pairing.");
+  }
+
+  const enrolledId = result.device?.deviceId || deviceId;
+  process.stdout.write("Pairing succeeded.\nDevice ID: " + enrolledId + "\nDevice token (store securely; shown only once):\n" + result.token + "\n");
   process.stdout.write("Set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN before starting the agent.\n");
 }
 
