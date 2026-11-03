@@ -17,6 +17,10 @@ function requestWithToken(token) {
   });
 }
 
+function base64UrlEncode(value) {
+  return btoa(value).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+
 test("account token round-trips with Bearer authorization", async () => {
   const token = await issueAccountToken("acct-test-account-123", secret);
   assert.match(token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
@@ -39,10 +43,35 @@ test("invalid, tampered, expired, and missing Bearer tokens are rejected", async
   const tampered = payload + "." + (signature[0] === "A" ? "B" : "A") + signature.slice(1);
   assert.equal(await verifyAccountToken(requestWithToken(tampered), secret), null);
   assert.equal(await verifyAccountToken(requestWithToken("not-a-token"), secret), null);
-
-  const expired = await issueAccountToken("acct-test-account-123", secret, -1).catch(() => null);
-  assert.equal(expired, null);
   assert.equal(await verifyAccountToken(new Request("https://jarvis.test"), secret), null);
+
+  const now = Math.floor(Date.now() / 1000);
+  const expiredPayload = base64UrlEncode(JSON.stringify({
+    sub: "acct-test-account-123",
+    scope: "account",
+    iat: now - 120,
+    exp: now - 60
+  }));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signatureBytes = new Uint8Array(
+    await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(expiredPayload))
+  );
+  let binary = "";
+  for (const byte of signatureBytes) binary += String.fromCharCode(byte);
+  const expiredSignature = btoa(binary)
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  assert.equal(
+    await verifyAccountToken(requestWithToken(expiredPayload + "." + expiredSignature), secret),
+    null
+  );
 });
 
 test("secret length is enforced when issuing tokens", async () => {
