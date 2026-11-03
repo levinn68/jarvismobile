@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
 import { authorizeCapability } from "../src/device/policy.js";
 import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand, getDeviceCommand } from "../src/device/command-service.js";
+import { handleDeviceRequest } from "../src/device/router.js";
 
 function memoryKv() {
   const store = new Map();
@@ -65,4 +66,57 @@ test("queues commands only when device capability is declared and supports ackno
   const saved = await getDeviceCommand({ kv, deviceId: device.deviceId, commandId: queued.commandId });
   assert.equal(saved.status, "completed");
   assert.equal(saved.result.batteryPercent, 82);
+});
+
+
+test("Google-linked account enrollment verifies Supabase user and reuses stable account", async () => {
+  const kv = memoryKv();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    assert.equal(options.headers.apikey, "public-test-key");
+    assert.equal(options.headers.Authorization, "Bearer valid-supabase-token");
+    return new Response(JSON.stringify({ id: "123e4567-e89b-12d3-a456-426614174000" }), { status: 200 });
+  };
+  try {
+    const env = {
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_ANON_KEY: "public-test-key",
+      DEVICE_TOKEN_SECRET: "a-long-enough-test-signing-secret",
+      DEVICE_REGISTRY: kv
+    };
+    const request = () => new Request("https://worker.test/v1/accounts/google", {
+      method: "POST", headers: { Authorization: "Bearer valid-supabase-token" }
+    });
+    const first = await handleDeviceRequest(request(), env, new URL("https://worker.test/v1/accounts/google"));
+    const firstBody = await first.json();
+    const second = await handleDeviceRequest(request(), env, new URL("https://worker.test/v1/accounts/google"));
+    const secondBody = await second.json();
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(firstBody.account.accountId, "acct-123e4567-e89b-12d3-a456-426614174000");
+    assert.equal(secondBody.account.accountId, firstBody.account.accountId);
+    assert.notEqual(firstBody.accountToken, "");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Google-linked account enrollment rejects invalid Supabase sessions", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ message: "invalid token" }), { status: 401 });
+  try {
+    const env = {
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_ANON_KEY: "public-test-key",
+      DEVICE_TOKEN_SECRET: "a-long-enough-test-signing-secret",
+      DEVICE_REGISTRY: memoryKv()
+    };
+    const request = new Request("https://worker.test/v1/accounts/google", {
+      method: "POST", headers: { Authorization: "Bearer expired-token" }
+    });
+    const response = await handleDeviceRequest(request, env, new URL("https://worker.test/v1/accounts/google"));
+    assert.equal(response.status, 401);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
