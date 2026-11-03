@@ -59,7 +59,11 @@ class SupabaseJarvisClient(context: Context) {
 
     suspend fun restoreSession(): Boolean = withContext(Dispatchers.IO) {
         val stored = vault.read() ?: return@withContext false
-        try { ensureSession(stored).optString("access_token").isNotBlank() } catch (_: Exception) { false }
+        try {
+            val ok = ensureSession(stored).optString("access_token").isNotBlank()
+            if (ok) runCatching { flushPendingTurnsInternal() }
+            ok
+        } catch (_: Exception) { false }
     }
 
     suspend fun signOut() = withContext(Dispatchers.IO) {
@@ -68,6 +72,7 @@ class SupabaseJarvisClient(context: Context) {
         vault.clear()
         activeConversationId = null
         appContext.getSharedPreferences("jarvis_chat_state", Context.MODE_PRIVATE).edit().clear().apply()
+        appContext.getSharedPreferences("jarvis_chat_offline", Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     suspend fun setActiveConversation(id: String?) = withContext(Dispatchers.IO) {
@@ -81,23 +86,110 @@ class SupabaseJarvisClient(context: Context) {
     suspend fun saveTurn(userText: String, assistantText: String) = withContext(Dispatchers.IO) {
         if (!hasSession()) return@withContext
         require(userText.isNotBlank() && assistantText.isNotBlank()) { "Pesan kosong tidak dapat disimpan." }
+        try {
+            persistTurn(userText, assistantText)
+            flushPendingTurnsInternal()
+        } catch (error: Exception) {
+            enqueuePendingTurn(userText, assistantText)
+            throw error
+        }
+    }
+
+    suspend fun flushPendingTurns() = withContext(Dispatchers.IO) {
+        if (!hasSession()) return@withContext
+        flushPendingTurnsInternal()
+    }
+
+    fun pendingTurnCount(): Int {
+        val prefs = appContext.getSharedPreferences("jarvis_chat_offline", Context.MODE_PRIVATE)
+        return try {
+            JSONArray(prefs.getString("pending_turns", "[]") ?: "[]").length()
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    private fun persistTurn(userText: String, assistantText: String) {
         var conversation = activeConversationId
         if (conversation == null) {
             val title = userText.replace(Regex("\\s+"), " ").trim().take(64).ifBlank { "Percakapan baru" }
-            conversation = createConversation(title)
-            setActiveConversation(conversation)
+            conversation = createConversationBlocking(title)
+            activeConversationId = conversation
+            appContext.getSharedPreferences("jarvis_chat_state", Context.MODE_PRIVATE).edit()
+                .putString("active_conversation_id", conversation).apply()
         }
         val batch = JSONArray()
             .put(JSONObject().put("conversation_id", conversation).put("role", "user").put("content", userText))
             .put(JSONObject().put("conversation_id", conversation).put("role", "assistant").put("content", assistantText))
         requestArray("/rest/v1/jarvis_messages", "POST", batch, prefer = "return=minimal")
-        // Touch conversation so cross-device history sorts by latest activity.
         requestJson(
-            "/rest/v1/jarvis_conversations?id=eq.${encode(conversation)}",
+            "/rest/v1/jarvis_conversations?id=eq.${encode(conversation!!)}",
             "PATCH",
-            JSONObject().put("updated_at", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date()))
+            JSONObject().put("updated_at", utcNow())
         )
     }
+
+    private fun createConversationBlocking(title: String): String {
+        val rows = requestArray(
+            "/rest/v1/jarvis_conversations?select=id",
+            "POST",
+            JSONArray().put(JSONObject().put("title", title.take(120))),
+            prefer = "return=representation"
+        )
+        val id = rows.optJSONObject(0)?.optString("id").orEmpty()
+        require(id.isNotBlank()) { "Gagal membuat percakapan." }
+        return id
+    }
+
+    private fun enqueuePendingTurn(userText: String, assistantText: String) {
+        val prefs = appContext.getSharedPreferences("jarvis_chat_offline", Context.MODE_PRIVATE)
+        val existing = try { JSONArray(prefs.getString("pending_turns", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+        while (existing.length() >= 40) existing.remove(0)
+        existing.put(
+            JSONObject()
+                .put("user", userText.take(8000))
+                .put("assistant", assistantText.take(8000))
+                .put("queued_at", System.currentTimeMillis())
+                .put("local_id", java.util.UUID.randomUUID().toString())
+        )
+        prefs.edit().putString("pending_turns", existing.toString()).apply()
+    }
+
+    private fun flushPendingTurnsInternal() {
+        val prefs = appContext.getSharedPreferences("jarvis_chat_offline", Context.MODE_PRIVATE)
+        val raw = prefs.getString("pending_turns", null) ?: return
+        val queue = try { JSONArray(raw) } catch (_: Exception) {
+            prefs.edit().remove("pending_turns").apply()
+            return
+        }
+        if (queue.length() == 0) return
+        val remaining = JSONArray()
+        val seen = mutableSetOf<String>()
+        for (i in 0 until queue.length()) {
+            val item = queue.optJSONObject(i) ?: continue
+            val localId = item.optString("local_id")
+            if (localId.isNotBlank() && !seen.add(localId)) continue
+            val user = item.optString("user")
+            val assistant = item.optString("assistant")
+            if (user.isBlank() || assistant.isBlank()) continue
+            try {
+                persistTurn(user, assistant)
+            } catch (_: Exception) {
+                remaining.put(item)
+                for (j in i + 1 until queue.length()) {
+                    queue.optJSONObject(j)?.let { remaining.put(it) }
+                }
+                break
+            }
+        }
+        if (remaining.length() == 0) prefs.edit().remove("pending_turns").apply()
+        else prefs.edit().putString("pending_turns", remaining.toString()).apply()
+    }
+
+    private fun utcNow(): String =
+        java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
 
     suspend fun listConversations(): List<SavedConversation> = withContext(Dispatchers.IO) {
         val rows = requestArray("/rest/v1/jarvis_conversations?select=id,title,updated_at&order=updated_at.desc&limit=100", "GET")
@@ -105,8 +197,7 @@ class SupabaseJarvisClient(context: Context) {
     }
 
     suspend fun createConversation(title: String): String = withContext(Dispatchers.IO) {
-        val rows = requestArray("/rest/v1/jarvis_conversations?select=id", "POST", JSONArray().put(JSONObject().put("title", title.ifBlank { "Percakapan baru" })), prefer = "return=representation")
-        rows.optJSONObject(0)?.getString("id") ?: throw IllegalStateException("Gagal membuat percakapan.")
+        createConversationBlocking(title.ifBlank { "Percakapan baru" })
     }
 
     suspend fun listMessages(conversationId: String): List<SavedMessage> = withContext(Dispatchers.IO) {
