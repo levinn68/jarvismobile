@@ -51,13 +51,13 @@ The Worker includes a device control plane under `worker/src/device/` for Androi
 
 ### Android device connector
 
-The Android app includes a user-started foreground sync service and a permission-gated connector. Supported actions include device/battery status, installed-app discovery and launch, approved SAF folder listing/search/text reads, notification listing after Notification Access, on-demand screen-text reads after Accessibility consent, and contacts/calendar reads after runtime permission grants. Screen content is not collected in the background.
+The Android app includes a user-started foreground sync service and a permission-gated connector. Supported actions include device/battery status, installed-app discovery and launch by unique visible name, approved SAF folder listing/search/text reads, notification listing after Notification Access, on-demand screen-text reads after Accessibility consent, and contacts/calendar reads after runtime permission grants. Screen content is not collected in the background.
 
-Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the Google account and pair each Android device. Configure permissions on each target, refresh its capabilities, and start Device Sync.
+Open JARVIS Settings → **Akun Google & Akses Perangkat** to link the Google account and pair each Android device. Configure permissions on each target, refresh its capabilities, and start Device Sync. Device Setup also provides a one-hour desktop pairing token and an owner-confirmed device revocation control.
 
 ### Windows, macOS and Linux desktop connectors
 
-Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery/launch, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses the one-hour account token copied explicitly from Android Device Setup and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
+Native Node.js companion agents are included under `desktop/windows/` and `desktop/unix/`. They support device status, installed-app discovery and launch by exact visible name, and listing/searching/reading text files inside folders explicitly approved through `JARVIS_ALLOWED_DIRS`. Desktop text reads are capped at 64 KB; path traversal and symlink escapes are rejected. The Windows connector uses Start Menu shortcuts; the shared Unix connector supports macOS `.app` bundles and Linux `.desktop` launchers. Pairing uses the one-hour account token copied explicitly from Android Device Setup and a device-scoped token supplied through environment variables; keep tokens in a local secret manager and never commit them.
 
 See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for pairing, setup, API routes, CI and security boundaries. iOS/iPadOS, Wear OS, web and IoT remain registry-only; native command agents for those platforms are not included.
 
