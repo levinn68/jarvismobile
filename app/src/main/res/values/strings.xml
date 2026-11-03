@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jarvis_accessibility_description">Allows JARVIS to read visible screen text only when you explicitly request screen analysis. It does not tap, type, or change settings.</string>
+</resources>
