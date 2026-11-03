@@ -1,0 +1,54 @@
+name: Assemble MainActivity
+on:
+  push:
+    branches: [ "feature/qr-pairing-v1" ]
+    paths:
+      - "app/src/main/java/com/jarvis/mobile/mainactivity_parts/**"
+      - ".github/workflows/assemble-mainactivity.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/qr-pairing-v1
+          fetch-depth: 0
+      - name: Concatenate parts
+        run: |
+          set -euo pipefail
+          PARTS_DIR="app/src/main/java/com/jarvis/mobile/mainactivity_parts"
+          OUT="app/src/main/java/com/jarvis/mobile/MainActivity.kt"
+          if [[ ! -f "$PARTS_DIR/MANIFEST.json" ]]; then
+            echo "No MANIFEST.json; skip"
+            exit 0
+          fi
+          cat "$PARTS_DIR"/MainActivity.part*.txt > "$OUT"
+          echo "Assembled $(wc -c < "$OUT") bytes"
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          out = pathlib.Path("app/src/main/java/com/jarvis/mobile/MainActivity.kt").read_bytes()
+          man = json.loads(pathlib.Path("app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json").read_text())
+          h = hashlib.sha256(out).hexdigest()
+          print("sha256", h)
+          print("expected", man["total_sha256"])
+          assert h == man["total_sha256"], "checksum mismatch"
+          text = out.decode()
+          for m in ["requestMicFocus","clientRequestId","registerConnectivityFlush","HolographicOrb","JarvisChatComposer","JarvisUserBubble"]:
+              assert m in text, m
+          print("ALL MARKERS OK")
+          PY
+      - name: Commit MainActivity if changed
+        run: |
+          set -euo pipefail
+          git config user.name "jarvis-assemble-bot"
+          git config user.email "jarvis-assemble@users.noreply.github.com"
+          git add app/src/main/java/com/jarvis/mobile/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix(android): assemble polished MainActivity.kt from verified parts"
+            git push origin feature/qr-pairing-v1
+          fi
