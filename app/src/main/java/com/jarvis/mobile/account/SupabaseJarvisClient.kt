@@ -132,9 +132,19 @@ class SupabaseJarvisClient(context: Context) {
         val fresh = requestJson("/auth/v1/token?grant_type=refresh_token", "POST", JSONObject().put("refresh_token", refresh), bearer = null, refresh = false)
         val merged = JSONObject(stored.toString())
         listOf("access_token", "refresh_token", "token_type", "expires_in", "expires_at").forEach { if (fresh.has(it)) merged.put(it, fresh.get(it)) }
-        fresh.optJSONObject("user")?.let { u -> if (u.has("id")) merged.put("user_id", u.getString("id")); if (u.has("email")) merged.put("email", u.getString("email")) }
+        fresh.optJSONObject("user")?.let { u ->
+            if (u.has("id")) merged.put("user_id", u.getString("id"))
+            if (u.has("email")) merged.put("email", u.getString("email"))
+            val metadata = u.optJSONObject("user_metadata")
+            if (metadata != null) merged.put("display_name", metadata.optString("full_name", metadata.optString("name")))
+        }
         val now = System.currentTimeMillis() / 1000L
-        if (!merged.has("expires_at")) merged.put("expires_at", now + fresh.optLong("expires_in", 3600L))
+        val expiresAt = fresh.optLong("expires_at", 0L).takeIf { it > now }
+            ?: (now + fresh.optLong("expires_in", 3600L).coerceAtLeast(60L))
+        merged.put("expires_at", expiresAt)
+        if (merged.optString("access_token").isBlank() || merged.optString("refresh_token").isBlank()) {
+            throw IllegalStateException("Supabase tidak mengembalikan token hasil refresh.")
+        }
         vault.save(merged)
         return merged
     }
