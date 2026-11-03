@@ -86,5 +86,5 @@ test("CORS preflight permits the device capability PUT method", async () => {
     }
   }), {});
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("Access-Control-Allow-Methods") || "", /\\bPUT\\b/);
+  assert.match(response.headers.get("Access-Control-Allow-Methods") || "", /\bPUT\b/);
 });
