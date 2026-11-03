@@ -12,7 +12,7 @@ android {
         minSdk = 23
         targetSdk = 35
         versionCode = 8
-        versionName = "0.8.0"
+        versionName = "0.8.0"\n        buildConfigField("String", "SUPABASE_URL", "\\"https://agwaxaejnnszunccmftm.supabase.co\\"")\n        buildConfigField("String", "SUPABASE_ANON_KEY", "\\"${System.getenv("SUPABASE_ANON_KEY") ?: ""}\\"")\n        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\\"${System.getenv("GOOGLE_WEB_CLIENT_ID") ?: ""}\\"")
     }
 
     signingConfigs {
