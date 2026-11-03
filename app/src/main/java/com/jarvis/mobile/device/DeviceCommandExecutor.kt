@@ -15,6 +15,20 @@ class DeviceCommandExecutor(context: Context) {
     private val contactController = ContactController(context)
     private val calendarController = CalendarController(context)
 
+    /**
+     * Approval is not equivalent to execution. The screen-control executor is deliberately
+     * unavailable until a separately reviewed, platform-compliant implementation is added.
+     * This prevents the UI from reporting success for an action that was not performed.
+     */
+    fun executeApproved(command: JSONObject): JSONObject {
+        val action = command.optString("action")
+        return JSONObject()
+            .put("ok", false)
+            .put("approved", true)
+            .put("executed", false)
+            .put("error", "Screen control executor is not available in this build: $action")
+    }
+
     fun execute(command: JSONObject): JSONObject {
         val action = command.optString("action")
         val params = command.optJSONObject("params") ?: JSONObject()
