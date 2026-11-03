@@ -1,6 +1,8 @@
 name: Build J.A.R.V.I.S. Android Client
 on:
   push:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 concurrency:
   group: jarvis-android-${{ github.ref }}
