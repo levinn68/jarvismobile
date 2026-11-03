@@ -1,6 +1,7 @@
 package com.jarvis.mobile.device
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.os.Bundle
 import android.os.Build
 import android.content.Intent
@@ -90,6 +91,44 @@ class DeviceSetupActivity : Activity() {
             getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).edit()
                 .putString("target_device_id", target.ifBlank { client.deviceId().orEmpty() }).apply()
             status.text = if (target.isBlank()) "Target diatur ke perangkat ini" else "Target perangkat disimpan: $target"
+        }
+
+        button("Cabut akses perangkat target dari akun") {
+            val id = targetDevice.text.toString().trim().ifBlank { client.deviceId().orEmpty() }
+            if (!id.matches(Regex("[A-Za-z0-9_-]{8,80}"))) {
+                status.text = "Masukkan ID perangkat yang valid terlebih dahulu"
+                return@button
+            }
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Cabut akses perangkat?")
+                .setMessage("Perangkat $id akan dikeluarkan dari akun JARVIS dan tidak dapat lagi mengambil perintah.")
+                .setNegativeButton("Batal", null)
+                .setPositiveButton("Cabut akses") { _, _ ->
+                    status.text = "Mencabut akses perangkat..."
+                    worker.execute {
+                        val message = try {
+                            client.createOrRestoreAccountWithSupabase(googleAccessToken)
+                            val result = client.removeDevice(id, supabaseUserId)
+                            if (result.optBoolean("revoked")) {
+                                if (id == client.deviceId()) {
+                                    JarvisDeviceSyncService.stop(this@DeviceSetupActivity)
+                                    client.clearCredentials()
+                                }
+                                "Akses perangkat $id berhasil dicabut dari akun."
+                            } else {
+                                "Server tidak mengonfirmasi pencabutan perangkat."
+                            }
+                        } catch (e: Exception) {
+                            "Gagal mencabut akses perangkat: ${e.message}"
+                        }
+                        runOnUiThread { status.text = message }
+                    }
+                }
+                .show()
         }
         button("Pilih folder yang boleh diakses") {
             startActivityForResult(FileController(this).folderPickerIntent(), 501)
