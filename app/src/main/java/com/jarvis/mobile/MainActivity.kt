@@ -452,11 +452,24 @@ class MainActivity : ComponentActivity() {
                                 .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
                             val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params))
                             if (queued.optBoolean("ok")) {
-                                if (deviceId == localId) {
-                                    JarvisDeviceSyncService.start(this)
-                                    "Perintah ${action} masuk antrean perangkat ini. Sinkronisasi lokal sedang dijalankan; hasil baru dapat dipastikan setelah acknowledgement."
+                                if (deviceId == localId) JarvisDeviceSyncService.start(this)
+                                val commandId = queued.optString("commandId")
+                                var completed: org.json.JSONObject? = null
+                                repeat(20) {
+                                    Thread.sleep(1500)
+                                    val state = client.commandStatus(deviceId, commandId)
+                                    val record = state.optJSONObject("command")
+                                    if (record?.optString("status") == "completed") {
+                                        completed = record
+                                        return@repeat
+                                    }
+                                }
+                                val record = completed
+                                if (record != null) {
+                                    val result = record.optJSONObject("result")
+                                    if (result != null) "Hasil perintah ${action}: ${result}" else "Perintah ${action} selesai pada perangkat."
                                 } else {
-                                    "Perintah ${action} masuk antrean perangkat target. Pastikan JARVIS Device Sync sudah aktif pada perangkat target agar perintah dieksekusi."
+                                    "Perintah ${action} sudah masuk antrean, tetapi belum ada acknowledgement. Pastikan sinkronisasi JARVIS aktif pada perangkat target."
                                 }
                             } else {
                                 "Perintah tidak dapat dijalankan: ${queued.optString("reason", queued.optString("error", "izin kemampuan belum aktif"))}"
