@@ -26,7 +26,7 @@ const ANDROID_ACTIONS = Object.freeze({
   "notifications.list": { capability: "notifications.read", params: [] }
 });
 
-const WINDOWS_ACTIONS = Object.freeze({
+const DESKTOP_ACTIONS = Object.freeze({
   "files.list": { capability: "files.read", params: ["rootIndex", "relativePath"] },
   "files.search": { capability: "files.read", params: ["query", "rootIndex"] },
   "files.read": { capability: "files.read", params: ["rootIndex", "relativePath"] },
@@ -77,7 +77,7 @@ function validateParams(action, raw, schema, platform) {
     return params;
   }
 
-  if (platform === "windows") {
+  if (["windows", "macos", "linux"].includes(platform)) {
     if (action === "apps.launch") {
       const appId = typeof raw.appId === "string" ? raw.appId.trim() : "";
       if (!/^[A-Za-z0-9_-]{1,512}$/.test(appId)) {
@@ -153,7 +153,7 @@ export function validateCommand(input, platform = "android") {
     throw new Error("Unsupported device platform");
   }
   const actions = platform === "android" ? ANDROID_ACTIONS :
-    platform === "windows" ? WINDOWS_ACTIONS : null;
+    ["windows", "macos", "linux"].includes(platform) ? DESKTOP_ACTIONS : null;
   if (!actions) {
     throw new Error("No command connector is registered for platform: " + platform);
   }
