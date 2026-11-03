@@ -11,22 +11,22 @@ function oversizedJsonRequest(path, bytes) {
   });
 }
 
-test("chat endpoint rejects JSON bodies above 128 KiB", async () => {
-  const request = oversizedJsonRequest("/v1/chat", 130 * 1024);
+test("chat endpoint rejects JSON bodies above 512 KiB", async () => {
+  const request = oversizedJsonRequest("/v1/chat", 520 * 1024);
   const response = await worker.fetch(request, {});
   assert.equal(response.status, 413);
   assert.match((await response.json()).detail, /too large/);
 });
 
-test("search endpoint rejects JSON bodies above 16 KiB", async () => {
-  const request = oversizedJsonRequest("/v1/search/images", 17 * 1024);
+test("search endpoint rejects JSON bodies above 64 KiB", async () => {
+  const request = oversizedJsonRequest("/v1/search/images", 65 * 1024);
   const response = await worker.fetch(request, {});
   assert.equal(response.status, 413);
   assert.match((await response.json()).detail, /too large/);
 });
 
-test("TTS endpoint rejects JSON bodies above 32 KiB before calling the provider", async () => {
-  const request = oversizedJsonRequest("/v1/tts", 33 * 1024);
+test("TTS endpoint rejects JSON bodies above 64 KiB before calling the provider", async () => {
+  const request = oversizedJsonRequest("/v1/tts", 65 * 1024);
   const response = await worker.fetch(request, { FISH_API_KEY: "test-key" });
   assert.equal(response.status, 413);
   assert.match((await response.json()).detail, /too large/);
