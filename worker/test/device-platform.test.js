@@ -9,7 +9,7 @@ import {
 } from "../src/device/auth.js";
 import { normalizeDevice, validateCommand } from "../src/device/protocol.js";
 import { saveDevice, createAccount, listDevicesForAccount } from "../src/device/registry.js";
-import { acknowledgeDeviceCommand } from "../src/device/command-service.js";
+import { acknowledgeDeviceCommand, listDeviceCommands } from "../src/device/command-service.js";
 import { handleDeviceRequest } from "../src/device/router.js";
 
 const secret = "test-only-secret-with-at-least-32-characters-long";
@@ -534,4 +534,70 @@ test("device registry pagination fails closed after the 100-page safety limit", 
     /exceeded the 100-page safety limit/
   );
   assert.equal(calls, 100);
+});
+
+
+test("command polling paginates past completed records and returns queued commands in creation order", async () => {
+  const deviceId = "android-command-page-01";
+  const values = new Map();
+  const firstPage = Array.from({ length: 100 }, (_, index) => {
+    const name = "command:" + deviceId + ":completed-" + String(index).padStart(3, "0");
+    values.set(name, JSON.stringify({
+      deviceId,
+      commandId: "completed-" + index,
+      status: "completed",
+      createdAt: "2026-01-01T00:00:00.000Z"
+    }));
+    return { name };
+  });
+  const queuedNew = "command:" + deviceId + ":queued-new";
+  const queuedOld = "command:" + deviceId + ":queued-old";
+  values.set(queuedNew, JSON.stringify({
+    deviceId, commandId: "queued-new", status: "queued",
+    createdAt: "2026-01-02T00:00:00.000Z"
+  }));
+  values.set(queuedOld, JSON.stringify({
+    deviceId, commandId: "queued-old", status: "queued",
+    createdAt: "2026-01-01T12:00:00.000Z"
+  }));
+
+  const calls = [];
+  const kv = {
+    async list(options) {
+      calls.push(options);
+      if (!options.cursor) {
+        return { keys: firstPage, list_complete: false, cursor: "next-page" };
+      }
+      return {
+        keys: [{ name: queuedNew }, { name: queuedOld }],
+        list_complete: true
+      };
+    },
+    async get(name) { return values.get(name) ?? null; }
+  };
+
+  const commands = await listDeviceCommands({ kv, deviceId, limit: 10 });
+  assert.deepEqual(commands.map(command => command.commandId), ["queued-old", "queued-new"]);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].cursor, "next-page");
+});
+
+
+test("command acknowledgement rejects a mismatched stored command identity", async () => {
+  const deviceId = "android-command-ack-01";
+  const commandId = "command-expected-01";
+  const key = "command:" + deviceId + ":" + commandId;
+  const kv = {
+    async get() {
+      return JSON.stringify({
+        deviceId,
+        commandId: "command-other-01",
+        status: "queued"
+      });
+    },
+    async put() { throw new Error("Should not update a mismatched command"); }
+  };
+
+  const result = await acknowledgeDeviceCommand({ kv, deviceId, commandId, result: { ok: true } });
+  assert.deepEqual(result, { ok: false, error: "Command identity does not match" });
 });
