@@ -112,12 +112,26 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
                     val command = commands.optJSONObject(i) ?: continue
                     val id = command.optString("commandId")
                     if (id.isBlank()) continue
-                    val result = try { executor.execute(command) }
-                    catch (e: Exception) { JSONObject().put("ok", false).put("error", e.message ?: "Execution failed") }
-                    try { acknowledge(id, result) } catch (e: Exception) { onResult("Acknowledgement failed: ${e.message}") }
+                    val result = try {
+                        executor.execute(command)
+                    } catch (e: Exception) {
+                        JSONObject().put("ok", false).put("error", e.message ?: "Execution failed")
+                    }
+                    // Screen control opens a local approval UI. Final ack is owned by that activity.
+                    if (result.optBoolean("pendingApproval", false)) {
+                        onResult("Menunggu persetujuan pengguna untuk ${command.optString("action")}")
+                        continue
+                    }
+                    try {
+                        acknowledge(id, result)
+                    } catch (e: Exception) {
+                        onResult("Acknowledgement failed: ${e.message}")
+                    }
                 }
                 onResult("Device sync completed")
-            } catch (e: Exception) { onResult("Device sync failed: ${e.message}") }
+            } catch (e: Exception) {
+                onResult("Device sync failed: ${e.message}")
+            }
         }
     }
 
@@ -145,11 +159,17 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
             val result = if (raw.isBlank()) JSONObject() else JSONObject(raw)
             if (code !in 200..299) throw IllegalStateException("JARVIS API HTTP $code: ${result.optString("error", "Request failed")}")
             return result
-        } finally { connection.disconnect() }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     override fun close() {
         io.shutdownNow()
-        try { io.awaitTermination(2, TimeUnit.SECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        try {
+            io.awaitTermination(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 }
