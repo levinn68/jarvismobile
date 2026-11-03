@@ -12,7 +12,7 @@ export const CAPABILITIES = new Set([
 ]);
 
 export const SENSITIVE_CAPABILITIES = new Set([
-  "files.write", "notifications.manage", "system.settings", "contacts.read",
+  "files.write", "notifications.manage", "system.settings",
   "location.read", "camera.capture", "bluetooth.manage"
 ]);
 
