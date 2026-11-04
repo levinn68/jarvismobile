@@ -66,11 +66,17 @@ class DevicePermissionManager(private val context: Context) {
         }
     }
 
-    fun isNotificationListenerEnabled(): Boolean =
-        Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
-            ?.split(':')
-            ?.any { it.equals(ComponentName(context, JarvisNotificationListener::class.java).flattenToString(), true) }
-            == true
+    fun isNotificationListenerEnabled(): Boolean {
+        val enabledListeners = Settings.Secure.getString(
+            context.contentResolver,
+            "enabled_notification_listeners"
+        ).orEmpty()
+        val component = ComponentName(
+            context,
+            JarvisNotificationListener::class.java
+        ).flattenToString()
+        return enabledListeners.split(':').any { it.equals(component, ignoreCase = true) }
+    }
 
     fun isAccessibilityEnabled(): Boolean {
         val enabled = Settings.Secure.getInt(
