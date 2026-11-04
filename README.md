@@ -61,7 +61,19 @@ Native Node.js companion agents are included under `desktop/windows/` and `deskt
 
 See [worker/DEVICE_PLATFORM.md](worker/DEVICE_PLATFORM.md) for pairing, setup, API routes, CI and security boundaries. iOS/iPadOS, Wear OS, web and IoT remain registry-only; native command agents for those platforms are not included.
 
-Google sign-in requires a Google OAuth **Web Client ID** in GitHub Actions and the matching Client ID/Client Secret in Supabase Auth. These secrets are intentionally deferred; the debug build workflow can compile without them, but Google login will not work until configured.
+### Google Sign-In (Credential Manager + Supabase)
+
+The Android app uses Credential Manager's explicit **Sign in with Google** button flow and exchanges the Google ID token with Supabase Auth. This is separate from JARVIS device pairing: signing into an account does not automatically pair a device, and local app launching does not require pairing.
+
+Configure OAuth once:
+
+1. In Google Cloud Console, select the same project used for this app and configure the OAuth consent screen / Google Auth Platform.
+2. Create an OAuth client with application type **Android**. Set package name to `com.jarvis.mobile.assistant` and add the SHA-1 signing-certificate fingerprint printed by the **Print APK OAuth fingerprint** step in the Android Build workflow. Repeat this for every signing certificate used by an installed build (debug and release fingerprints are different).
+3. Create another OAuth client with application type **Web application**. Copy its Client ID into the GitHub Actions repository secret `GOOGLE_WEB_CLIENT_ID`. Do not use the Android Client ID in this secret.
+4. In Supabase Dashboard → Authentication → Sign In / Providers → Google, enable Google and enter the same Web Client ID and its corresponding Client Secret. Save the provider configuration.
+5. Run the Android Build workflow again after setting the GitHub secret, download the APK artifact from that run, install it, and test Google sign-in.
+
+The Android Build workflow prints only the APK certificate fingerprint; it does not print OAuth secrets. If Google returns `10: DEVELOPER_ERROR` or `28444`, first verify the package name, the SHA-1 for the exact installed APK, and that both OAuth clients belong to the same Google Cloud project. The build can compile without OAuth secrets, but sign-in cannot succeed until the Google Cloud and Supabase settings above are complete.
 
 Android OS permissions remain authoritative. No arbitrary shell, remote code execution, unrestricted filesystem access, silent microphone/camera capture, screen taps/typing or high-risk system settings changes are exposed. The deployment workflow runs Worker protocol/security tests before deploying.
 
