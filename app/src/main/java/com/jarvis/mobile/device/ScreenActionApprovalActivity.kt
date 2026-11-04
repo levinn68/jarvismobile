@@ -34,7 +34,7 @@ class ScreenActionApprovalActivity : Activity() {
         val action = command.optString("action")
         val params = command.optJSONObject("params") ?: JSONObject()
 
-        if (DeviceCommandExecutor.isScreenControlAction(action).not()) {
+        if (DeviceCommandExecutor.requiresLocalApproval(action).not()) {
             Toast.makeText(this, "Aksi tidak memerlukan layar persetujuan.", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -54,6 +54,7 @@ class ScreenActionApprovalActivity : Activity() {
         }
 
         val description = when (action) {
+            "screen.read" -> "JARVIS meminta membaca teks yang sedang terlihat pada layar. Konten hanya dikembalikan untuk perintah ini."
             "screen.tap" -> {
                 val x = params.optDouble("x", Double.NaN)
                 val y = params.optDouble("y", Double.NaN)
