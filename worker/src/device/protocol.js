@@ -13,7 +13,7 @@ export const CAPABILITIES = new Set([
 
 export const SENSITIVE_CAPABILITIES = new Set([
   "files.write", "notifications.manage", "system.settings",
-  "location.read", "camera.capture", "bluetooth.manage", "screen.control"
+  "location.read", "camera.capture", "bluetooth.manage", "screen.control", "screen.read"
 ]);
 
 const ANDROID_ACTIONS = Object.freeze({
