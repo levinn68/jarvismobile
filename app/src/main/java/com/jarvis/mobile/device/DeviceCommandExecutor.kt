@@ -31,6 +31,11 @@ class DeviceCommandExecutor(private val context: Context) {
             return JSONObject().put("ok", false).put("approved", true).put("executed", false)
                 .put("expired", true).put("error", "Command kedaluwarsa sebelum dieksekusi.")
         }
+        val approvedCapability = if (command.optString("action") == "screen.read") "screen.read" else "screen.control"
+        if (!permissionManager.isGranted(approvedCapability)) {
+            clearPendingApproval(commandId)
+            return permissionDenied(approvedCapability, missingPermissionMessage(approvedCapability))
+        }
         if (!command.optBoolean(LOCAL_APPROVAL_MARKER, false)) {
             return JSONObject().put("ok", false).put("executed", false)
                 .put("error", "Approval lokal tidak ditemukan. Perintah tidak dijalankan.")
@@ -38,6 +43,7 @@ class DeviceCommandExecutor(private val context: Context) {
         val action = command.optString("action")
         val params = command.optJSONObject("params") ?: JSONObject()
         val result = when (action) {
+            "screen.read" -> JarvisAccessibilityService.snapshot()
             "screen.tap" -> executeTap(params)
             "screen.type" -> executeType(params)
             else -> JSONObject().put("ok", false).put("approved", true).put("executed", false)
@@ -53,9 +59,10 @@ class DeviceCommandExecutor(private val context: Context) {
         val params = command.optJSONObject("params") ?: JSONObject()
         val commandId = command.optString("commandId").trim()
 
-        if (action == "screen.tap" || action == "screen.type") {
-            if (!permissionManager.isGranted("screen.control")) {
-                return permissionDenied("screen.control", "Aktifkan dan pastikan Accessibility Service JARVIS berjalan.")
+        if (requiresLocalApproval(action)) {
+            val capability = if (action == "screen.read") "screen.read" else "screen.control"
+            if (!permissionManager.isGranted(capability)) {
+                return permissionDenied(capability, missingPermissionMessage(capability))
             }
             return requestOnDeviceApproval(command)
         }
@@ -223,6 +230,7 @@ class DeviceCommandExecutor(private val context: Context) {
         private const val COMMAND_TTL_MS = 5 * 60 * 1000L
         private const val DEDUPE_WINDOW_MS = 15 * 60 * 1000L
         private val recentHandled = ConcurrentHashMap<String, Long>()
-        fun isScreenControlAction(action: String): Boolean = action == "screen.tap" || action == "screen.type"
+        fun requiresLocalApproval(action: String): Boolean =
+            action == "screen.read" || action == "screen.tap" || action == "screen.type"
     }
 }
