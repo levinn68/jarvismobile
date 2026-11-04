@@ -41,6 +41,7 @@ class ScreenActionApprovalActivity : Activity() {
         }
 
         if (isExpired(command)) {
+            DeviceCommandExecutor(this).clearPendingApproval(commandId)
             acknowledge(commandId, JSONObject()
                 .put("ok", false)
                 .put("approved", false)
@@ -80,6 +81,7 @@ class ScreenActionApprovalActivity : Activity() {
             .setNegativeButton("Tolak") { _, _ ->
                 if (finished) return@setNegativeButton
                 finished = true
+                DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
                 acknowledge(
                     commandId,
                     JSONObject()
@@ -99,6 +101,7 @@ class ScreenActionApprovalActivity : Activity() {
                 val result = try {
                     DeviceCommandExecutor(this).executeApproved(command)
                 } catch (error: Exception) {
+                    DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
                     JSONObject()
                         .put("ok", false)
                         .put("approved", true)
