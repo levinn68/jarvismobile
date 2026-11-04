@@ -15,8 +15,8 @@ class FileController(private val context: Context) {
 
     fun hasSelectedFolder(): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null) != null
     fun saveSelectedFolder(uri: Uri) {
-        context.contentResolver.takePersistableUriPermission(uri,
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        // JARVIS currently supports read-only file commands; never retain write access unnecessarily.
+        context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(TREE_URI, uri.toString()).apply()
     }
 
@@ -62,7 +62,6 @@ class FileController(private val context: Context) {
     fun folderPickerIntent(): android.content.Intent =
         android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
                 android.content.Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
 
