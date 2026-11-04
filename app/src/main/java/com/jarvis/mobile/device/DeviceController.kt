@@ -16,25 +16,14 @@ class DeviceController(private val context: Context) {
         activity.getMemoryInfo(memory)
 
         val permissions = DevicePermissionManager(context)
-        val states = JSONObject()
-            .put("microphone", permissions.isGranted("voice.microphone"))
-            .put("camera", permissions.isGranted("camera.capture"))
-            .put("contacts", permissions.isGranted("contacts.read"))
-            .put("calendar", permissions.isGranted("calendar.read"))
-            .put("notifications", permissions.isGranted("notifications.read"))
-            .put("screenAccessibility", permissions.isGranted("screen.read"))
-            .put("screenControl", permissions.isGranted("screen.control"))
-            .put("selectedFolder", permissions.hasUsableSelectedFolder())
-
+        val states = JSONObject().apply {
+            permissions.permissionReport().forEach { (key, value) -> put(key, value) }
+        }
         val capabilities = JSONArray().apply {
             permissions.registeredCapabilities().forEach { put(it) }
         }
         val actions = JSONArray().apply {
-            listOf(
-                "apps.list", "apps.launch", "apps.launch_label", "system.status",
-                "notifications.list", "screen.read", "screen.tap", "screen.type",
-                "contacts.list", "calendar.list", "files.list", "files.search", "files.read"
-            ).forEach { put(it) }
+            permissions.registeredActions().forEach { put(it) }
         }
 
         return JSONObject()
