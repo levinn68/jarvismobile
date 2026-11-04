@@ -884,7 +884,10 @@ class MainActivity : ComponentActivity() {
             "chrome" to "com.android.chrome",
             "roblox" to "com.roblox.client"
         )
-        val directPackage = aliases[cleaned]
+        val explicitPackage = cleaned.removePrefix("package ").takeIf {
+            cleaned.startsWith("package ") && it.matches(Regex("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+"))
+        }
+        val directPackage = explicitPackage ?: aliases[cleaned]
         val directLaunch = directPackage?.let { packageManager.getLaunchIntentForPackage(it) }
         if (directLaunch != null) {
             return try {
@@ -2227,9 +2230,25 @@ private fun JarvisScreen(
         if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis", "open", "buka")) return
         val deviceCommand = parseDeviceCommand(q)
         if (deviceCommand != null) {
+            val (action, params) = deviceCommand
+            // Launching an app on this same phone is a local Android operation.
+            // It must not require account pairing or a remote device-control token.
+            if (action == "apps.launch" || action == "apps.launch_label") {
+                val appTarget = params["appName"] ?: params["packageName"].orEmpty()
+                val opened = onOpenApp(appTarget)
+                val result = if (opened) "Aplikasi $appTarget berhasil dibuka di perangkat ini."
+                    else "Aplikasi $appTarget tidak ditemukan atau tidak dapat dibuka di perangkat ini."
+                if (voice) {
+                    voiceAnswer = result
+                    onSpeak(result)
+                } else {
+                    showJarvis(result)
+                }
+                return
+            }
             busy = true
             processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
-            onDeviceCommand(deviceCommand.first, deviceCommand.second) { result ->
+            onDeviceCommand(action, params) { result ->
                 if (voice) {
                     voiceAnswer = result
                     onSpeak(result)
