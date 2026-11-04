@@ -208,14 +208,14 @@ class SupabaseJarvisClient(context: Context) {
             val item = queue.optJSONObject(i) ?: continue
             val localId = item.optString("local_id")
             if (localId.isNotBlank() && !seen.add(localId)) continue
+            val turnId = localId.ifBlank { java.util.UUID.randomUUID().toString() }
+            if (localId.isBlank()) item.put("local_id", turnId)
             val user = item.optString("user")
             val assistant = item.optString("assistant")
             if (user.isBlank() || assistant.isBlank()) continue
             try {
-                val turnId = localId.ifBlank { java.util.UUID.randomUUID().toString() }
                 persistTurn(user, assistant, turnId)
             } catch (_: Exception) {
-                if (localId.isBlank()) item.put("local_id", java.util.UUID.randomUUID().toString())
                 remaining.put(item)
                 for (j in i + 1 until queue.length()) {
                     queue.optJSONObject(j)?.let { remaining.put(it) }
