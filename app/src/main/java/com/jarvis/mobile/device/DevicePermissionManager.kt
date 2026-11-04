@@ -47,13 +47,20 @@ class DevicePermissionManager(private val context: Context) {
             val uri = Uri.parse(raw)
             val persisted = context.contentResolver.persistedUriPermissions
                 .any { it.uri == uri && it.isReadPermission }
-            persisted && context.contentResolver.query(
-                android.provider.DocumentsContract.buildDocumentUriUsingTree(
-                    uri, android.provider.DocumentsContract.getTreeDocumentId(uri)
-                ),
+            val documentUri = android.provider.DocumentsContract.buildDocumentUriUsingTree(
+                uri, android.provider.DocumentsContract.getTreeDocumentId(uri)
+            )
+            val documentExists = context.contentResolver.query(
+                documentUri,
                 arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID),
-                null, null, null
-            )?.use { it.moveToFirst() } == true
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                cursor.moveToFirst()
+            } ?: false
+
+            persisted && documentExists
         } catch (_: Exception) {
             false
         }
