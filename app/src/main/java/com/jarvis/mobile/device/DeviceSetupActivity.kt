@@ -62,6 +62,17 @@ class DeviceSetupActivity : Activity() {
                 runOnUiThread { status.text = message }
             }
         }
+        button("Buat kode pairing QR untuk desktop") {
+            if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
+                status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
+                return@button
+            }
+            startActivity(
+                Intent(this, PairingQrActivity::class.java)
+                    .putExtra(PairingQrActivity.EXTRA_SUPABASE_ACCESS_TOKEN, googleAccessToken)
+                    .putExtra(PairingQrActivity.EXTRA_SUPABASE_USER_ID, supabaseUserId)
+            )
+        }
         button("Salin token pairing desktop (berlaku 1 jam)") {
             if (googleAccessToken.isBlank() || supabaseUserId.isNullOrBlank()) {
                 status.text = "Sesi Google tidak tersedia. Buka pengaturan dari JARVIS."
@@ -161,7 +172,7 @@ class DeviceSetupActivity : Activity() {
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
         }
-        button("Pengaturan aksesibilitas (baca layar)") {
+        button("Pengaturan aksesibilitas (baca & kontrol layar)") {
             startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         button("Izinkan akses kontak & kalender") {
@@ -169,18 +180,27 @@ class DeviceSetupActivity : Activity() {
         }
         button("Perbarui izin & kemampuan perangkat") {
             if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
-            status.text = "Memeriksa izin Android..."
+            status.text = "Memeriksa izin dan kemampuan Android..."
             worker.execute {
-                val capabilities = mutableListOf("apps.list", "apps.launch", "system.read")
-                if (FileController(this).hasSelectedFolder()) capabilities.add("files.read")
-                if (NotificationController(this).list().optBoolean("ok")) capabilities.add("notifications.read")
-                if (DevicePermissionManager(this).isGranted("screen.read")) capabilities.add("screen.read")
-                if (DevicePermissionManager(this).isGranted("contacts.read")) capabilities.add("contacts.read")
-                if (DevicePermissionManager(this).isGranted("calendar.read")) capabilities.add("calendar.read")
+                val permissionManager = DevicePermissionManager(this)
+                val capabilities = permissionManager.registeredCapabilities()
+                val permissionSummary = listOf(
+                    "Mikrofon" to permissionManager.isGranted("voice.microphone"),
+                    "Kamera" to permissionManager.isGranted("camera.capture"),
+                    "Kontak" to permissionManager.isGranted("contacts.read"),
+                    "Kalender" to permissionManager.isGranted("calendar.read"),
+                    "Akses notifikasi" to permissionManager.isGranted("notifications.read"),
+                    "Baca/kontrol layar" to permissionManager.isGranted("screen.read"),
+                    "Folder pilihan" to permissionManager.hasUsableSelectedFolder()
+                ).joinToString("\\n") { (name, granted) ->
+                    "$name: ${if (granted) "AKTIF" else "BELUM DIIZINKAN"}"
+                }
                 val message = try {
                     client.updateCapabilities(capabilities)
-                    "Kemampuan aktif: ${capabilities.joinToString()}"
-                } catch (e: Exception) { "Gagal memperbarui kemampuan: ${e.message}" }
+                    "Kemampuan terdaftar di akun:\\n${capabilities.joinToString()}\\n\\nStatus izin perangkat:\\n$permissionSummary\\n\\nCatatan: izin kamera/mikrofon dilaporkan, tetapi tidak diiklankan sebagai perintah jarak jauh karena alur capture khusus belum tersedia."
+                } catch (e: Exception) {
+                    "Gagal memperbarui kemampuan: ${e.message}\\n\\nStatus izin perangkat:\\n$permissionSummary"
+                }
                 runOnUiThread { status.text = message }
             }
         }

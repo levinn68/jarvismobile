@@ -2,6 +2,7 @@ import { issueAccountToken, issueDeviceToken, verifyAccountToken, verifyDeviceTo
 import { createAccount, getAccount, getDevice, listDevicesForAccount, saveDevice, touchDevice, removeDevice } from "./registry.js";
 import { publicDevice } from "./policy.js";
 import { enqueueDeviceCommand, listDeviceCommands, acknowledgeDeviceCommand, getDeviceCommand } from "./command-service.js";
+import { createPairingSession, redeemPairingSession, getPairingSession } from "./pairing.js";
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, DELETE, OPTIONS"}});
 async function readBody(request){try{return await request.json()}catch(_){throw new Error("Request body must be valid JSON")}}
 const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
@@ -61,6 +62,53 @@ export async function handleDeviceRequest(request,env,url) {
    const token=await issueDeviceToken(device.deviceId,env.DEVICE_TOKEN_SECRET);
    return json({ok:true,device:publicDevice(device),token,tokenType:"Bearer"},201);
   } catch(e){return json({ok:false,error:e.message},400)}
+ }
+ // --- QR / manual pairing sessions ---
+ if(path==="/v1/pairing/sessions"&&request.method==="POST") {
+  if(!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Pairing is not configured."},503);
+  const accountClaims=await verifyAccountToken(request,env.DEVICE_TOKEN_SECRET);
+  if(!accountClaims)return json({ok:false,error:"A valid JARVIS account token is required"},401);
+  const account=await getAccount(env.DEVICE_REGISTRY,accountClaims.sub);
+  if(!account||account.status!=="active")return json({ok:false,error:"Account is inactive"},403);
+  try {
+   const body=await readBody(request).catch(()=>({}));
+   const session=await createPairingSession({
+    kv:env.DEVICE_REGISTRY,
+    accountId:accountClaims.sub,
+    deviceHint:body?.deviceHint||{}
+   });
+   return json({ok:true,...session},201);
+  } catch(e){return json({ok:false,error:e.message},400)}
+ }
+ if(path==="/v1/pairing/redeem"&&request.method==="POST") {
+  if(!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Pairing is not configured."},503);
+  try {
+   const body=await readBody(request);
+   const result=await redeemPairingSession({
+    kv:env.DEVICE_REGISTRY,
+    code:body.code,
+    deviceInput:body,
+    saveDevice:(input)=>saveDevice(env.DEVICE_REGISTRY,input),
+    issueDeviceToken,
+    tokenSecret:env.DEVICE_TOKEN_SECRET
+   });
+   return json({
+    ok:true,
+    device:publicDevice(result.device),
+    token:result.token,
+    tokenType:result.tokenType,
+    accountId:result.accountId
+   },201);
+  } catch(e){return json({ok:false,error:e.message},400)}
+ }
+ if(path==="/v1/pairing/sessions/status"&&request.method==="GET") {
+  if(!env.DEVICE_TOKEN_SECRET||!env.DEVICE_REGISTRY)return json({ok:false,error:"Pairing is not configured."},503);
+  const accountClaims=await verifyAccountToken(request,env.DEVICE_TOKEN_SECRET);
+  if(!accountClaims)return json({ok:false,error:"A valid JARVIS account token is required"},401);
+  const code=url.searchParams.get("code")||"";
+  const session=await getPairingSession({kv:env.DEVICE_REGISTRY,code,accountId:accountClaims.sub});
+  if(!session)return json({ok:false,error:"Pairing session not found"},404);
+  return json({ok:true,session});
  }
  const match=path.match(/^\/v1\/devices\/([a-zA-Z0-9_-]{8,80})(?:\/(heartbeat|capabilities))?$/);
  if(match) {

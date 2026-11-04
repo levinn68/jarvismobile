@@ -48,6 +48,23 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         return result
     }
 
+    /**
+     * Creates a short-lived one-time pairing code for desktop agents.
+     * The code is bound to the current Google-linked account and expires in ~5 minutes.
+     */
+    fun createPairingSession(expectedSupabaseUserId: String, deviceHintName: String = "Desktop"): JSONObject {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        val body = JSONObject().put("deviceHint", JSONObject().put("name", deviceHintName.take(80)))
+        return rawRequest("POST", "/v1/pairing/sessions", body, accountToken)
+    }
+
+    fun pairingSessionStatus(code: String, expectedSupabaseUserId: String): JSONObject {
+        val accountToken = vault.accountToken(expectedSupabaseUserId)
+            ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account")
+        return rawRequest("GET", "/v1/pairing/sessions/status?code=${java.net.URLEncoder.encode(code, "UTF-8")}", null, accountToken)
+    }
+
     fun listAccountDevices(expectedSupabaseUserId: String? = null): JSONArray {
         val accountToken = vault.accountToken(expectedSupabaseUserId)
             ?: throw IllegalStateException("JARVIS account token does not belong to the current Google account. Reconnect the device.")
@@ -66,7 +83,6 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun storedAccountUserId(): String? = vault.accountUserId()
     fun clearAccountToken() = vault.clearAccountToken()
 
-    /** Queue a typed action for a device owned by this JARVIS account. */
     fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null): JSONObject {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(action.length in 1..80) { "Invalid action" }
@@ -112,12 +128,25 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
                     val command = commands.optJSONObject(i) ?: continue
                     val id = command.optString("commandId")
                     if (id.isBlank()) continue
-                    val result = try { executor.execute(command) }
-                    catch (e: Exception) { JSONObject().put("ok", false).put("error", e.message ?: "Execution failed") }
-                    try { acknowledge(id, result) } catch (e: Exception) { onResult("Acknowledgement failed: ${e.message}") }
+                    val result = try {
+                        executor.execute(command)
+                    } catch (e: Exception) {
+                        JSONObject().put("ok", false).put("error", e.message ?: "Execution failed")
+                    }
+                    if (result.optBoolean("pendingApproval", false)) {
+                        onResult("Menunggu persetujuan pengguna untuk ${command.optString("action")}")
+                        continue
+                    }
+                    try {
+                        acknowledge(id, result)
+                    } catch (e: Exception) {
+                        onResult("Acknowledgement failed: ${e.message}")
+                    }
                 }
                 onResult("Device sync completed")
-            } catch (e: Exception) { onResult("Device sync failed: ${e.message}") }
+            } catch (e: Exception) {
+                onResult("Device sync failed: ${e.message}")
+            }
         }
     }
 
@@ -145,11 +174,17 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
             val result = if (raw.isBlank()) JSONObject() else JSONObject(raw)
             if (code !in 200..299) throw IllegalStateException("JARVIS API HTTP $code: ${result.optString("error", "Request failed")}")
             return result
-        } finally { connection.disconnect() }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     override fun close() {
         io.shutdownNow()
-        try { io.awaitTermination(2, TimeUnit.SECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+        try {
+            io.awaitTermination(2, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
     }
 }

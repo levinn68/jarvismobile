@@ -4,10 +4,12 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { loadCredentials, saveCredentials, credentialPath } from "./credentials.js";
 
 const API = (process.env.JARVIS_API_BASE_URL || "https://jarvis-api.alvinorasya1304.workers.dev").replace(/\/+$/, "");
-const DEVICE_ID = process.env.JARVIS_DEVICE_ID || "";
-const DEVICE_TOKEN = process.env.JARVIS_DEVICE_TOKEN || "";
+let DEVICE_ID = process.env.JARVIS_DEVICE_ID || "";
+let DEVICE_TOKEN = process.env.JARVIS_DEVICE_TOKEN || "";
+let consecutiveFailures = 0;
 const POLL_MS = Math.max(5000, Number(process.env.JARVIS_POLL_INTERVAL_MS || 15000));
 const MAX_FILE_BYTES = 64 * 1024;
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
@@ -25,21 +27,50 @@ async function apiRequest(method, endpoint, token, body) {
   let result;
   try { result = text ? JSON.parse(text) : {}; }
   catch { throw new Error("JARVIS API returned invalid JSON (HTTP " + response.status + ")"); }
-  if (!response.ok) throw new Error("JARVIS API HTTP " + response.status + ": " + (result.error || "Request failed"));
+  if (!response.ok) {
+    const err = new Error("JARVIS API HTTP " + response.status + ": " + (result.error || "Request failed"));
+    err.status = response.status;
+    throw err;
+  }
   return result;
 }
 
 async function pair() {
+  const pairingCode = (process.env.JARVIS_PAIRING_CODE || "").trim();
   const accountToken = process.env.JARVIS_ACCOUNT_TOKEN || "";
-  if (!accountToken) throw new Error("Set JARVIS_ACCOUNT_TOKEN before running the pair command.");
   const deviceId = "windows-" + randomUUID();
-  const result = await apiRequest("POST", "/v1/devices/enroll", accountToken, {
+  const payload = {
     deviceId, platform: "windows", name: process.env.COMPUTERNAME || os.hostname(),
     osVersion: os.release(), appVersion: "1.0.0",
     capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
-  });
-  process.stdout.write("Pairing succeeded.\nDevice ID: " + deviceId + "\nDevice token (store securely; shown only once):\n" + result.token + "\n");
-  process.stdout.write("Set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN before starting the agent.\n");
+  };
+
+  let result;
+  if (pairingCode) {
+    const response = await fetch(API + "/v1/pairing/redeem", {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ code: pairingCode, ...payload }),
+      signal: AbortSignal.timeout(15000)
+    });
+    const text = await response.text();
+    result = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(result.error || ("HTTP " + response.status));
+  } else if (accountToken) {
+    result = await apiRequest("POST", "/v1/devices/enroll", accountToken, payload);
+  } else {
+    throw new Error("Set JARVIS_PAIRING_CODE (from Android QR) or JARVIS_ACCOUNT_TOKEN before pairing.");
+  }
+
+  if (!result.token) throw new Error("Pairing response did not include a device token.");
+  const enrolledId = result.device?.deviceId || deviceId;
+  const file = await saveCredentials({ deviceId: enrolledId, token: result.token, platform: "windows" });
+  DEVICE_ID = enrolledId;
+  DEVICE_TOKEN = result.token;
+  process.stdout.write("Pairing succeeded.\nDevice ID: " + enrolledId + "\n");
+  process.stdout.write("Credentials saved to: " + file + "\n");
+  process.stdout.write("Device token printed once below — store offline if needed:\n" + result.token + "\n");
+  process.stdout.write("Run: npm start\n");
 }
 
 function allowedRoots() {
@@ -185,8 +216,6 @@ async function launchApp(appId) {
   const apps = await startMenuShortcuts();
   if (!apps.some((app) => app.appId === appId)) return { ok: false, error: "App is not in the Windows Start Menu allowlist. Refresh apps.list first." };
   const target = appIndex.get(appId);
-  // Fixed PowerShell command. The target is passed as an environment variable,
-  // never interpolated into executable code or a shell command string.
   const child = spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", "Start-Process -LiteralPath $env:JARVIS_TARGET"], {
     windowsHide: true, stdio: "ignore", env: { ...process.env, JARVIS_TARGET: target }
   });
@@ -246,14 +275,41 @@ async function pollOnce() {
   }
 }
 
+async function resolveIdentity() {
+  if (DEVICE_ID && DEVICE_TOKEN) return;
+  const stored = await loadCredentials();
+  if (stored) {
+    DEVICE_ID = stored.deviceId;
+    DEVICE_TOKEN = stored.token;
+    process.stdout.write("Loaded credentials from " + credentialPath() + "\n");
+  }
+}
+
 async function run() {
   if (process.platform !== "win32") throw new Error("This connector build targets Windows.");
-  if (!DEVICE_ID || !DEVICE_TOKEN) throw new Error("Set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN first.");
+  await resolveIdentity();
+  if (!DEVICE_ID || !DEVICE_TOKEN) {
+    throw new Error("Missing credentials. Pair first (JARVIS_PAIRING_CODE=XXXXXXXX npm run pair) or set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN.");
+  }
   process.stdout.write("JARVIS Windows connector started for " + DEVICE_ID + ".\n");
   process.stdout.write("Approved folder roots: " + (await resolvedRoots()).length + ".\n");
   for (;;) {
-    try { await pollOnce(); }
-    catch (error) { process.stderr.write("Sync error: " + String(error.message || error) + "\n"); }
+    try {
+      await pollOnce();
+      consecutiveFailures = 0;
+    } catch (error) {
+      consecutiveFailures += 1;
+      const status = error.status || 0;
+      process.stderr.write("Sync error: " + String(error.message || error) + "\n");
+      if (status === 401 || status === 404) {
+        process.stderr.write("Device token rejected or device revoked. Re-pair from Android QR.\n");
+        process.exitCode = 2;
+        return;
+      }
+      const delay = Math.min(POLL_MS * Math.pow(2, Math.min(consecutiveFailures, 4)), 120000);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      continue;
+    }
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
   }
 }

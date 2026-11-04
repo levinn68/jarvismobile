@@ -30,8 +30,14 @@ test("safeTarget accepts a relative file path within the selected root", async (
 test("safeTarget rejects traversal and absolute paths", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "jarvis-root-"));
   try {
-    await assert.rejects(() => safeTarget(root, "..\\outside.txt"), /escapes/);
+    // On Windows hosts backslash traversal is blocked by the escapes check.
+    // On non-Windows CI the same string may fail earlier at realpath (ENOENT).
+    await assert.rejects(
+      () => safeTarget(root, "..\\outside.txt"),
+      (err) => /escapes|ENOENT|no such file/i.test(String(err.message || err))
+    );
     await assert.rejects(() => safeTarget(root, path.resolve(root, "..", "outside.txt")), /relative path/);
+    await assert.rejects(() => safeTarget(root, "../outside.txt"), /escapes/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

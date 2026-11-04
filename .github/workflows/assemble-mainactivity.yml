@@ -1,0 +1,51 @@
+name: Assemble MainActivity
+on:
+  push:
+    branches: [ "feature/qr-pairing-v1" ]
+    paths:
+      - "app/src/main/java/com/jarvis/mobile/mainactivity_parts/**"
+      - ".github/workflows/assemble-mainactivity.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/qr-pairing-v1
+          fetch-depth: 0
+      - name: Decode zlib+base64 parts into MainActivity.kt
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, pathlib, zlib
+          parts_dir = pathlib.Path("app/src/main/java/com/jarvis/mobile/mainactivity_parts")
+          man = json.loads((parts_dir / "MANIFEST.json").read_text())
+          assert man.get("format") == "zlib+base64"
+          joined = "".join((parts_dir / p["name"]).read_text().strip() for p in man["parts"])
+          raw = zlib.decompress(base64.b64decode(joined))
+          h = hashlib.sha256(raw).hexdigest()
+          print("sha256", h)
+          print("expected", man["raw_sha256"])
+          assert h == man["raw_sha256"], "checksum mismatch"
+          text = raw.decode()
+          for m in ["requestMicFocus","clientRequestId","registerConnectivityFlush","HolographicOrb","JarvisChatComposer","JarvisUserBubble"]:
+              assert m in text, m
+          out = pathlib.Path("app/src/main/java/com/jarvis/mobile/MainActivity.kt")
+          out.write_bytes(raw)
+          print("ALL MARKERS OK wrote", len(raw), "bytes")
+          PY
+      - name: Commit MainActivity if changed
+        run: |
+          set -euo pipefail
+          git config user.name "jarvis-assemble-bot"
+          git config user.email "jarvis-assemble@users.noreply.github.com"
+          git add app/src/main/java/com/jarvis/mobile/MainActivity.kt
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "fix(android): assemble polished MainActivity.kt from zlib parts (verified)"
+            git push origin feature/qr-pairing-v1
+          fi
