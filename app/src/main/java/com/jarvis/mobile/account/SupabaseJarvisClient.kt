@@ -113,11 +113,12 @@ class SupabaseJarvisClient(context: Context) {
     suspend fun saveTurn(userText: String, assistantText: String) = withContext(Dispatchers.IO) {
         if (!hasSession()) return@withContext
         require(userText.isNotBlank() && assistantText.isNotBlank()) { "Pesan kosong tidak dapat disimpan." }
+        val turnId = java.util.UUID.randomUUID().toString()
         try {
-            persistTurn(userText, assistantText)
+            persistTurn(userText, assistantText, turnId)
             flushPendingTurnsInternal()
         } catch (error: Exception) {
-            enqueuePendingTurn(userText, assistantText)
+            enqueuePendingTurn(userText, assistantText, turnId)
             throw error
         }
     }
@@ -136,7 +137,7 @@ class SupabaseJarvisClient(context: Context) {
         }
     }
 
-    private fun persistTurn(userText: String, assistantText: String) {
+    private fun persistTurn(userText: String, assistantText: String, turnId: String) {
         var conversation = activeConversationId
         if (conversation == null) {
             val title = userText.replace(Regex("\\s+"), " ").trim().take(64).ifBlank { "Percakapan baru" }
@@ -145,15 +146,26 @@ class SupabaseJarvisClient(context: Context) {
             appContext.getSharedPreferences("jarvis_chat_state", Context.MODE_PRIVATE).edit()
                 .putString("active_conversation_id", conversation).apply()
         }
+        val userMessageId = java.util.UUID.nameUUIDFromBytes("$turnId:user".toByteArray(Charsets.UTF_8)).toString()
+        val assistantMessageId = java.util.UUID.nameUUIDFromBytes("$turnId:assistant".toByteArray(Charsets.UTF_8)).toString()
         val batch = JSONArray()
-            .put(JSONObject().put("conversation_id", conversation).put("role", "user").put("content", userText))
-            .put(JSONObject().put("conversation_id", conversation).put("role", "assistant").put("content", assistantText))
-        requestArray("/rest/v1/jarvis_messages", "POST", batch, prefer = "return=minimal")
-        requestJson(
-            "/rest/v1/jarvis_conversations?id=eq.${encode(conversation!!)}",
-            "PATCH",
-            JSONObject().put("updated_at", utcNow())
+            .put(JSONObject().put("client_id", userMessageId).put("conversation_id", conversation).put("role", "user").put("content", userText))
+            .put(JSONObject().put("client_id", assistantMessageId).put("conversation_id", conversation).put("role", "assistant").put("content", assistantText))
+        requestArray(
+            "/rest/v1/jarvis_messages?on_conflict=client_id",
+            "POST",
+            batch,
+            prefer = "resolution=ignore-duplicates,return=minimal"
         )
+        // The message batch is the durable unit. A failed metadata timestamp update
+        // must not enqueue and replay the same messages a second time.
+        runCatching {
+            requestJson(
+                "/rest/v1/jarvis_conversations?id=eq.${encode(conversation!!)}",
+                "PATCH",
+                JSONObject().put("updated_at", utcNow())
+            )
+        }
     }
 
     private fun createConversationBlocking(title: String): String {
@@ -168,7 +180,7 @@ class SupabaseJarvisClient(context: Context) {
         return id
     }
 
-    private fun enqueuePendingTurn(userText: String, assistantText: String) {
+    private fun enqueuePendingTurn(userText: String, assistantText: String, turnId: String) {
         val prefs = appContext.getSharedPreferences("jarvis_chat_offline", Context.MODE_PRIVATE)
         val existing = try { JSONArray(prefs.getString("pending_turns", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
         while (existing.length() >= 40) existing.remove(0)
@@ -177,7 +189,7 @@ class SupabaseJarvisClient(context: Context) {
                 .put("user", userText.take(8000))
                 .put("assistant", assistantText.take(8000))
                 .put("queued_at", System.currentTimeMillis())
-                .put("local_id", java.util.UUID.randomUUID().toString())
+                .put("local_id", turnId)
         )
         prefs.edit().putString("pending_turns", existing.toString()).apply()
     }
@@ -200,8 +212,10 @@ class SupabaseJarvisClient(context: Context) {
             val assistant = item.optString("assistant")
             if (user.isBlank() || assistant.isBlank()) continue
             try {
-                persistTurn(user, assistant)
+                val turnId = localId.ifBlank { java.util.UUID.randomUUID().toString() }
+                persistTurn(user, assistant, turnId)
             } catch (_: Exception) {
+                if (localId.isBlank()) item.put("local_id", java.util.UUID.randomUUID().toString())
                 remaining.put(item)
                 for (j in i + 1 until queue.length()) {
                     queue.optJSONObject(j)?.let { remaining.put(it) }
