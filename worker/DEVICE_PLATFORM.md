@@ -81,9 +81,9 @@ The account owner can revoke a paired device with `DELETE /v1/devices/:deviceId`
 - `DEVICE_REGISTRY`: account and device metadata plus account-to-device indexes.
 - `DEVICE_COMMANDS`: short-lived typed command queue.
 
-The existing Worker secrets `DEVICE_TOKEN_SECRET`, `DEVICE_ENROLLMENT_SECRET` and `SUPABASE_ANON_KEY` are configured outside the repository. OAuth secrets are intentionally deferred and are not needed to run the Worker protocol tests or compile the debug APK.
+The deployment workflow requires `DEVICE_TOKEN_SECRET` and `SUPABASE_ANON_KEY` as GitHub Actions secrets and installs them as Cloudflare Worker Secrets. `DEVICE_ENROLLMENT_SECRET` is only used by the legacy `/v1/accounts/create` bootstrap endpoint; Google/Supabase account enrollment does not require it. OAuth client secrets are configured in Google Cloud and Supabase, not in this Worker.
 
-A queued command is not proof of execution. Capability declarations are reported by the paired connector and are not hardware attestation. Account-token revocation, device removal, multi-user roles and QR-based pairing remain future work.
+A queued command is not proof of execution. Capability declarations are reported by the paired connector and are not hardware attestation. Account-token revocation and multi-user roles remain future work. Device revocation and QR/manual pairing are implemented; pairing codes expire after five minutes.
 
 ## Platform and privacy boundaries
 
