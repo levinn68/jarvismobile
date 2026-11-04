@@ -2152,7 +2152,12 @@ private fun JarvisScreen(
         return (lead + detail + closing).take(900)
     }
     fun parseDeviceCommand(raw: String): Pair<String, Map<String, String>>? {
-        val value = raw.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+        // Normalize punctuation from typed text and speech transcripts ("Jarvis, buka Roblox").
+        // Keep dots intact so explicit Android package names remain parseable.
+        val value = raw.trim().lowercase(Locale.ROOT)
+            .replace(Regex("[,!?;:]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
         return when (value) {
             "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai",
             "cek kondisi hp", "info perangkat" ->
@@ -2171,26 +2176,31 @@ private fun JarvisScreen(
                 "calendar.list" to emptyMap()
             else -> {
                 val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
-                val launch = Regex("^(?:jarvis )?(?:buka|jalankan) (whatsapp|youtube|chrome|roblox)$").matchEntire(value)
-                val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
-                val appLabelLaunch = Regex("^(?:jarvis )?(?:buka|jalankan) aplikasi (.+)$").matchEntire(value)
+                val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan|open|launch) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
+                val appLaunch = Regex("^(?:jarvis )?(?:tolong )?(?:buka|jalankan|open|launch) (?:(?:aplikasi|app) )?(.+)$").matchEntire(value)
                 when {
                     search != null -> {
                         val query = search.groupValues[1].trim().take(200)
                         if (query.isBlank()) null else "files.search" to mapOf("query" to query)
                     }
-                    launch != null -> {
-                        val packageName = when (launch.groupValues[1]) {
-                            "whatsapp" -> "com.whatsapp"
-                            "youtube" -> "com.google.android.youtube"
-                            "chrome" -> "com.android.chrome"
-                            "roblox" -> "com.roblox.client"
-                            else -> null
+                    packageLaunch != null ->
+                        "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
+                    appLaunch != null -> {
+                        val appName = appLaunch.groupValues[1].trim().removeSuffix(" dong").trim()
+                        if (appName.isBlank() || appName.length > 100) null
+                        else {
+                            val packageName = when (appName) {
+                                "roblox" -> "com.roblox.client"
+                                "instagram" -> null // Resolve by installed launcher label; package can vary by device/profile.
+                                "whatsapp" -> "com.whatsapp"
+                                "youtube" -> "com.google.android.youtube"
+                                "chrome", "google chrome" -> "com.android.chrome"
+                                else -> null
+                            }
+                            if (packageName != null) "apps.launch" to mapOf("packageName" to packageName)
+                            else "apps.launch_label" to mapOf("appName" to appName)
                         }
-                        packageName?.let { "apps.launch" to mapOf("packageName" to it) }
                     }
-                    packageLaunch != null -> "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
-                    appLabelLaunch != null -> "apps.launch_label" to mapOf("appName" to appLabelLaunch.groupValues[1].trim().take(100))
                     else -> null
                 }
             }
