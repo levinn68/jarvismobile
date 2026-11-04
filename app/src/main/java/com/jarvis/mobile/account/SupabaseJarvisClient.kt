@@ -3,8 +3,11 @@ package com.jarvis.mobile.account
 import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.credentials.CustomCredential
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.jarvis.mobile.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -37,13 +40,37 @@ class SupabaseJarvisClient(context: Context) {
     fun currentAccessToken(): String = accessToken()
 
     suspend fun signInWithGoogle(activityContext: Context): JarvisSession {
-        require(baseUrl.startsWith("https://") && anonKey.isNotBlank() && googleWebClientId.isNotBlank()) {
-            "Konfigurasi belum lengkap: periksa GOOGLE_WEB_CLIENT_ID dan SUPABASE_ANON_KEY pada GitHub Actions."
+        require(baseUrl.startsWith("https://") && anonKey.isNotBlank()) {
+            "Konfigurasi Supabase belum lengkap. Periksa SUPABASE_URL dan SUPABASE_ANON_KEY."
         }
-        val option = GetGoogleIdOption.Builder().setFilterByAuthorizedAccounts(false)
-            .setServerClientId(googleWebClientId).setAutoSelectEnabled(false).build()
+        val webClientId = googleWebClientId.trim()
+        require(webClientId.matches(Regex("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com"))) {
+            "GOOGLE_WEB_CLIENT_ID tidak valid atau kosong. Gunakan OAuth Client ID bertipe Web application, bukan Android Client ID."
+        }
+
+        // This screen is an explicit Google sign-in button. Google recommends
+        // GetSignInWithGoogleOption for this interaction.
+        val option = GetSignInWithGoogleOption.Builder(webClientId).build()
         val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-        val credential = withContext(Dispatchers.Main) { CredentialManager.create(activityContext).getCredential(activityContext, request).credential }
+        val credential = try {
+            withContext(Dispatchers.Main) {
+                CredentialManager.create(activityContext).getCredential(activityContext, request).credential
+            }
+        } catch (error: GetCredentialCancellationException) {
+            throw IllegalStateException("Login Google dibatalkan.", error)
+        } catch (error: NoCredentialException) {
+            throw IllegalStateException("Tidak ada akun Google yang dapat dipakai. Pastikan akun Google sudah ditambahkan ke perangkat dan Google Play Services aktif.", error)
+        } catch (error: GetCredentialException) {
+            val detail = error.message.orEmpty()
+            val lower = detail.lowercase()
+            val hint = when {
+                lower.contains("developer") || lower.contains("10") || lower.contains("28444") ->
+                    "Google menolak konfigurasi aplikasi (DEVELOPER_ERROR). Periksa OAuth Android Client: package com.jarvis.mobile.assistant + SHA-1 sertifikat APK, serta pastikan Web Client ID berasal dari project Google Cloud yang sama."
+                lower.contains("network") -> "Koneksi Google bermasalah. Periksa internet dan Google Play Services."
+                else -> "Credential Manager gagal mengambil akun Google. Periksa Google Play Services dan konfigurasi OAuth."
+            }
+            throw IllegalStateException(hint + " Detail: " + detail.take(240), error)
+        }
         val google = if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL)
             GoogleIdTokenCredential.createFrom(credential.data) else throw IllegalStateException("Google Sign-In tidak mengembalikan ID token yang valid.")
         val response = withContext(Dispatchers.IO) {
