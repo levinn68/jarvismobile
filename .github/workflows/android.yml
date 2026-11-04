@@ -67,6 +67,12 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
+      - name: Print APK OAuth fingerprint
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --print-certs "$APK"
+          echo "Register this SHA-1 in Google Cloud as an Android OAuth client for package com.jarvis.mobile.assistant."
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
