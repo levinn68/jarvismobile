@@ -22,6 +22,9 @@ function memoryKv() {
 
 test("screen control capability is recognized and requires on-device confirmation", () => {
   assert.equal(CAPABILITIES.has("screen.control"), true);
+  const read = validateCommand({ action: "screen.read" }, "android");
+  assert.equal(read.capability, "screen.read");
+  assert.equal(read.requiresConfirmation, true);
   const tap = validateCommand({ action: "screen.tap", params: { x: 0.5, y: 0.25 } }, "android");
   assert.equal(tap.capability, "screen.control");
   assert.equal(tap.requiresConfirmation, true);
@@ -96,4 +99,16 @@ test("acknowledge is idempotent for completed screen commands", async () => {
   });
   assert.equal(second.ok, true);
   assert.equal(second.duplicate, true);
+});
+
+
+test("screen read is sensitive and must be locally approved", () => {
+  const decision = authorizeCapability(
+    { capabilities: ["screen.read"] },
+    "screen.read",
+    { userConfirmed: true }
+  );
+  assert.equal(decision.allowed, true);
+  assert.equal(decision.requiresConfirmation, true);
+  assert.equal(decision.onDeviceApprovalRequired, true);
 });
