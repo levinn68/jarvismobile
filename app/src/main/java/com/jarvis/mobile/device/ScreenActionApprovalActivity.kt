@@ -120,6 +120,7 @@ class ScreenActionApprovalActivity : Activity() {
             .setOnCancelListener {
                 if (finished) return@setOnCancelListener
                 finished = true
+                DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
                 acknowledge(
                     commandId,
                     JSONObject()
