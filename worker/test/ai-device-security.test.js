@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseDeviceIntent, executeDeviceIntent } from "../src/device/ai-tool-service.js";
 import { authenticateSupabaseUser, enforceAccountRateLimit, requestOriginAllowed } from "../src/security/request-guard.js";
+import { createAccount, saveDevice } from "../src/device/registry.js";
 
 function memoryKv() {
   const store = new Map();
@@ -76,4 +77,54 @@ test("configured browser origins are checked exactly and native requests remain 
   assert.equal(requestOriginAllowed(new Request("https://api.example", { headers: { Origin: "https://evil.example" } }), {
     JARVIS_ALLOWED_ORIGINS: "https://good.example"
   }), false);
+});
+
+test("authenticated device intent queues a command only for the caller account device", async () => {
+  const registry = memoryKv();
+  const commands = memoryKv();
+  const userId = "123e4567-e89b-12d3-a456-426614174000";
+  const accountId = "acct-" + userId;
+  await createAccount(registry, accountId);
+  await saveDevice(registry, {
+    deviceId: "windows-device-123",
+    accountId,
+    platform: "windows",
+    name: "Windows PC",
+    capabilities: ["apps.launch", "apps.list", "system.read"]
+  });
+  const result = await executeDeviceIntent({
+    prompt: "Buka WhatsApp di Windows",
+    userId,
+    env: { DEVICE_REGISTRY: registry, DEVICE_COMMANDS: commands },
+    waitMs: 0
+  });
+  assert.equal(result.handled, true);
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "queued");
+  assert.equal(result.action, "apps.launch_label");
+  assert.equal(result.device.platform, "windows");
+  const stored = await commands.get("command:windows-device-123:" + result.commandId);
+  assert.ok(stored);
+  assert.equal(JSON.parse(stored).params.appName, "WhatsApp");
+});
+
+test("ambiguous multi-device requests require explicit device selection", async () => {
+  const registry = memoryKv();
+  const userId = "123e4567-e89b-12d3-a456-426614174001";
+  const accountId = "acct-" + userId;
+  await createAccount(registry, accountId);
+  for (const [deviceId, platform] of [["windows-device-001", "windows"], ["linux-device-001", "linux"]]) {
+    await saveDevice(registry, {
+      deviceId, accountId, platform, name: platform,
+      capabilities: ["apps.launch"]
+    });
+  }
+  const result = await executeDeviceIntent({
+    prompt: "Buka Chrome",
+    userId,
+    env: { DEVICE_REGISTRY: registry, DEVICE_COMMANDS: memoryKv() },
+    waitMs: 0
+  });
+  assert.equal(result.status, "device_selection_required");
+  assert.equal(result.devices.length, 2);
 });
