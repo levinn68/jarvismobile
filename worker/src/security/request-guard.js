@@ -14,11 +14,6 @@ export function clientIpFromRequest(request) {
   return first ? first.slice(0, 64) : "anonymous";
 }
 
-/**
- * Detailed Supabase user verification that distinguishes between missing/invalid
- * tokens (401), unconfigured environment (503), and upstream Supabase Auth
- * timeouts/outages (504/502).
- */
 export async function authenticateSupabaseUserDetailed(request, env, timeoutMs = 8000) {
   const token = bearerToken(request);
   if (!token) {
@@ -59,37 +54,54 @@ export async function authenticateSupabaseUserDetailed(request, env, timeoutMs =
   }
 }
 
-/** Backward-compatible wrapper used by older callers. */
 export async function authenticateSupabaseUser(request, env) {
   const result = await authenticateSupabaseUserDetailed(request, env);
   return result.ok ? result.user : null;
 }
 
 export async function enforceAccountRateLimit(kv, scope, userId, limit, nowMs = Date.now()) {
-  if (!kv || !userId || !limit) return true;
-  const key = `rate:${scope}:${userId}`;
-  const raw = await kv.get(key);
-  let bucket = { count: 0, window: nowMs };
-  if (raw) {
-    try { bucket = JSON.parse(raw); } catch (_) {}
+  if (!kv) return { allowed: false, reason: "rate_limit_storage_unavailable" };
+  const safeScope = String(scope || "default").replace(/[^a-zA-Z0-9_-]/g, "");
+  const safeSubject = String(userId || "anonymous").replace(/[^a-zA-Z0-9_.:-]/g, "").slice(0, 80);
+  const window = Math.floor(nowMs / (MAX_WINDOW_SECONDS * 1000));
+  const key = "rate:v1:" + safeScope + ":" + safeSubject + ":" + window;
+  const current = Number((await kv.get(key)) || 0);
+  if (!Number.isFinite(current) || current >= limit) {
+    return {
+      allowed: false,
+      retryAfter: Math.max(1, MAX_WINDOW_SECONDS - Math.floor((nowMs / 1000) % MAX_WINDOW_SECONDS))
+    };
   }
-  if (nowMs - (bucket.window || 0) > MAX_WINDOW_SECONDS * 1000) {
-    bucket = { count: 0, window: nowMs };
-  }
-  bucket.count = (bucket.count || 0) + 1;
-  await kv.put(key, JSON.stringify(bucket), { expirationTtl: MAX_WINDOW_SECONDS * 2 });
-  return bucket.count <= limit;
+  await kv.put(key, String(current + 1), { expirationTtl: MAX_WINDOW_SECONDS * 2 });
+  return { allowed: true, remaining: Math.max(0, limit - current - 1) };
 }
 
 export function requestOriginAllowed(request, env) {
-  return true;
+  const origin = request?.headers?.get?.("Origin");
+  if (!origin) return true;
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return allowed.length === 0 || allowed.includes(origin);
 }
 
 export function corsHeadersForRequest(request, env) {
+  const origin = request?.headers?.get?.("Origin");
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  let allowOrigin = "*";
+  if (allowed.length > 0) {
+    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
+  }
   return {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id, X-Jarvis-Device-Token, X-Idempotency-Key",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
   };
 }
 
