@@ -48,9 +48,19 @@ class SupabaseJarvisClient(context: Context) {
             "GOOGLE_WEB_CLIENT_ID tidak valid atau kosong. Gunakan OAuth Client ID bertipe Web application, bukan Android Client ID."
         }
 
-        // This screen is an explicit Google sign-in button. Google recommends
-        // GetSignInWithGoogleOption for this interaction.
-        val option = GetSignInWithGoogleOption.Builder(webClientId).build()
+        // This screen is an explicit Google sign-in button. Use a fresh nonce
+        // for every attempt so the ID token cannot be replayed against this app.
+        val rawNonceBytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val rawNonce = android.util.Base64.encodeToString(
+            rawNonceBytes,
+            android.util.Base64.NO_WRAP or android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING
+        )
+        val hashedNonce = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(rawNonce.toByteArray(Charsets.UTF_8))
+            .joinToString("") { byte -> "%02x".format(byte) }
+        val option = GetSignInWithGoogleOption.Builder(webClientId)
+            .setNonce(hashedNonce)
+            .build()
         val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
         val credential = try {
             withContext(Dispatchers.Main) {
@@ -74,7 +84,7 @@ class SupabaseJarvisClient(context: Context) {
         val google = if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL)
             GoogleIdTokenCredential.createFrom(credential.data) else throw IllegalStateException("Google Sign-In tidak mengembalikan ID token yang valid.")
         val response = withContext(Dispatchers.IO) {
-            requestJson("/auth/v1/token?grant_type=id_token", "POST", JSONObject().put("provider", "google").put("id_token", google.idToken), bearer = null)
+            requestJson("/auth/v1/token?grant_type=id_token", "POST", JSONObject().put("provider", "google").put("id_token", google.idToken).put("nonce", rawNonce), bearer = null)
         }
         val user = response.optJSONObject("user") ?: throw IllegalStateException("Profil Supabase tidak tersedia.")
         val metadata = user.optJSONObject("user_metadata") ?: JSONObject()
