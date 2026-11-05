@@ -121,6 +121,7 @@ test("command polling paginates past completed commands to find pending work", a
     store.set("command:android-page-test:" + String(i).padStart(3, "0"), JSON.stringify({
       commandId: String(i).padStart(8, "0") + "-0000-0000-0000-000000000000",
       status,
+      createdAt: new Date().toISOString(),
       sequence: i
     }));
   }
