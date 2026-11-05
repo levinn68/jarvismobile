@@ -668,6 +668,7 @@ class MainActivity : ComponentActivity() {
             )
         }
     }
+
     private fun askGemini(
         prompt: String,
         history: List<Pair<String, String>> = emptyList(),
@@ -1667,6 +1668,7 @@ private fun RichMessageText(
         }
         return
     }
+
     val sections = groupBlocksIntoSections(blocks)
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2666,7 +2668,8 @@ private fun JarvisScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = "J . A . R . V . I . S .",
-                                color = Ice,                                fontSize = 18.sp,
+                                color = Ice,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 2.8.sp
                             )
@@ -3665,7 +3668,8 @@ private fun JarvisScreen(
                                                 .background(Color(0xFF102536))
                                                 .border(1.dp, Color(0x3358DCEC), RoundedCornerShape(10.dp))
                                                 .clickable { onOpenConversation(item.id); historyPanel = false }
-                                                .padding(horizontal = 8.dp, vertical = 6.dp),                                            verticalAlignment = Alignment.CenterVertically
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Box(Modifier.weight(1f)) {
                                                 JarvisConversationChip(
