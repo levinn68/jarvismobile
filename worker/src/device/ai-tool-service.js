@@ -80,6 +80,16 @@ export async function executeDeviceIntent({ prompt, userId, env, waitMs = 22000 
         : device.platform === intent.targetPlatform
     );
   }
+  const namedMatches = candidates.filter((device) =>
+    device.name && String(prompt).toLocaleLowerCase().includes(device.name.toLocaleLowerCase())
+  );
+  if (namedMatches.length === 1) candidates = namedMatches;
+  const now = Date.now();
+  const onlineCandidates = candidates.filter((device) => {
+    const seen = Date.parse(device.lastSeen || "");
+    return Number.isFinite(seen) && now - seen <= 120000 && seen <= now + 60000;
+  });
+  if (onlineCandidates.length) candidates = onlineCandidates;
   if (!candidates.length) {
     return {
       handled: true, ok: false, status: "no_capable_device",
