@@ -127,6 +127,9 @@ test("Worker /v1/chat forwards conversation history and returns normalized visua
   let capturedMessages = null;
   globalThis.fetch = async (url, options = {}) => {
     const u = String(url);
+    if (u.includes("/auth/v1/user")) {
+      return new Response(JSON.stringify({ id: "123e4567-e89b-12d3-a456-426614174000", email: "test@example.com" }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
     if (u.includes("raw.githubusercontent.com")) {
       return new Response("# Skill Mock\n Instructions", { status: 200 });
     }
@@ -142,7 +145,7 @@ test("Worker /v1/chat forwards conversation history and returns normalized visua
   try {
     const req = new Request("https://worker.test/v1/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer supabase-test-access-token" },
       body: JSON.stringify({
         message: "Halo",
         clientRequestId: "req-12345",
@@ -152,7 +155,12 @@ test("Worker /v1/chat forwards conversation history and returns normalized visua
         ]
       })
     });
-    const res = await workerApp.fetch(req, { GROQ_API_KEY_1: "groq-test-key" });
+    const res = await workerApp.fetch(req, {
+      GROQ_API_KEY_1: "groq-test-key",
+      SUPABASE_URL: "https://example.supabase.co",
+      SUPABASE_ANON_KEY: "test-public-key",
+      DEVICE_REGISTRY: { async get() { return null; }, async put() {} }
+    });
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.ok, true);
