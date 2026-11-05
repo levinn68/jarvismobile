@@ -89,7 +89,14 @@ export async function executeDeviceIntent({ prompt, userId, env, waitMs = 22000 
     const seen = Date.parse(device.lastSeen || "");
     return Number.isFinite(seen) && now - seen <= 120000 && seen <= now + 60000;
   });
-  if (onlineCandidates.length) candidates = onlineCandidates;
+  if (!onlineCandidates.length) {
+    return {
+      handled: true, ok: false, status: "device_offline",
+      message: "Tidak ada perangkat yang cocok dan mengirim heartbeat dalam 120 detik terakhir.",
+      devices: candidates.map(({ deviceId, name, platform, lastSeen }) => ({ deviceId, name, platform, lastSeen }))
+    };
+  }
+  candidates = onlineCandidates;
   if (!candidates.length) {
     return {
       handled: true, ok: false, status: "no_capable_device",
