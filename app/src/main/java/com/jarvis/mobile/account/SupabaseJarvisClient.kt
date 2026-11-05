@@ -326,8 +326,19 @@ class SupabaseJarvisClient(context: Context) {
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
             if (code !in 200..299) {
-                val message = runCatching { val json = JSONObject(response); json.optString("message").ifBlank { json.optString("error_description") }.ifBlank { json.optString("hint") } }.getOrNull()
-                throw IllegalStateException(message?.takeIf { it.isNotBlank() } ?: "Supabase HTTP $code")
+                val errorPayload = runCatching { JSONObject(response) }.getOrNull()
+                val message = errorPayload?.let { json ->
+                    listOf("message", "msg", "error_description", "error", "hint")
+                        .asSequence()
+                        .map { key -> json.optString(key).trim() }
+                        .firstOrNull { it.isNotBlank() }
+                }
+                val errorCode = errorPayload?.let { json ->
+                    json.optString("error_code").ifBlank { json.optString("code") }
+                }?.takeIf { it.isNotBlank() }
+                val detail = message?.take(320) ?: "No error detail returned"
+                val codeLabel = errorCode?.let { " ($it)" }.orEmpty()
+                throw IllegalStateException("Supabase HTTP $code$codeLabel: $detail")
             }
             return response
         } finally { connection.disconnect() }
