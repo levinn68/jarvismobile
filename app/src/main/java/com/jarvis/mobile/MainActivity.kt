@@ -3063,7 +3063,7 @@ private fun JarvisScreen(
                                                     fontWeight = FontWeight.SemiBold,
                                                     modifier = Modifier.clickable {
                                                         if (voiceTranscript.isNotBlank()) lines.add(Line(user = true, text = voiceTranscript))
-                                                        showJarvis(voiceAnswer, voiceProducts.toList())
+                                                        showJarvis(voiceAnswer, voiceProducts.toList(), voiceImages.toList())
                                                         voiceListening = false
                                                         page = "CHAT"
                                                     }
