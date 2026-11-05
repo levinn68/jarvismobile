@@ -6,6 +6,7 @@ import { detectSpeechLanguage, fishVoiceConfig } from "./voice/fish-audio.js";
 import { createCommunicationHub } from "./voice/communication-hub.js";
 import { createKeyRotator } from "./ai/key-rotation.js";
 import { isRetryableProviderError, withTimeout } from "./ai/fallback-engine.js";
+import { runJarvisProviders } from "./ai/provider-orchestrator.js";
 import { classifyProviderError } from "./ai/key-health.js";
 import { chooseProviders, classifyTask } from "./ai/ai-router.js";
 import { JARVIS_CONFIG, readRuntimeConfig } from "./core/config.js";
@@ -81,6 +82,40 @@ function skillCount() {
   }
 }
 
+function makeVoiceSummary(answer) {
+  const plain = String(answer || "")
+    .replace(/```[\\s\\S]*?```/g, " ")
+    .replace(/!\\[[^\\]]*\\]\\([^)]*\\)/g, " ")
+    .replace(/[#>*_`|]/g, " ")
+    .replace(/\\s+/g, " ")
+    .trim();
+  if (!plain) return "I have prepared the response on screen, Sir.";
+  const sentences = plain.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [plain];
+  return sentences.slice(0, 2).join(" ").trim();
+}
+
+function buildContextualCards(answer) {
+  const source = String(answer || "").trim();
+  const headings = [...source.matchAll(/^#{1,3}\\s+(.+)$/gm)].map((match) => match[1].trim());
+  const paragraphs = source.split(/\\n\\s*\\n/).map((part) => part.replace(/^#{1,6}\\s+/gm, "").trim()).filter(Boolean);
+  const cards = [];
+  if (headings.length) {
+    cards.push({ id: "answer-structure", type: "text", title: "Struktur jawaban", data: { items: headings.slice(0, 8) }, interactive: false });
+  }
+  const keyPoint = paragraphs.find((part) => part.length > 40 && !part.startsWith("```"));
+  if (keyPoint) {
+    cards.push({ id: "key-insight", type: "text", title: "Inti jawaban", data: { text: keyPoint.slice(0, 1200) }, interactive: false });
+  }
+  const imageMatches = [...source.matchAll(/!\\[([^\\]]*)\\]\\((https?:\\/\\/[^ )]+)\\)/g)];
+  for (const [index, match] of imageMatches.slice(0, 6).entries()) {
+    cards.push({ id: `image-${index + 1}`, type: "image", title: match[1] || "Visual pendukung", data: { image: match[2], alt: match[1] || "Visual pendukung" }, interactive: false });
+  }
+  if (!cards.length) {
+    cards.push({ id: "context-summary", type: "text", title: "Ringkasan visual", data: { text: source.slice(0, 1200) }, interactive: false });
+  }
+  return normalizeCards(cards, 8);
+}
+
 async function handleChat(request, env) {
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
@@ -89,26 +124,72 @@ async function handleChat(request, env) {
   const clientRequestId = boundedString(body.clientRequestId || body.requestId || "", 64) || null;
   const history = normalizeConversationHistory(body.history || body.messages || []);
   const system = buildPersonalityPrompt(prompt, history);
-  const messages = [{ role: "system", content: system }, ...history.map(h => ({ role: h.role, content: h.content })), { role: "user", content: prompt }];
-  let answer = "Understood, Sir.";
-  try {
-    if (env.GROQ_API_KEY_1) {
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${env.GROQ_API_KEY_1}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "openai/gpt-oss-120b", messages, temperature: 0.5, max_tokens: 1200 }),
+  const messages = [
+    { role: "system", content: system },
+    ...history.map((item) => ({ role: item.role, content: item.content })),
+    { role: "user", content: prompt },
+  ];
+  const level = classifyTask(prompt);
+  const attempts = [];
+  const result = await runJarvisProviders({
+    env,
+    messages,
+    level,
+    onAttempt: (event) => {
+      attempts.push({
+        provider: event.provider,
+        status: event.status,
+        attempt: event.attempt,
+        ...(event.error ? { detail: String(event.error).slice(0, 180) } : {}),
       });
-      const data = await resp.json().catch(() => ({}));
-      answer = data?.choices?.[0]?.message?.content?.trim() || answer;
-    }
-  } catch (_) {}
-  const hologram = typeof buildHologramState === "function" ? buildHologramState({ state: "idle" }) : { state: "idle" };
+    },
+  });
+  if (!result.ok) {
+    return json({
+      ok: false,
+      error: "All configured AI providers failed. Please check provider configuration and availability.",
+      requestId: clientRequestId,
+      clientRequestId,
+      provider: {
+        selected: null,
+        fallbackUsed: attempts.length > 1,
+        attempts,
+        configured: result.available || [],
+      },
+    }, 503);
+  }
+
+  const answer = String(result.result || "").trim();
+  if (!answer) {
+    return json({ ok: false, error: "AI provider returned an empty answer.", requestId: clientRequestId, clientRequestId }, 502);
+  }
+  const cards = buildContextualCards(answer);
+  const voiceSummary = makeVoiceSummary(answer);
+  const hologram = buildHologramState({ voiceState: "idle", taskActive: false });
+  const imageResults = cards
+    .filter((card) => card.type === "image" && card.data?.image)
+    .map((card) => ({ title: card.title, image: card.data.image, source: "response", link: card.data.image }));
   return json({
     ok: true,
     answer,
+    reply: answer,
+    voice_summary: voiceSummary,
     requestId: clientRequestId,
     clientRequestId,
-    visuals: { hologram: hologram || { state: "idle" }, cards: normalizeCards([], 5) || [] },
+    visuals: {
+      kind: imageResults.length ? "images" : "context",
+      hologram,
+      results: imageResults,
+      cards,
+    },
+    cards,
+    provider: {
+      selected: result.provider,
+      fallbackUsed: result.provider !== result.order?.[0],
+      attempts,
+      configured: result.available,
+    },
+    conversation: { continue: true, historyItems: history.length },
   });
 }
 
