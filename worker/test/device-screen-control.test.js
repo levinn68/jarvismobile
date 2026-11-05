@@ -154,3 +154,26 @@ test("command polling validates device id and bounds requested result count", as
   await assert.rejects(() => listDeviceCommands({ kv, deviceId: "../other" }), /valid deviceId/);
   assert.deepEqual(await listDeviceCommands({ kv, deviceId: "android-valid-123", limit: 5000 }), []);
 });
+
+
+test("acknowledgement validates identifiers and rejects oversized or non-object results", async () => {
+  const kv = memoryKv();
+  const deviceId = "android-ack-check";
+  const commandId = "123e4567-e89b-12d3-a456-426614174000";
+  await assert.rejects(
+    () => acknowledgeDeviceCommand({ kv, deviceId: "../other", commandId, result: { ok: true } }),
+    /valid deviceId/
+  );
+  await assert.rejects(
+    () => acknowledgeDeviceCommand({ kv, deviceId, commandId: "not-a-uuid", result: { ok: true } }),
+    /valid commandId/
+  );
+  await assert.rejects(
+    () => acknowledgeDeviceCommand({ kv, deviceId, commandId, result: "unexpected-string" }),
+    /JSON object/
+  );
+  await assert.rejects(
+    () => acknowledgeDeviceCommand({ kv, deviceId, commandId, result: { content: "x".repeat(65537) } }),
+    /64 KB/
+  );
+});
