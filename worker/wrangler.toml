@@ -5,6 +5,7 @@ compatibility_date = "2026-10-31"
 [vars]
 FISH_VOICE_ID = "612b878b113047d9a770c069c8b4fdfe"
 FISH_MODEL = "s2.1-pro-free"
+GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 
 [[kv_namespaces]]
