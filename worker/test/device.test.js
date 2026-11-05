@@ -258,3 +258,35 @@ test("desktop app launch by visible name is validated and remains typed", () => 
     }, platform));
   }
 });
+
+
+test("inactive accounts cannot enqueue commands or poll device commands", async () => {
+  const accountId = "acct-inactive-123456";
+  const deviceId = "android-inactive-1234";
+  const registry = memoryKv();
+  const commands = memoryKv();
+  await registry.put("account:" + accountId, JSON.stringify({ accountId, status: "suspended" }));
+  await registry.put("device:" + deviceId, JSON.stringify({
+    deviceId, accountId, platform: "android", capabilities: ["system.read"]
+  }));
+  const secret = "test-secret-with-more-than-32-characters";
+  const accountToken = await issueAccountToken(accountId, secret);
+  const deviceToken = await issueDeviceToken(deviceId, secret);
+  const env = { DEVICE_TOKEN_SECRET: secret, DEVICE_REGISTRY: registry, DEVICE_COMMANDS: commands };
+
+  const enqueue = new Request("https://jarvis.test/v1/device/command", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + accountToken, "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId, action: "system.status" })
+  });
+  const enqueueResponse = await handleDeviceRequest(enqueue, env, new URL(enqueue.url));
+  assert.equal(enqueueResponse.status, 403);
+  assert.equal((await enqueueResponse.json()).error, "Device account is inactive");
+
+  const poll = new Request("https://jarvis.test/v1/device/commands?deviceId=" + deviceId, {
+    headers: { Authorization: "Bearer " + deviceToken }
+  });
+  const pollResponse = await handleDeviceRequest(poll, env, new URL(poll.url));
+  assert.equal(pollResponse.status, 403);
+  assert.equal((await pollResponse.json()).error, "Device account is inactive");
+});
