@@ -290,3 +290,31 @@ test("inactive accounts cannot enqueue commands or poll device commands", async 
   assert.equal(pollResponse.status, 403);
   assert.equal((await pollResponse.json()).error, "Device account is inactive");
 });
+
+
+test("inactive account device tokens cannot heartbeat or update capabilities", async () => {
+  const accountId = "acct-suspended-12345";
+  const deviceId = "android-suspended-123";
+  const registry = memoryKv();
+  await registry.put("account:" + accountId, JSON.stringify({ accountId, status: "suspended" }));
+  await registry.put("device:" + deviceId, JSON.stringify({
+    deviceId, accountId, platform: "android", capabilities: ["system.read"]
+  }));
+  const secret = "test-secret-with-more-than-32-characters";
+  const token = await issueDeviceToken(deviceId, secret);
+  const env = { DEVICE_TOKEN_SECRET: secret, DEVICE_REGISTRY: registry };
+
+  const heartbeat = new Request("https://jarvis.test/v1/devices/" + deviceId + "/heartbeat", {
+    method: "POST", headers: { Authorization: "Bearer " + token }
+  });
+  const heartbeatResponse = await handleDeviceRequest(heartbeat, env, new URL(heartbeat.url));
+  assert.equal(heartbeatResponse.status, 403);
+
+  const capabilities = new Request("https://jarvis.test/v1/devices/" + deviceId + "/capabilities", {
+    method: "PUT",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ capabilities: ["apps.list"] })
+  });
+  const capabilitiesResponse = await handleDeviceRequest(capabilities, env, new URL(capabilities.url));
+  assert.equal(capabilitiesResponse.status, 403);
+});
