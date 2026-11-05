@@ -1279,6 +1279,46 @@ private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextU
 }
 
 @Composable
+private fun ImageVisualStrip(images: List<Pair<String, String>>) {
+    if (images.isEmpty()) return
+    val uriHandler = LocalUriHandler.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(images.size) { index ->
+            val (title, imageUrl) = images[index]
+            Column(
+                Modifier
+                    .width(196.dp)
+                    .clip(CardShape)
+                    .background(Color(0xFF081725))
+                    .border(1.dp, Cyan.copy(alpha = 0.32f), CardShape)
+                    .clickable { runCatching { uriHandler.openUri(imageUrl) } }
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(9.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+                Text(
+                    title.ifBlank { "Referensi visual" },
+                    color = Ice,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text("BUKA SUMBER", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProductCarouselCards(products: List<VisualProduct>) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -2235,6 +2275,7 @@ private fun JarvisScreen(
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
         val products: List<VisualProduct> = emptyList(),
+        val images: List<Pair<String, String>> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
@@ -2248,6 +2289,7 @@ private fun JarvisScreen(
     var wakeAcknowledged by remember { mutableStateOf(false) }
     var awaitingCommandAfterWake by remember { mutableStateOf(false) }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
+    val voiceImages = remember { mutableStateListOf<Pair<String, String>>() }
 
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
@@ -2312,8 +2354,12 @@ private fun JarvisScreen(
     val breathe by transition.animateFloat(.95f, 1.05f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "wavePhase")
 
-    fun showJarvis(answer: String, products: List<VisualProduct> = emptyList()) {
-        val responseLine = Line(user = false, text = answer, products = products)
+    fun showJarvis(
+        answer: String,
+        products: List<VisualProduct> = emptyList(),
+        images: List<Pair<String, String>> = emptyList()
+    ) {
+        val responseLine = Line(user = false, text = answer, products = products, images = images)
         responseLine.displayText.value = answer
         responseLine.revealed.value = true
         lines.add(responseLine)
@@ -2480,8 +2526,10 @@ private fun JarvisScreen(
                 voiceAnswer = answer
                 voiceProducts.clear()
                 voiceProducts.addAll(payload.products)
+                voiceImages.clear()
+                voiceImages.addAll(payload.images)
             } else {
-                val responseLine = Line(user = false, text = answer, products = payload.products)
+                val responseLine = Line(user = false, text = answer, products = payload.products, images = payload.images)
                 responseLine.displayText.value = answer
                 responseLine.revealed.value = false
                 lines.add(responseLine)
@@ -2985,7 +3033,11 @@ private fun JarvisScreen(
 
                                     if (voiceProducts.isNotEmpty()) {
                                         ProductCarouselCards(voiceProducts)
-                                    } else if (voiceAnswer.isNotBlank()) {
+                                    }
+                                    if (voiceImages.isNotEmpty()) {
+                                        ImageVisualStrip(voiceImages)
+                                    }
+                                    if (voiceProducts.isEmpty() && voiceImages.isEmpty() && voiceAnswer.isNotBlank()) {
                                         Box(
                                             Modifier
                                                 .fillMaxWidth()
@@ -3225,6 +3277,9 @@ private fun JarvisScreen(
                                                             products = line.products,
                                                             onQuickFollowUp = { followUp -> send(followUp, voice = false) }
                                                         )
+                                                        if (line.images.isNotEmpty()) {
+                                                            ImageVisualStrip(line.images)
+                                                        }
                                                         Row(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
