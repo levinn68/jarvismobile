@@ -22,14 +22,14 @@ class DeviceCommandExecutor(private val context: Context) {
         val commandId = command.optString("commandId").trim()
         if (commandId.isNotBlank() && isAlreadyHandled(commandId)) {
             clearPendingApproval(commandId)
-            return JSONObject().put("ok", false).put("approved", true).put("executed", false)
-                .put("duplicate", true).put("error", "Command sudah diproses sebelumnya dan tidak dijalankan ulang.")
+            return replayHandledResult(commandId, approved = true)
         }
         if (isCommandExpired(command)) {
-            markHandled(commandId)
-            clearPendingApproval(commandId)
-            return JSONObject().put("ok", false).put("approved", true).put("executed", false)
+            val expired = JSONObject().put("ok", false).put("approved", true).put("executed", false)
                 .put("expired", true).put("error", "Command kedaluwarsa sebelum dieksekusi.")
+            markHandled(commandId, expired)
+            clearPendingApproval(commandId)
+            return expired
         }
         val approvedCapability = if (command.optString("action") == "screen.read") "screen.read" else "screen.control"
         if (!permissionManager.isGranted(approvedCapability)) {
@@ -49,9 +49,10 @@ class DeviceCommandExecutor(private val context: Context) {
             else -> JSONObject().put("ok", false).put("approved", true).put("executed", false)
                 .put("error", "Aksi tidak didukung setelah approval: $action")
         }
-        if (commandId.isNotBlank()) markHandled(commandId)
+        result.put("approved", true).put("action", action)
+        if (commandId.isNotBlank()) markHandled(commandId, result)
         clearPendingApproval(commandId)
-        return result.put("approved", true).put("action", action)
+        return result
     }
 
     fun execute(command: JSONObject): JSONObject {
@@ -68,12 +69,12 @@ class DeviceCommandExecutor(private val context: Context) {
         }
 
         if (commandId.isNotBlank() && isAlreadyHandled(commandId)) {
-            return JSONObject().put("ok", false).put("duplicate", true)
-                .put("error", "Command sudah diproses sebelumnya.")
+            return replayHandledResult(commandId)
         }
         if (isCommandExpired(command)) {
-            markHandled(commandId)
-            return JSONObject().put("ok", false).put("expired", true).put("error", "Command kedaluwarsa.")
+            val expired = JSONObject().put("ok", false).put("expired", true).put("error", "Command kedaluwarsa.")
+            markHandled(commandId, expired)
+            return expired
         }
 
         val requiredCapability = capabilityFor(action)
@@ -96,7 +97,7 @@ class DeviceCommandExecutor(private val context: Context) {
             else -> JSONObject().put("ok", false).put("error", "Unsupported action on this Android connector")
         }
 
-        if (commandId.isNotBlank() && result.optBoolean("ok")) markHandled(commandId)
+        if (commandId.isNotBlank() && result.optBoolean("ok")) markHandled(commandId, result)
         return result
     }
 
@@ -138,12 +139,13 @@ class DeviceCommandExecutor(private val context: Context) {
         }
         if (isAlreadyHandled(commandId)) {
             clearPendingApproval(commandId)
-            return JSONObject().put("ok", false).put("duplicate", true).put("error", "Command sudah diproses.")
+            return replayHandledResult(commandId)
         }
         if (isCommandExpired(command)) {
-            markHandled(commandId)
+            val expired = JSONObject().put("ok", false).put("expired", true).put("error", "Command kedaluwarsa.")
+            markHandled(commandId, expired)
             clearPendingApproval(commandId)
-            return JSONObject().put("ok", false).put("expired", true).put("error", "Command kedaluwarsa.")
+            return expired
         }
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val key = pendingKey(commandId)
@@ -208,11 +210,28 @@ class DeviceCommandExecutor(private val context: Context) {
         return stamp > 0L && System.currentTimeMillis() - stamp < DEDUPE_WINDOW_MS
     }
 
-    private fun markHandled(commandId: String) {
+    /**
+     * Replays the original terminal result when the server retries a command whose
+     * execution completed but whose acknowledgement may have been lost.
+     */
+    private fun replayHandledResult(commandId: String, approved: Boolean = false): JSONObject {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val cached = try { prefs.getString(resultKey(commandId), null)?.let { JSONObject(it) } }
+        catch (_: Exception) { null }
+        val replay = cached ?: JSONObject().put("ok", false)
+            .put("error", "Command sudah diproses sebelumnya; hasil asli tidak tersedia.")
+        replay.put("duplicate", true).put("replayed", true)
+        if (approved) replay.put("approved", true)
+        return replay
+    }
+
+    private fun markHandled(commandId: String, result: JSONObject) {
         if (commandId.isBlank()) return
         recentHandled[commandId] = SystemClock.elapsedRealtime()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-            .putLong(prefixKey(commandId), System.currentTimeMillis()).apply()
+            .putLong(prefixKey(commandId), System.currentTimeMillis())
+            .putString(resultKey(commandId), result.toString())
+            .apply()
         pruneHandled()
     }
 
@@ -222,6 +241,7 @@ class DeviceCommandExecutor(private val context: Context) {
     }
 
     private fun prefixKey(commandId: String) = "cmd_$commandId"
+    private fun resultKey(commandId: String) = "result_$commandId"
     private fun pendingKey(commandId: String) = "pending_$commandId"
 
     companion object {
