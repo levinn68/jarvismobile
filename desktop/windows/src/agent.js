@@ -15,6 +15,7 @@ const MAX_FILE_BYTES = 64 * 1024;
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
 const appIndex = new Map();
 const pendingAcknowledgements = new Map();
+const pendingAcknowledgementSavedAt = new Map();
 const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
 const RESULT_CACHE_LIMIT = 500;
 const resultCachePath = () => path.join(path.dirname(credentialPath()), "command-results.json");
@@ -26,15 +27,23 @@ async function loadResultCache() {
     for (const [id, entry] of Object.entries(raw || {})) {
       if (entry && Number.isFinite(entry.savedAt) && now - entry.savedAt < RESULT_CACHE_TTL_MS && entry.result && typeof entry.result === "object") {
         pendingAcknowledgements.set(id, entry.result);
+        pendingAcknowledgementSavedAt.set(id, entry.savedAt);
       }
     }
   } catch { /* Missing or invalid cache is treated as empty. */ }
 }
 
+export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
+  const valid = [...results.entries()].filter(([id]) => {
+    const savedAt = savedAtById.get(id);
+    return Number.isFinite(savedAt) && now - savedAt >= 0 && now - savedAt < RESULT_CACHE_TTL_MS;
+  }).slice(-RESULT_CACHE_LIMIT);
+  return Object.fromEntries(valid.map(([id, result]) => [id, { savedAt: savedAtById.get(id), result }]));
+}
+
 async function persistResultCache() {
   const now = Date.now();
-  const entries = [...pendingAcknowledgements.entries()].slice(-RESULT_CACHE_LIMIT);
-  const payload = Object.fromEntries(entries.map(([id, result]) => [id, { savedAt: now, result }]));
+  const payload = buildResultCachePayload(pendingAcknowledgements, pendingAcknowledgementSavedAt, now);
   const file = resultCachePath();
   await fs.mkdir(path.dirname(file), { recursive: true });
   const temporary = file + ".tmp";
@@ -295,10 +304,12 @@ async function pollOnce() {
       try { result = await execute(command); }
       catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
       pendingAcknowledgements.set(command.commandId, result);
+      pendingAcknowledgementSavedAt.set(command.commandId, Date.now());
       await persistResultCache();
     }
     await apiRequest("POST", "/v1/device/commands/ack", DEVICE_TOKEN, { deviceId: DEVICE_ID, commandId: command.commandId, result });
     pendingAcknowledgements.delete(command.commandId);
+    pendingAcknowledgementSavedAt.delete(command.commandId);
     await persistResultCache();
   }
 }
