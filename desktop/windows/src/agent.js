@@ -25,7 +25,7 @@ async function loadResultCache() {
     const raw = JSON.parse(await fs.readFile(resultCachePath(), "utf8"));
     const now = Date.now();
     for (const [id, entry] of Object.entries(raw || {})) {
-      if (entry && Number.isFinite(entry.savedAt) && now - entry.savedAt < RESULT_CACHE_TTL_MS && entry.result && typeof entry.result === "object") {
+      if (entry && isResultCacheFresh(entry.savedAt, now) && entry.result && typeof entry.result === "object") {
         pendingAcknowledgements.set(id, entry.result);
         pendingAcknowledgementSavedAt.set(id, entry.savedAt);
       }
