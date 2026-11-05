@@ -2639,18 +2639,10 @@ private fun JarvisScreen(
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
         Box(Modifier.fillMaxSize().background(Background)) {
-            // Futuristic HUD Outer Frame & Ambient Glow
-            Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                drawRect(Brush.verticalGradient(listOf(Color(0xFF030811), Color(0xFF071525), Color(0xFF030811))))
-                val glowCenter = Offset(w * 0.5f, h * (if (page == "VOICE") 0.34f else 0.22f))
-                drawCircle(
-                    Brush.radialGradient(listOf(Cyan.copy(alpha = 0.16f), Color.Transparent), glowCenter, w * 0.85f),
-                    w * 0.85f,
-                    glowCenter
-                )
-            }
+            JarvisBackdrop(
+                ambience = if (phase == "IDLE") 0.82f else 1f,
+                modifier = Modifier.fillMaxSize()
+            )
 
             BoxWithConstraints(
                 Modifier
@@ -2670,101 +2662,67 @@ private fun JarvisScreen(
                         .background(Color(0x66040A12))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    // --- TOP HUD HEADER ---
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "J . A . R . V . I . S .",
-                                color = Ice,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 2.8.sp
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = "JUST A RATHER VERY INTELLIGENT SYSTEM",
-                                color = TextMuted,
-                                fontSize = 8.5.sp,
-                                letterSpacing = 1.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                    JarvisTopBar(
+                        status = if (page == "VOICE" && voiceListening) voiceStatusNote else "SYSTEM ONLINE",
+                        busy = busy,
+                        onSettings = { keyDraft = ""; settings = true }
+                    )
 
-                        Column(horizontalAlignment = Alignment.End) {
-                            Row(
-                                Modifier.padding(bottom = 5.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (accountEmail != null) (accountName ?: accountEmail).take(16) else "ACCOUNT",
-                                    color = if (accountEmail != null) Color(0xFF78DDB4) else Cyan,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clip(RoundedCornerShape(7.dp))
-                                        .background(Color(0xFF0A2236))
-                                        .border(0.6.dp, Cyan.copy(alpha = 0.42f), RoundedCornerShape(7.dp))
-                                        .clickable { accountPanel = true }
-                                        .padding(horizontal = 8.dp, vertical = 5.dp)
-                                )
-                                Text(
-                                    "HISTORY", color = TextMuted, fontSize = 8.sp,
-                                    modifier = Modifier.clickable { historyPanel = true; onRefreshHistory() }
-                                        .padding(horizontal = 3.dp, vertical = 5.dp)
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.clickable { keyDraft = ""; settings = true }
-                            ) {
-                                Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
-                                Text(
-                                    text = "SYSTEM ONLINE",
-                                    color = Cyan,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (page == "CHAT" && lines.isNotEmpty()) {
-                                    Text(
-                                        text = "HOME",
-                                        color = Cyan,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontFamily = FontFamily.Monospace,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFF0A2236))
-                                            .border(0.6.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                            .clickable { lines.clear() }
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
-                                }
-                                Text(
-                                    text = coreModeLabel,
-                                    color = TextMuted,
-                                    fontSize = 9.sp,
-                                    letterSpacing = 0.8.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (accountEmail != null) (accountName ?: accountEmail).take(20) else "ACCOUNT · SIGN IN",
+                            color = if (accountEmail != null) Color(0xFF78DDB4) else JarvisPalette.Cyan,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFF0A2236))
+                                .border(1.dp, Color(0x4456C8DC), RoundedCornerShape(9.dp))
+                                .clickable { accountPanel = true }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                        Text(
+                            "HISTORY",
+                            color = JarvisPalette.Muted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0x660A1721))
+                                .clickable { historyPanel = true; onRefreshHistory() }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (page == "CHAT" && lines.isNotEmpty()) {
+                            Text(
+                                "NEW CHAT",
+                                color = JarvisPalette.Cyan,
+                                fontSize = 9.sp,
+                                modifier = Modifier.clickable { lines.clear(); onNewConversation() }
+                                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                            )
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    JarvisModeSwitcher(
+                        selected = page,
+                        onSelected = { selected ->
+                            if (selected == "CHAT") {
+                                voiceListening = false
+                                page = "CHAT"
+                            } else {
+                                page = "VOICE"
+                            }
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
                     Box(
-                        Modifier
-                            .fillMaxWidth()                            .height(1.dp)
-                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha = 0.55f), Color.Transparent)))
+                        Modifier.fillMaxWidth().height(1.dp)
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, JarvisPalette.Cyan.copy(alpha = 0.55f), Color.Transparent)))
                     )
 
                     // ==========================================
@@ -3183,11 +3141,9 @@ private fun JarvisScreen(
                         ) {
                             if (lines.isEmpty()) {
                                 item {
-                                    JarvisHomeDashboard(
+                                    JarvisWelcomeHero(
                                         compact = compact,
-                                        spin = spin,
-                                        breathe = breathe,
-                                        onSelectPrompt = { selectedPrompt -> send(selectedPrompt, voice = false) }
+                                        onAction = { selectedPrompt -> send(selectedPrompt, voice = false) }
                                     )
                                 }
                             }
