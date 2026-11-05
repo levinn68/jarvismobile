@@ -42,13 +42,16 @@ class ScreenActionApprovalActivity : Activity() {
 
         if (isExpired(command)) {
             DeviceCommandExecutor(this).clearPendingApproval(commandId)
-            acknowledge(commandId, JSONObject()
-                .put("ok", false)
-                .put("approved", false)
-                .put("executed", false)
-                .put("expired", true)
-                .put("error", "Command kedaluwarsa sebelum pengguna menyetujui."))
-            Toast.makeText(this, "Perintah kedaluwarsa.", Toast.LENGTH_SHORT).show()
+            acknowledge(
+                commandId,
+                JSONObject()
+                    .put("ok", false)
+                    .put("approved", false)
+                    .put("executed", false)
+                    .put("expired", true)
+                    .put("error", "Command kedaluwarsa atau memiliki timestamp tidak valid sebelum pengguna menyetujui.")
+            )
+            Toast.makeText(this, "Perintah kedaluwarsa atau timestamp tidak valid.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
@@ -97,6 +100,21 @@ class ScreenActionApprovalActivity : Activity() {
             .setPositiveButton("Izinkan sekali") { _, _ ->
                 if (finished) return@setPositiveButton
                 finished = true
+                if (isExpired(command)) {
+                    DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
+                    acknowledge(
+                        commandId,
+                        JSONObject()
+                            .put("ok", false)
+                            .put("approved", false)
+                            .put("executed", false)
+                            .put("expired", true)
+                            .put("error", "Command kedaluwarsa sebelum sempat dijalankan.")
+                    )
+                    Toast.makeText(this, "Perintah sudah kedaluwarsa.", Toast.LENGTH_SHORT).show()
+                    finish()
+                    return@setPositiveButton
+                }
                 // Mark local approval only. Remote userConfirmed is never accepted as authority.
                 command.put(DeviceCommandExecutor.LOCAL_APPROVAL_MARKER, true)
                 val result = try {
@@ -135,16 +153,13 @@ class ScreenActionApprovalActivity : Activity() {
             .show()
     }
 
-    private fun isExpired(command: JSONObject): Boolean {
-        val createdAt = command.optString("createdAt").trim()
-        if (createdAt.isBlank()) return false
-        return try {
-            val createdMs = java.time.Instant.parse(createdAt).toEpochMilli()
-            System.currentTimeMillis() - createdMs > COMMAND_TTL_MS
-        } catch (_: Exception) {
-            false
-        }
-    }
+    /**
+     * Uses the unified, strict timestamp validator in DeviceCommandExecutor so
+     * missing, malformed, expired (>5 min), and future (>60 sec skew) timestamps
+     * are consistently rejected across both Activity and Executor.
+     */
+    private fun isExpired(command: JSONObject): Boolean =
+        DeviceCommandExecutor.isCommandExpired(command)
 
     private fun acknowledge(commandId: String, result: JSONObject) {
         if (commandId.isBlank()) return
@@ -159,6 +174,5 @@ class ScreenActionApprovalActivity : Activity() {
 
     companion object {
         const val EXTRA_COMMAND = "com.jarvis.mobile.device.SCREEN_APPROVAL_COMMAND"
-        private const val COMMAND_TTL_MS = 5 * 60 * 1000L
     }
 }
