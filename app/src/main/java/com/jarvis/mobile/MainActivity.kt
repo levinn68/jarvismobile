@@ -2715,6 +2715,9 @@ private fun JarvisScreen(
                                 voiceListening = false
                                 page = "CHAT"
                             } else {
+                                keyboard?.hide()
+                                focusManager.clearFocus()
+                                voiceListening = true
                                 page = "VOICE"
                             }
                         }
@@ -3468,100 +3471,6 @@ private fun JarvisScreen(
                             }
                         }
                     }
-
-                    // --- BOTTOM SEGMENTED MODE SWITCHER (Exact match to both references) ---
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF06111D))
-                            .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
-                            .padding(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val isChat = page == "CHAT"
-                        // Left Tab (CHAT / COMMAND)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(
-                                    if (isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
-                                    shape = RoundedCornerShape(999.dp)
-                                )
-                                .clickable {
-                                    voiceListening = false
-                                    page = "CHAT"
-                                }
-                                .padding(vertical = 9.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (isChat) Icons.Default.Home else Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = if (isChat) Cyan else TextMuted,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = if (isChat) "CHAT" else "COMMAND",
-                                color = if (isChat) Ice else TextMuted,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        // Right Tab (VOICE)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(
-                                    if (!isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (!isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
-                                    shape = RoundedCornerShape(999.dp)
-                                )
-                                .clickable {
-                                    keyboard?.hide()
-                                    focusManager.clearFocus()
-                                    voiceListening = true
-                                    page = "VOICE"
-                                }
-                                .padding(vertical = 9.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (!isChat) Cyan else TextMuted.copy(alpha = 0.6f))
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "VOICE",
-                                color = if (!isChat) Ice else TextMuted,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
 
                 if (accountPanel) {
                     AlertDialog(
