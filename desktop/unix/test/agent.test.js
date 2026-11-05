@@ -45,3 +45,14 @@ test("safeTarget rejects a symlink that resolves outside the approved root", asy
     await fs.rm(outside, { recursive: true, force: true });
   }
 });
+
+test("desktop result cache keeps the original TTL and rejects expired entries", async () => {
+  const { buildResultCachePayload, isResultCacheFresh } = await import("../src/agent.js");
+  const now = 2_000_000;
+  const results = new Map([["fresh", { ok: true }], ["expired", { ok: true }]]);
+  const savedAt = new Map([["fresh", now - 30_000], ["expired", now - 16 * 60_000]]);
+  const payload = buildResultCachePayload(results, savedAt, now);
+  assert.deepEqual(Object.keys(payload), ["fresh"]);
+  assert.equal(payload.fresh.savedAt, now - 30_000);
+  assert.equal(isResultCacheFresh(now + 1, now), false);
+});
