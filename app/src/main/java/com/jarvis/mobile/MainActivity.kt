@@ -169,7 +169,8 @@ data class VisualProduct(
 data class ChatResponsePayload(
     val answer: String,
     val products: List<VisualProduct> = emptyList(),
-    val images: List<Pair<String, String>> = emptyList()
+    val images: List<Pair<String, String>> = emptyList(),
+    val voiceSummary: String = ""
 )
 
 private class ClapPatternDetector(
@@ -777,7 +778,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    ChatResponsePayload(answer, parsedProducts, parsedImages)
+                    ChatResponsePayload(answer, parsedProducts, parsedImages, json.optString("voice_summary").trim())
                 }
                 } catch (e: Exception) {
                     val message = e.message.orEmpty()
@@ -920,7 +921,7 @@ class MainActivity : ComponentActivity() {
                 override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
                 override fun onRmsChanged(rmsdB: Float) {
                     liveRms.value = rmsdB.coerceIn(0f, 16f)
-                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
+                    // RMS drives the orb only. Clap patterns are not an activation method; the exact wake phrase is mandatory.
                 }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
@@ -2491,7 +2492,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 lines.lastOrNull()?.revealed?.value = true
             }
-            if (voice) onSpeak(buildSpokenReply(q, answer, payload.products))
+            if (voice) onSpeak(payload.voiceSummary.ifBlank { buildSpokenReply(q, answer, payload.products) })
         }
     }
 
@@ -2511,46 +2512,57 @@ private fun JarvisScreen(
     }
 
     // Voice remains silent until the user says JARVIS, then waits briefly for the command.
+    // Only the exact wake phrase activates a session. Once active, each spoken command must address JARVIS by name.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)^(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?\\bjarvis\\b[,.! ]*|\\bjarvis\\b[,.! ]*")
-            val hasWake = wake.containsMatchIn(heard)
-            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
+            val activation = Regex("(?i)^\\s*jarvis[, ]+open[.!?]*\\s*(.*)$").matchEntire(heard)
+            val addressed = Regex("(?i)^\\s*jarvis[, ]+(.+)$").matchEntire(heard)
 
-            if (!hasWake && !awaitingCommandAfterWake) {
-                kotlinx.coroutines.delay(250)
-                onStartListening()
-                return@LaunchedEffect
-            }
-
-            if (hasWake && request.isBlank()) {
-                awaitingCommandAfterWake = true
-                voiceStatusNote = "LISTENING FOR COMMAND"
-                kotlinx.coroutines.delay(250)
-                onStartListening()
-                return@LaunchedEffect
-            }
-
-            awaitingCommandAfterWake = false
-            if (Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
-                voiceStatusNote = "READY FOR COMMAND"
-                wakeAcknowledged = true
-                val readyReply = if (detectEnglishContent(heard)) {
-                    "Ready, Sir. I'm listening for your command."
-                } else {
-                    "Siap, Sir. Saya aktif dan mendengarkan perintah Anda."
+            if (!wakeAcknowledged) {
+                if (activation == null) {
+                    voiceStatusNote = "STANDBY · SAY JARVIS, OPEN"
+                    kotlinx.coroutines.delay(180)
+                    onStartListening()
+                    return@LaunchedEffect
                 }
-                onSpeak(readyReply)
+                wakeAcknowledged = true
+                voiceStatusNote = "JARVIS ACTIVE · LISTENING"
+                val commandAfterActivation = activation.groupValues[1].trim()
+                if (commandAfterActivation.isBlank()) {
+                    val readyReply = if (detectEnglishContent(heard)) {
+                        "At your service, Sir. JARVIS is active and listening."
+                    } else {
+                        "Siap, Sir. J.A.R.V.I.S. aktif dan siap menerima perintah."
+                    }
+                    onSpeak(readyReply)
+                    return@LaunchedEffect
+                }
+                if (commandAfterActivation.isNotBlank()) send(commandAfterActivation, voice = true)
                 return@LaunchedEffect
             }
-            wakeAcknowledged = true
+
+            if (addressed == null) {
+                voiceStatusNote = "ACTIVE · WAITING FOR JARVIS COMMAND"
+                kotlinx.coroutines.delay(180)
+                onStartListening()
+                return@LaunchedEffect
+            }
+
+            val request = addressed.groupValues[1].trim()
+            if (request.isBlank()) {
+                kotlinx.coroutines.delay(180)
+                onStartListening()
+                return@LaunchedEffect
+            }
             if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby|tidur|sleep|istirahat)$").matches(request)) {
                 wakeAcknowledged = false
+                voiceStatusNote = "STANDBY · SAY JARVIS, OPEN"
                 voiceListening = false
                 return@LaunchedEffect
             }
+
             val appCommand = Regex("(?i)^(open|buka)(kan)?\\s+(.+)$").matchEntire(request)
             if (appCommand != null) {
                 val appName = appCommand.groupValues[3].trim()
@@ -2561,7 +2573,9 @@ private fun JarvisScreen(
                     if (opened) "Siap, Sir. $appName sudah dibuka." else "Maaf, Sir. $appName tidak ditemukan di perangkat ini."
                 }
                 onSpeak(reply)
-            } else send(request, voice = true)
+            } else {
+                send(request, voice = true)
+            }
         }
     }
     LaunchedEffect(page, voiceListening) {
@@ -2883,10 +2897,11 @@ private fun JarvisScreen(
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = when (phase) {
-                                            "THINK" -> "PROCESSING"
-                                            "SPEAK" -> "SPEAKING"
-                                            "LISTEN" -> "LISTENING"
+                                        text = when {
+                                            busy -> "PROCESSING"
+                                            status.contains("SPEAK", true) -> "SPEAKING"
+                                            page == "VOICE" && voiceListening && !wakeAcknowledged -> "STANDBY · SAY JARVIS, OPEN"
+                                            page == "VOICE" && voiceListening && wakeAcknowledged -> "JARVIS ACTIVE · LISTENING"
                                             else -> "STANDBY"
                                         },
                                         color = Cyan,
