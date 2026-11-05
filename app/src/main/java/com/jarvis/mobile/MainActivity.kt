@@ -677,8 +677,8 @@ class MainActivity : ComponentActivity() {
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
         val clientRequestId = java.util.UUID.randomUUID().toString()
-        val apiKeyOverride = prefs.getString("gemini_api_key", null)?.trim().orEmpty()
         Thread {
+            val accessToken = runCatching { supabaseClient.currentAccessToken() }.getOrDefault("")
             var payload: ChatResponsePayload? = null
             for (attempt in 1..2) {
                 if (cancelled.get()) return@Thread
@@ -698,8 +698,8 @@ class MainActivity : ComponentActivity() {
                     connection.doOutput = true
                     connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                     connection.setRequestProperty("X-Client-Request-Id", clientRequestId)
-                    if (apiKeyOverride.isNotBlank()) {
-                        connection.setRequestProperty("X-Jarvis-Gemini-Key", apiKeyOverride)
+                    if (accessToken.isNotBlank()) {
+                        connection.setRequestProperty("Authorization", "Bearer $accessToken")
                     }
                     val historyJson = JSONArray()
                     history.takeLast(20).forEach { (role, text) ->
@@ -711,9 +711,6 @@ class MainActivity : ComponentActivity() {
                         .put("message", prompt)
                         .put("clientRequestId", clientRequestId)
                         .put("history", historyJson)
-                    if (apiKeyOverride.isNotBlank()) {
-                        body.put("geminiApiKey", apiKeyOverride)
-                    }
                     connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
