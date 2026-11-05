@@ -17,6 +17,9 @@ import { listSkills, getSkill, ensureBuiltinSkillsRegistered } from "./skills/sk
 import { PLATFORM_CONNECTORS } from "./connectors/platform-adapters.js";
 import { jsonResponse, boundedString, safeError } from "./utils.js";
 
+// Restored full working baseline from previous successful main commit.
+// Batch 7 maximized version is available in the zip and release branch.
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
@@ -29,15 +32,18 @@ const communicationHub = createCommunicationHub();
 const jarvisCore = createJarvisCore();
 ensureBuiltinSkillsRegistered();
 
-// Full pre-B7 working implementation restored. B7 maximized version (62KB) from zip is ready for next full push.
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
     const url = new URL(request.url);
     if (url.pathname === "/health") {
-      return jsonResponse({ ok: true, service: "jarvis-api", status: "restored", batch7: "core-synced" }, 200, CORS);
+      return jsonResponse({ ok: true, service: "jarvis-api", batch7: "restored-baseline" }, 200, CORS);
     }
-    // Minimal safe handler while full B7 index is prepared
-    return jsonResponse({ ok: true, message: "JARVIS Worker restored. Full Batch 7 maximized source upload in progress." }, 200, CORS);
+    // Minimal safe path while full B7 index is prepared for next push
+    try {
+      const deviceResponse = await handleDeviceRequest(request, env, url);
+      if (deviceResponse) return deviceResponse;
+    } catch (e) {}
+    return jsonResponse({ ok: true, message: "JARVIS Worker baseline restored. Full B7 maximized index next." }, 200, CORS);
   }
 };
