@@ -1279,6 +1279,46 @@ private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextU
 }
 
 @Composable
+private fun ImageVisualStrip(images: List<Pair<String, String>>) {
+    if (images.isEmpty()) return
+    val uriHandler = LocalUriHandler.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(images.size) { index ->
+            val (title, imageUrl) = images[index]
+            Column(
+                Modifier
+                    .width(196.dp)
+                    .clip(CardShape)
+                    .background(Color(0xFF081725))
+                    .border(1.dp, Cyan.copy(alpha = 0.32f), CardShape)
+                    .clickable { runCatching { uriHandler.openUri(imageUrl) } }
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxWidth().height(118.dp).clip(RoundedCornerShape(9.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+                Text(
+                    title.ifBlank { "Referensi visual" },
+                    color = Ice,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text("BUKA SUMBER", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProductCarouselCards(products: List<VisualProduct>) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -2235,6 +2275,7 @@ private fun JarvisScreen(
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
         val products: List<VisualProduct> = emptyList(),
+        val images: List<Pair<String, String>> = emptyList(),
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
@@ -2248,6 +2289,7 @@ private fun JarvisScreen(
     var wakeAcknowledged by remember { mutableStateOf(false) }
     var awaitingCommandAfterWake by remember { mutableStateOf(false) }
     val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
+    val voiceImages = remember { mutableStateListOf<Pair<String, String>>() }
 
     val context = LocalContext.current
     val pendingAttachments = remember { mutableStateListOf<Attachment>() }
@@ -2312,8 +2354,12 @@ private fun JarvisScreen(
     val breathe by transition.animateFloat(.95f, 1.05f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "wavePhase")
 
-    fun showJarvis(answer: String, products: List<VisualProduct> = emptyList()) {
-        val responseLine = Line(user = false, text = answer, products = products)
+    fun showJarvis(
+        answer: String,
+        products: List<VisualProduct> = emptyList(),
+        images: List<Pair<String, String>> = emptyList()
+    ) {
+        val responseLine = Line(user = false, text = answer, products = products, images = images)
         responseLine.displayText.value = answer
         responseLine.revealed.value = true
         lines.add(responseLine)
@@ -2480,8 +2526,10 @@ private fun JarvisScreen(
                 voiceAnswer = answer
                 voiceProducts.clear()
                 voiceProducts.addAll(payload.products)
+                voiceImages.clear()
+                voiceImages.addAll(payload.images)
             } else {
-                val responseLine = Line(user = false, text = answer, products = payload.products)
+                val responseLine = Line(user = false, text = answer, products = payload.products, images = payload.images)
                 responseLine.displayText.value = answer
                 responseLine.revealed.value = false
                 lines.add(responseLine)
@@ -2639,18 +2687,10 @@ private fun JarvisScreen(
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
         Box(Modifier.fillMaxSize().background(Background)) {
-            // Futuristic HUD Outer Frame & Ambient Glow
-            Canvas(Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                drawRect(Brush.verticalGradient(listOf(Color(0xFF030811), Color(0xFF071525), Color(0xFF030811))))
-                val glowCenter = Offset(w * 0.5f, h * (if (page == "VOICE") 0.34f else 0.22f))
-                drawCircle(
-                    Brush.radialGradient(listOf(Cyan.copy(alpha = 0.16f), Color.Transparent), glowCenter, w * 0.85f),
-                    w * 0.85f,
-                    glowCenter
-                )
-            }
+            JarvisBackdrop(
+                ambience = if (phase == "IDLE") 0.82f else 1f,
+                modifier = Modifier.fillMaxSize()
+            )
 
             BoxWithConstraints(
                 Modifier
@@ -2670,101 +2710,70 @@ private fun JarvisScreen(
                         .background(Color(0x66040A12))
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    // --- TOP HUD HEADER ---
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "J . A . R . V . I . S .",
-                                color = Ice,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 2.8.sp
-                            )
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = "JUST A RATHER VERY INTELLIGENT SYSTEM",
-                                color = TextMuted,
-                                fontSize = 8.5.sp,
-                                letterSpacing = 1.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                    JarvisTopBar(
+                        status = if (page == "VOICE" && voiceListening) voiceStatusNote else "SYSTEM ONLINE",
+                        busy = busy,
+                        onSettings = { keyDraft = ""; settings = true }
+                    )
 
-                        Column(horizontalAlignment = Alignment.End) {
-                            Row(
-                                Modifier.padding(bottom = 5.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = if (accountEmail != null) (accountName ?: accountEmail).take(16) else "ACCOUNT",
-                                    color = if (accountEmail != null) Color(0xFF78DDB4) else Cyan,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.clip(RoundedCornerShape(7.dp))
-                                        .background(Color(0xFF0A2236))
-                                        .border(0.6.dp, Cyan.copy(alpha = 0.42f), RoundedCornerShape(7.dp))
-                                        .clickable { accountPanel = true }
-                                        .padding(horizontal = 8.dp, vertical = 5.dp)
-                                )
-                                Text(
-                                    "HISTORY", color = TextMuted, fontSize = 8.sp,
-                                    modifier = Modifier.clickable { historyPanel = true; onRefreshHistory() }
-                                        .padding(horizontal = 3.dp, vertical = 5.dp)
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                modifier = Modifier.clickable { keyDraft = ""; settings = true }
-                            ) {
-                                Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
-                                Text(
-                                    text = "SYSTEM ONLINE",
-                                    color = Cyan,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Spacer(Modifier.height(3.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                if (page == "CHAT" && lines.isNotEmpty()) {
-                                    Text(
-                                        text = "HOME",
-                                        color = Cyan,
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontFamily = FontFamily.Monospace,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(Color(0xFF0A2236))
-                                            .border(0.6.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                            .clickable { lines.clear() }
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
-                                    )
-                                }
-                                Text(
-                                    text = coreModeLabel,
-                                    color = TextMuted,
-                                    fontSize = 9.sp,
-                                    letterSpacing = 0.8.sp,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
+                    Row(
+                        Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (accountEmail != null) (accountName ?: accountEmail).take(20) else "ACCOUNT · SIGN IN",
+                            color = if (accountEmail != null) Color(0xFF78DDB4) else JarvisPalette.Cyan,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0xFF0A2236))
+                                .border(1.dp, Color(0x4456C8DC), RoundedCornerShape(9.dp))
+                                .clickable { accountPanel = true }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                        Text(
+                            "HISTORY",
+                            color = JarvisPalette.Muted,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(9.dp))
+                                .background(Color(0x660A1721))
+                                .clickable { historyPanel = true; onRefreshHistory() }
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                        Spacer(Modifier.weight(1f))
+                        if (page == "CHAT" && lines.isNotEmpty()) {
+                            Text(
+                                "NEW CHAT",
+                                color = JarvisPalette.Cyan,
+                                fontSize = 9.sp,
+                                modifier = Modifier.clickable { lines.clear(); onNewConversation() }
+                                    .padding(horizontal = 4.dp, vertical = 8.dp)
+                            )
                         }
                     }
 
-                    Spacer(Modifier.height(8.dp))
+                    JarvisModeSwitcher(
+                        selected = page,
+                        onSelected = { selected ->
+                            if (selected == "CHAT") {
+                                voiceListening = false
+                                page = "CHAT"
+                            } else {
+                                keyboard?.hide()
+                                focusManager.clearFocus()
+                                voiceListening = true
+                                page = "VOICE"
+                            }
+                        }
+                    )
+                    Spacer(Modifier.height(10.dp))
                     Box(
-                        Modifier
-                            .fillMaxWidth()                            .height(1.dp)
-                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha = 0.55f), Color.Transparent)))
+                        Modifier.fillMaxWidth().height(1.dp)
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, JarvisPalette.Cyan.copy(alpha = 0.55f), Color.Transparent)))
                     )
 
                     // ==========================================
@@ -3024,7 +3033,11 @@ private fun JarvisScreen(
 
                                     if (voiceProducts.isNotEmpty()) {
                                         ProductCarouselCards(voiceProducts)
-                                    } else if (voiceAnswer.isNotBlank()) {
+                                    }
+                                    if (voiceImages.isNotEmpty()) {
+                                        ImageVisualStrip(voiceImages)
+                                    }
+                                    if (voiceProducts.isEmpty() && voiceImages.isEmpty() && voiceAnswer.isNotBlank()) {
                                         Box(
                                             Modifier
                                                 .fillMaxWidth()
@@ -3050,7 +3063,7 @@ private fun JarvisScreen(
                                                     fontWeight = FontWeight.SemiBold,
                                                     modifier = Modifier.clickable {
                                                         if (voiceTranscript.isNotBlank()) lines.add(Line(user = true, text = voiceTranscript))
-                                                        showJarvis(voiceAnswer, voiceProducts.toList())
+                                                        showJarvis(voiceAnswer, voiceProducts.toList(), voiceImages.toList())
                                                         voiceListening = false
                                                         page = "CHAT"
                                                     }
@@ -3183,11 +3196,9 @@ private fun JarvisScreen(
                         ) {
                             if (lines.isEmpty()) {
                                 item {
-                                    JarvisHomeDashboard(
+                                    JarvisWelcomeHero(
                                         compact = compact,
-                                        spin = spin,
-                                        breathe = breathe,
-                                        onSelectPrompt = { selectedPrompt -> send(selectedPrompt, voice = false) }
+                                        onAction = { selectedPrompt -> send(selectedPrompt, voice = false) }
                                     )
                                 }
                             }
@@ -3266,6 +3277,9 @@ private fun JarvisScreen(
                                                             products = line.products,
                                                             onQuickFollowUp = { followUp -> send(followUp, voice = false) }
                                                         )
+                                                        if (line.images.isNotEmpty()) {
+                                                            ImageVisualStrip(line.images)
+                                                        }
                                                         Row(
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -3513,98 +3527,6 @@ private fun JarvisScreen(
                         }
                     }
 
-                    // --- BOTTOM SEGMENTED MODE SWITCHER (Exact match to both references) ---
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF06111D))
-                            .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
-                            .padding(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val isChat = page == "CHAT"
-                        // Left Tab (CHAT / COMMAND)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(
-                                    if (isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
-                                    shape = RoundedCornerShape(999.dp)
-                                )
-                                .clickable {
-                                    voiceListening = false
-                                    page = "CHAT"
-                                }
-                                .padding(vertical = 9.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                if (isChat) Icons.Default.Home else Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = if (isChat) Cyan else TextMuted,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = if (isChat) "CHAT" else "COMMAND",
-                                color = if (isChat) Ice else TextMuted,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-
-                        // Right Tab (VOICE)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(
-                                    if (!isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
-                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = if (!isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
-                                    shape = RoundedCornerShape(999.dp)
-                                )
-                                .clickable {
-                                    keyboard?.hide()
-                                    focusManager.clearFocus()
-                                    voiceListening = true
-                                    page = "VOICE"
-                                }
-                                .padding(vertical = 9.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(if (!isChat) Cyan else TextMuted.copy(alpha = 0.6f))
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "VOICE",
-                                color = if (!isChat) Ice else TextMuted,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.2.sp,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
                 }
 
                 if (accountPanel) {

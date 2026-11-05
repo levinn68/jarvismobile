@@ -51,6 +51,14 @@ jobs:
           if [ -z "$SUPABASE_ANON_KEY" ]; then
             echo "::warning::SUPABASE_ANON_KEY is not configured in GitHub Actions. The app will use its build-time public fallback; configure the project key before production use."
           fi
+
+      - name: Validate Google OAuth Web Client ID format
+        run: |
+          if [[ ! "$GOOGLE_WEB_CLIENT_ID" =~ ^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$ ]]; then
+            echo "::error::GOOGLE_WEB_CLIENT_ID is missing or malformed. Set it to the OAuth client ID of type Web application. The value is intentionally not printed."
+            exit 1
+          fi
+          echo "Google OAuth Web Client ID format is valid; secret value withheld."
       - name: Locate Android SDK
         run: |
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
