@@ -35,23 +35,49 @@ export async function enqueueDeviceCommand({ kv, device, input, context = {} }) 
 
 export async function listDeviceCommands({ kv, deviceId, limit = 20 }) {
   if (!kv) throw new Error("DEVICE_COMMANDS KV binding is required");
-  const page = await kv.list({
-    prefix: "command:" + deviceId + ":",
-    limit: Math.min(50, Math.max(1, limit))
-  });
-  const records = await Promise.all(
-    page.keys.map(async (item) => {
-      const raw = await kv.get(item.name);
-      try {
-        return raw ? JSON.parse(raw) : null;
-      } catch (_) {
-        return null;
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(String(deviceId || ""))) {
+    throw new Error("A valid deviceId is required");
+  }
+
+  const requestedLimit = Number.isFinite(Number(limit))
+    ? Math.min(1000, Math.max(1, Math.floor(Number(limit))))
+    : 20;
+  const prefix = "command:" + deviceId + ":";
+  const pending = [];
+  let cursor;
+  let pages = 0;
+
+  // Cloudflare KV returns at most 1,000 keys per page. Continue through
+  // cursors so older queued commands are not hidden behind completed ones.
+  while (pending.length < requestedLimit && pages < 10) {
+    const options = { prefix, limit: 1000 };
+    if (cursor) options.cursor = cursor;
+    const page = await kv.list(options);
+    pages += 1;
+
+    const records = await Promise.all(
+      (page.keys || []).map(async (item) => {
+        const raw = await kv.get(item.name);
+        try {
+          return raw ? JSON.parse(raw) : null;
+        } catch (_) {
+          return null;
+        }
+      })
+    );
+
+    for (const record of records) {
+      if (record && (record.status === "queued" || record.status === "queued_pending_approval")) {
+        pending.push(record);
+        if (pending.length >= requestedLimit) break;
       }
-    })
-  );
-  return records.filter(
-    (x) => x && (x.status === "queued" || x.status === "queued_pending_approval")
-  );
+    }
+
+    if (page.list_complete === true || !page.cursor) break;
+    cursor = page.cursor;
+  }
+
+  return pending;
 }
 
 export async function acknowledgeDeviceCommand({ kv, deviceId, commandId, result }) {
