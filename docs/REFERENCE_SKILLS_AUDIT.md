@@ -33,7 +33,7 @@ Do not add a dependency just because a repository is popular. Porting React, Web
 | [Addy Osmani Agent Skills](https://github.com/addyosmani/agent-skills) | Production engineering skills, including browser testing and interface design | Use the verification mindset and engineering checklists. Browser-only tooling is not a substitute for Android instrumentation or real-device tests. |
 | [Understand Anything](https://github.com/Egonex-AI/Understand-Anything) | Interactive knowledge graph and codebase onboarding | Useful for future repository onboarding and dependency tracing. It does not change the app runtime. |
 | [Awesome Claude Skills](https://github.com/ComposioHQ/awesome-claude-skills) | Curated directory of Claude skills and tools | Discovery catalogue only; individual skills need their own applicability and license review before adoption. |
-| [Archify](https://github.com/tt-ali/archify) | Screenshot lists the name, but the repository could not be resolved at the supplied owner/repository path during this audit | **Unverified.** No source code copied or recommendation made until the exact repository URL is confirmed. |
+| [Archify](https://github.com/tt-a1i/archify) | Agent skill that turns codebases and system descriptions into validated architecture, workflow, sequence, data-flow and lifecycle diagrams | Useful for architecture documentation and flow review. It outputs self-contained HTML diagrams; it is not a native Android UI dependency. |
 
 ## Vendored UI/UX Pro Max source
 
