@@ -14,8 +14,42 @@ const MAX_FILE_BYTES = 64 * 1024;
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
 const appIndex = new Map();
 const pendingAcknowledgements = new Map();
+const pendingAcknowledgementSavedAt = new Map();
+const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
+const RESULT_CACHE_LIMIT = 500;
+const resultCachePath = () => path.join(path.dirname(credentialPath()), "command-results.json");
 let consecutiveFailures = 0;
 
+export function isResultCacheFresh(savedAt, now = Date.now()) {
+  return Number.isFinite(savedAt) && now - savedAt >= 0 && now - savedAt < RESULT_CACHE_TTL_MS;
+}
+
+export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
+  const valid = [...results.entries()].filter(([id]) => isResultCacheFresh(savedAtById.get(id), now)).slice(-RESULT_CACHE_LIMIT);
+  return Object.fromEntries(valid.map(([id, result]) => [id, { savedAt: savedAtById.get(id), result }]));
+}
+
+async function loadResultCache() {
+  try {
+    const raw = JSON.parse(await fs.readFile(resultCachePath(), "utf8"));
+    const now = Date.now();
+    for (const [id, entry] of Object.entries(raw || {})) {
+      if (entry && isResultCacheFresh(entry.savedAt, now) && entry.result && typeof entry.result === "object") {
+        pendingAcknowledgements.set(id, entry.result);
+        pendingAcknowledgementSavedAt.set(id, entry.savedAt);
+      }
+    }
+  } catch { /* Missing or invalid cache is treated as empty. */ }
+}
+
+async function persistResultCache() {
+  const payload = buildResultCachePayload(pendingAcknowledgements, pendingAcknowledgementSavedAt);
+  const file = resultCachePath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temporary = file + ".tmp";
+  await fs.writeFile(temporary, JSON.stringify(payload), { mode: 0o600 });
+  await fs.rename(temporary, file);
+}
 function platformName() {
   if (process.platform === "darwin") return "macos";
   if (process.platform === "linux") return "linux";
@@ -283,13 +317,22 @@ async function pollOnce() {
   for (const command of response.commands || []) {
     if (!command?.commandId) continue;
     let result = pendingAcknowledgements.get(command.commandId);
+    if (result && !isResultCacheFresh(pendingAcknowledgementSavedAt.get(command.commandId))) {
+      pendingAcknowledgements.delete(command.commandId);
+      pendingAcknowledgementSavedAt.delete(command.commandId);
+      result = undefined;
+    }
     if (!result) {
       try { result = await execute(command); }
       catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
       pendingAcknowledgements.set(command.commandId, result);
+      pendingAcknowledgementSavedAt.set(command.commandId, Date.now());
+      await persistResultCache();
     }
     await apiRequest("POST", "/v1/device/commands/ack", DEVICE_TOKEN, { deviceId: DEVICE_ID, commandId: command.commandId, result });
     pendingAcknowledgements.delete(command.commandId);
+    pendingAcknowledgementSavedAt.delete(command.commandId);
+    await persistResultCache();
   }
 }
 
@@ -306,6 +349,7 @@ async function resolveIdentity() {
 async function run() {
   const platform = platformName();
   await resolveIdentity();
+  await loadResultCache();
   if (!DEVICE_ID || !DEVICE_TOKEN) {
     throw new Error("Missing credentials. Pair first (JARVIS_PAIRING_CODE=XXXXXXXX npm run pair) or set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN.");
   }
