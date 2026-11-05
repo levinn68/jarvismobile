@@ -133,6 +133,7 @@ export async function handleDeviceRequest(request,env,url) {
   if(!claims)return json({ok:false,error:"Unauthorized device token"},401);
   const device=await getDevice(env.DEVICE_REGISTRY,id);
   if(!device)return json({ok:false,error:"Device not registered"},404);
+  if(!await isDeviceAccountActive(env,device))return json({ok:false,error:"Device account is inactive"},403);
   if(action==="heartbeat"&&request.method==="POST") {
    const updated=await touchDevice(env.DEVICE_REGISTRY,id);return json({ok:true,device:publicDevice(updated)});
   }
