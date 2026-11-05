@@ -34,7 +34,7 @@ async function loadResultCache() {
 }
 
 export function isResultCacheFresh(savedAt, now = Date.now()) {
-  return isResultCacheFresh(savedAt, now);
+  return Number.isFinite(savedAt) && now - savedAt >= 0 && now - savedAt < RESULT_CACHE_TTL_MS;
 }
 
 export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
