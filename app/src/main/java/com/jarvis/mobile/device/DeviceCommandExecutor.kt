@@ -207,7 +207,8 @@ class DeviceCommandExecutor(private val context: Context) {
         val memo = recentHandled[commandId]
         if (memo != null && SystemClock.elapsedRealtime() - memo < DEDUPE_WINDOW_MS) return true
         val stamp = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(prefixKey(commandId), 0L)
-        return stamp > 0L && System.currentTimeMillis() - stamp < DEDUPE_WINDOW_MS
+        val age = System.currentTimeMillis() - stamp
+        return stamp > 0L && age >= 0L && age < DEDUPE_WINDOW_MS
     }
 
     /**
@@ -236,8 +237,30 @@ class DeviceCommandExecutor(private val context: Context) {
     }
 
     private fun pruneHandled() {
-        val now = SystemClock.elapsedRealtime()
-        recentHandled.entries.removeIf { now - it.value > DEDUPE_WINDOW_MS }
+        val elapsedNow = SystemClock.elapsedRealtime()
+        recentHandled.entries.removeIf { elapsedNow - it.value > DEDUPE_WINDOW_MS }
+
+        // Keep persistent command results bounded; pending approval entries are untouched.
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        val handled = prefs.all.entries.mapNotNull { (key, value) ->
+            if (!key.startsWith("cmd_") || value !is Long) return@mapNotNull null
+            key to value
+        }
+        val expired = handled.filter { (_, stamp) ->
+            val age = now - stamp
+            age < 0L || age >= DEDUPE_WINDOW_MS
+        }
+        val active = handled.filterNot { it in expired }.sortedByDescending { it.second }
+        val remove = (expired + active.drop(MAX_PERSISTED_HANDLED)).map { it.first }
+        if (remove.isNotEmpty()) {
+            val editor = prefs.edit()
+            remove.forEach { key ->
+                val commandId = key.removePrefix("cmd_")
+                editor.remove(key).remove(resultKey(commandId))
+            }
+            editor.apply()
+        }
     }
 
     private fun prefixKey(commandId: String) = "cmd_$commandId"
@@ -249,6 +272,7 @@ class DeviceCommandExecutor(private val context: Context) {
         private const val PREFS = "jarvis_command_dedupe"
         private const val COMMAND_TTL_MS = 5 * 60 * 1000L
         private const val DEDUPE_WINDOW_MS = 15 * 60 * 1000L
+        private const val MAX_PERSISTED_HANDLED = 500
         private val recentHandled = ConcurrentHashMap<String, Long>()
         fun requiresLocalApproval(action: String): Boolean =
             action == "screen.read" || action == "screen.tap" || action == "screen.type"
