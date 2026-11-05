@@ -82,6 +82,25 @@ export async function listDeviceCommands({ kv, deviceId, limit = 20 }) {
 
 export async function acknowledgeDeviceCommand({ kv, deviceId, commandId, result }) {
   if (!kv) throw new Error("DEVICE_COMMANDS KV binding is required");
+  if (!/^[a-zA-Z0-9_-]{8,80}$/.test(String(deviceId || ""))) {
+    throw new Error("A valid deviceId is required");
+  }
+  if (!/^[a-f0-9-]{36}$/i.test(String(commandId || ""))) {
+    throw new Error("A valid commandId is required");
+  }
+  if (result !== null && result !== undefined &&
+      (typeof result !== "object" || Array.isArray(result))) {
+    throw new Error("Command result must be a JSON object");
+  }
+  let serializedResult = "null";
+  try {
+    serializedResult = JSON.stringify(result ?? null);
+  } catch (_) {
+    throw new Error("Command result must be serializable JSON");
+  }
+  if (serializedResult.length > 65536) {
+    throw new Error("Command result exceeds the 64 KB limit");
+  }
   const key = "command:" + deviceId + ":" + commandId;
   const raw = await kv.get(key);
   if (!raw) return { ok: false, error: "Command not found or expired" };
