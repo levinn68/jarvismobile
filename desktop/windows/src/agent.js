@@ -33,6 +33,10 @@ async function loadResultCache() {
   } catch { /* Missing or invalid cache is treated as empty. */ }
 }
 
+export function isResultCacheFresh(savedAt, now = Date.now()) {
+  return isResultCacheFresh(savedAt, now);
+}
+
 export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
   const valid = [...results.entries()].filter(([id]) => {
     const savedAt = savedAtById.get(id);
@@ -300,6 +304,11 @@ async function pollOnce() {
   for (const command of response.commands || []) {
     if (!command?.commandId) continue;
     let result = pendingAcknowledgements.get(command.commandId);
+    if (result && !isResultCacheFresh(pendingAcknowledgementSavedAt.get(command.commandId))) {
+      pendingAcknowledgements.delete(command.commandId);
+      pendingAcknowledgementSavedAt.delete(command.commandId);
+      result = undefined;
+    }
     if (!result) {
       try { result = await execute(command); }
       catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
