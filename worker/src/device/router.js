@@ -6,6 +6,11 @@ import { createPairingSession, redeemPairingSession, getPairingSession } from ".
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{"Content-Type":"application/json; charset=utf-8","Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"Content-Type, Authorization","Access-Control-Allow-Methods":"GET, POST, PUT, DELETE, OPTIONS"}});
 async function readBody(request){try{return await request.json()}catch(_){throw new Error("Request body must be valid JSON")}}
 const bearer=request=>(request.headers.get("Authorization")||"").replace(/^Bearer\s+/i,"");
+async function isDeviceAccountActive(env,device){
+ if(!device?.accountId)return false;
+ const account=await getAccount(env.DEVICE_REGISTRY,device.accountId);
+ return account?.status==="active";
+}
 export async function handleDeviceRequest(request,env,url) {
  const path=url.pathname;
  if(path==="/v1/accounts/google"&&request.method==="POST") {
@@ -154,6 +159,7 @@ export async function handleDeviceRequest(request,env,url) {
    const device=await getDevice(env.DEVICE_REGISTRY,id);
    if(!device)return json({ok:false,error:"Device not registered"},404);
    if(accountClaims&&device.accountId!==accountClaims.sub)return json({ok:false,error:"Device belongs to another account"},403);
+   if(!await isDeviceAccountActive(env,device))return json({ok:false,error:"Device account is inactive"},403);
    const result=await enqueueDeviceCommand({kv:env.DEVICE_COMMANDS,device,input:body,context:{userConfirmed:false}});
    return json(result,result.ok?200:403);
   } catch(e){return json({ok:false,error:e.message},400)}
@@ -166,6 +172,7 @@ export async function handleDeviceRequest(request,env,url) {
   const device=await getDevice(env.DEVICE_REGISTRY,id);
   if(!device)return json({ok:false,error:"Device not registered"},404);
   if(accountClaims&&device.accountId!==accountClaims.sub)return json({ok:false,error:"Device belongs to another account"},403);
+  if(!await isDeviceAccountActive(env,device))return json({ok:false,error:"Device account is inactive"},403);
   try {
    const command=await getDeviceCommand({kv:env.DEVICE_COMMANDS,deviceId:id,commandId});
    return command?json({ok:true,command}):json({ok:false,error:"Command not found or expired"},404);
@@ -174,7 +181,9 @@ export async function handleDeviceRequest(request,env,url) {
  if(path==="/v1/device/commands"&&request.method==="GET") {
   const id=url.searchParams.get("deviceId")||"";
   if(!await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id))return json({ok:false,error:"Unauthorized"},401);
-  if(!await getDevice(env.DEVICE_REGISTRY,id))return json({ok:false,error:"Device has been revoked"},404);
+  const device=await getDevice(env.DEVICE_REGISTRY,id);
+  if(!device)return json({ok:false,error:"Device has been revoked"},404);
+  if(!await isDeviceAccountActive(env,device))return json({ok:false,error:"Device account is inactive"},403);
   try{return json({ok:true,commands:await listDeviceCommands({kv:env.DEVICE_COMMANDS,deviceId:id})});}
   catch(e){return json({ok:false,error:e.message},503)}
  }
@@ -182,7 +191,9 @@ export async function handleDeviceRequest(request,env,url) {
   try {
    const body=await readBody(request),id=String(body.deviceId||"");
    if(!await verifyDeviceToken(request,env.DEVICE_TOKEN_SECRET,id))return json({ok:false,error:"Unauthorized"},401);
-   if(!await getDevice(env.DEVICE_REGISTRY,id))return json({ok:false,error:"Device has been revoked"},404);
+   const device=await getDevice(env.DEVICE_REGISTRY,id);
+   if(!device)return json({ok:false,error:"Device has been revoked"},404);
+   if(!await isDeviceAccountActive(env,device))return json({ok:false,error:"Device account is inactive"},403);
    const result=await acknowledgeDeviceCommand({kv:env.DEVICE_COMMANDS,deviceId:id,commandId:String(body.commandId||""),result:body.result});
    return json(result,result.ok?200:404);
   } catch(e){return json({ok:false,error:e.message},400)}
