@@ -18,7 +18,33 @@ const pendingAcknowledgements = new Map();
 const pendingAcknowledgementSavedAt = new Map();
 const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
 const RESULT_CACHE_LIMIT = 500;
+export const COMMAND_TTL_MS = 5 * 60 * 1000;
+export const MAX_FUTURE_SKEW_MS = 60 * 1000;
 const resultCachePath = () => path.join(path.dirname(credentialPath()), "command-results.json");
+
+export function extractPairingCode(rawInput) {
+  const raw = String(rawInput || "").trim();
+  if (!raw) return "";
+  if (raw.toLowerCase().startsWith("jarvis-pair://")) {
+    try {
+      const parsed = new URL(raw);
+      return String(parsed.searchParams.get("code") || "").trim().toUpperCase();
+    } catch {
+      const match = raw.match(/[?&]code=([A-Za-z0-9]+)/);
+      return match ? match[1].toUpperCase() : "";
+    }
+  }
+  return raw.replace(/\s+/g, "").toUpperCase();
+}
+
+export function isCommandExpired(command, now = Date.now()) {
+  const createdAt = typeof command?.createdAt === "string" ? command.createdAt.trim() : "";
+  if (!createdAt) return true;
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) return true;
+  const ageMs = now - createdMs;
+  return ageMs < -MAX_FUTURE_SKEW_MS || ageMs > COMMAND_TTL_MS;
+}
 
 async function loadResultCache() {
   try {
@@ -74,9 +100,9 @@ async function apiRequest(method, endpoint, token, body) {
   return result;
 }
 
-async function pair() {
-  const pairingCode = (process.env.JARVIS_PAIRING_CODE || "").trim();
-  const accountToken = process.env.JARVIS_ACCOUNT_TOKEN || "";
+async function pair(cliArgCode = "") {
+  const pairingCode = extractPairingCode(process.env.JARVIS_PAIRING_CODE || cliArgCode || "");
+  const accountToken = (process.env.JARVIS_ACCOUNT_TOKEN || "").trim();
   const deviceId = "windows-" + randomUUID();
   const payload = {
     deviceId, platform: "windows", name: process.env.COMPUTERNAME || os.hostname(),
@@ -86,6 +112,9 @@ async function pair() {
 
   let result;
   if (pairingCode) {
+    if (!/^[A-Za-z0-9]{8}$/.test(pairingCode)) {
+      throw new Error("JARVIS_PAIRING_CODE must be an 8-character alphanumeric code from Android.");
+    }
     const response = await fetch(API + "/v1/pairing/redeem", {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -115,7 +144,6 @@ async function pair() {
 function allowedRoots() {
   return (process.env.JARVIS_ALLOWED_DIRS || "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean);
 }
-
 async function resolvedRoots() {
   const roots = [];
   for (const entry of allowedRoots()) {
@@ -310,8 +338,12 @@ async function pollOnce() {
       result = undefined;
     }
     if (!result) {
-      try { result = await execute(command); }
-      catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
+      if (isCommandExpired(command)) {
+        result = { ok: false, expired: true, error: "Command expired or has an invalid timestamp." };
+      } else {
+        try { result = await execute(command); }
+        catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
+      }
       pendingAcknowledgements.set(command.commandId, result);
       pendingAcknowledgementSavedAt.set(command.commandId, Date.now());
       await persistResultCache();
@@ -366,7 +398,7 @@ async function run() {
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
 if (invokedPath === fileURLToPath(import.meta.url)) {
   const mode = process.argv[2] || "run";
-  (mode === "pair" ? pair() : run()).catch((error) => {
+  (mode === "pair" ? pair(process.argv[3] || "") : run()).catch((error) => {
     process.stderr.write("JARVIS Windows connector: " + error.message + "\n");
     process.exitCode = 1;
   });

@@ -5,6 +5,16 @@ import com.jarvis.mobile.device.JarvisDeviceSyncService
 import com.jarvis.mobile.device.DeviceSetupActivity
 import android.Manifest
 import android.content.Intent
+import android.media.AudioManager
+import android.net.NetworkRequest
+import android.net.NetworkCapabilities
+import android.net.Network
+import android.net.ConnectivityManager
+import android.media.AudioFocusRequest
+import android.media.AudioAttributes
+import android.content.IntentFilter
+import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.pm.PackageManager
 import android.content.ComponentName
 import android.media.MediaPlayer
@@ -114,6 +124,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 import com.jarvis.mobile.account.SupabaseJarvisClient
+import com.jarvis.mobile.ui.VoiceOrbState
+import com.jarvis.mobile.ui.HolographicOrb
+import com.jarvis.mobile.ui.JarvisColors
+import com.jarvis.mobile.ui.JarvisUserBubble
+import com.jarvis.mobile.ui.JarvisAssistantBubble
+import com.jarvis.mobile.ui.JarvisChatComposer
+import com.jarvis.mobile.ui.JarvisChatErrorCard
+import com.jarvis.mobile.ui.JarvisThinkingBar
+import com.jarvis.mobile.ui.JarvisConversationChip
+import com.jarvis.mobile.ui.resolveVoiceOrbState
 import com.jarvis.mobile.account.SavedConversation
 import com.jarvis.mobile.account.SavedMessage
 import java.io.BufferedReader
@@ -242,6 +262,105 @@ class MainActivity : ComponentActivity() {
     private var recognizer: SpeechRecognizer? = null
     private val handler = Handler(Looper.getMainLooper())
     private val listeningRestart = Runnable { startListening() }
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val voiceModeState = mutableStateOf(false)
+    private val voiceStopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == JarvisVoiceService.ACTION_STOP) {
+                stopVoiceMode()
+            }
+        }
+    }
+
+    private fun requestMicFocus(): Boolean {
+        val manager = audioManager ?: (getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.also { audioManager = it }
+            ?: return false
+        if (hasAudioFocus) return true
+        val granted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val req = audioFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { change ->
+                    if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                        hasAudioFocus = false
+                    }
+                }
+                .build()
+                .also { audioFocusRequest = it }
+            manager.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            manager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+        hasAudioFocus = granted
+        return granted
+    }
+
+    private fun abandonMicFocus() {
+        val manager = audioManager ?: return
+        if (!hasAudioFocus) return
+        hasAudioFocus = false
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { runCatching { manager.abandonAudioFocusRequest(it) } }
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { manager.abandonAudioFocus(null) }
+        }
+    }
+
+    private fun stopVoiceMode() {
+        voiceModeEnabled = false
+        voiceModeState.value = false
+        handler.removeCallbacks(listeningRestart)
+        recognitionActive = false
+        recognitionStartPending = false
+        clapDetector.reset()
+        recognizer?.cancel()
+        abandonMicFocus()
+        stopVoiceForegroundService()
+        voiceStatus.value = "MIC OFF"
+    }
+
+    private fun registerConnectivityFlush() {
+        val cm = (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager) ?: return
+        connectivityManager = cm
+        if (networkCallback != null) return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (!supabaseClient.hasSession() || supabaseClient.pendingTurnCount() <= 0) return
+                lifecycleScope.launch {
+                    runCatching {
+                        supabaseClient.flushPendingTurns()
+                        conversationsState.value = supabaseClient.listConversations()
+                        accountStatus.value = "ANTREAN OFFLINE TERSINKRON"
+                    }
+                }
+            }
+        }
+        networkCallback = callback
+        runCatching {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            cm.registerNetworkCallback(request, callback)
+        }
+    }
+
+    private fun unregisterConnectivityFlush() {
+        val cm = connectivityManager ?: return
+        val callback = networkCallback ?: return
+        networkCallback = null
+        runCatching { cm.unregisterNetworkCallback(callback) }
+    }
+
     private fun startVoiceForegroundService() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
         runCatching {
@@ -355,6 +474,23 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun renameConversation(id: String, newTitle: String) {
+        val cleaned = newTitle.trim()
+        if (cleaned.isBlank() || historyBusy.value || !supabaseClient.hasSession()) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.renameConversation(id, cleaned)
+                conversationsState.value = supabaseClient.listConversations()
+                accountStatus.value = "JUDUL PERCAKAPAN DIPERBARUI"
+            } catch (error: Exception) {
+                accountStatus.value = "GAGAL MENGUBAH JUDUL: " + (error.message ?: "error")
+            } finally {
+                historyBusy.value = false
+            }
+        }
+    }
+
     private fun saveChatTurn(userText: String, assistantText: String) {
         if (!supabaseClient.hasSession()) return
         lifecycleScope.launch {
@@ -395,6 +531,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supabaseClient = SupabaseJarvisClient(this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        ContextCompat.registerReceiver(
+            this,
+            voiceStopReceiver,
+            IntentFilter(JarvisVoiceService.ACTION_STOP),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        registerConnectivityFlush()
         accountEmail.value = supabaseClient.currentEmail()
         accountName.value = supabaseClient.currentName()
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -447,25 +591,22 @@ class MainActivity : ComponentActivity() {
                 onConsumed = { voiceText.value = "" },
                 onSpeak = { speak(it) },
                 onStartListening = { startListening() },
+                externalVoiceStop = !voiceModeState.value,
                 onModeChanged = { voiceMode ->
                     voiceModeEnabled = voiceMode
+                    voiceModeState.value = voiceMode
                     if (voiceMode) {
+                        requestMicFocus()
                         startVoiceForegroundService()
                         startListening()
                         voiceStatus.value = "MICROPHONE STARTING"
                     } else {
-                        handler.removeCallbacks(listeningRestart)
-                        recognitionActive = false
-                        recognitionStartPending = false
-                        clapDetector.reset()
-                        recognizer?.cancel()
-                        stopVoiceForegroundService()
-                        voiceStatus.value = "MIC OFF"
+                        stopVoiceMode()
                     }
                 },
                 onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
                 onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
-                onAskGemini = { prompt, callback -> askGemini(prompt, callback) },
+                onAskGemini = { prompt, history, callback -> askGemini(prompt, history, callback) },
                 onOpenDeviceSetup = { openDeviceSetup() },
                 onDeviceCommand = { action, params, callback ->
                     Thread {
@@ -522,31 +663,58 @@ class MainActivity : ComponentActivity() {
                 onOpenConversation = { id -> openConversation(id) },
                 onNewConversation = { newConversation() },
                 onDeleteConversation = { id -> deleteConversation(id) },
+                onRenameConversation = { id, title -> renameConversation(id, title) },
                 onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) }
             )
         }
     }
 
-    private fun askGemini(prompt: String, callback: (ChatResponsePayload) -> Unit): () -> Unit {
+    private fun askGemini(
+        prompt: String,
+        history: List<Pair<String, String>> = emptyList(),
+        callback: (ChatResponsePayload) -> Unit
+    ): () -> Unit {
         val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
         val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
+        val clientRequestId = java.util.UUID.randomUUID().toString()
+        val apiKeyOverride = prefs.getString("gemini_api_key", null)?.trim().orEmpty()
         Thread {
-            var connection: HttpURLConnection? = null
-            val payload = try {
-                val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
-                connection = endpoint.openConnection() as HttpURLConnection
-                activeConnection.set(connection)
-                if (cancelled.get()) {
-                    connection.disconnect()
-                    return@Thread
-                }
-                connection.requestMethod = "POST"
-                connection.connectTimeout = 20000
-                connection.readTimeout = 180000
-                connection.doOutput = true
-                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                val body = JSONObject().put("message", prompt)
-                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            var payload: ChatResponsePayload? = null
+            for (attempt in 1..2) {
+                if (cancelled.get()) return@Thread
+                var connection: HttpURLConnection? = null
+                var shouldRetry = false
+                payload = try {
+                    val endpoint = URL("https://jarvis-api.alvinorasya1304.workers.dev/v1/chat")
+                    connection = endpoint.openConnection() as HttpURLConnection
+                    activeConnection.set(connection)
+                    if (cancelled.get()) {
+                        connection.disconnect()
+                        return@Thread
+                    }
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 180000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connection.setRequestProperty("X-Client-Request-Id", clientRequestId)
+                    if (apiKeyOverride.isNotBlank()) {
+                        connection.setRequestProperty("X-Jarvis-Gemini-Key", apiKeyOverride)
+                    }
+                    val historyJson = JSONArray()
+                    history.takeLast(20).forEach { (role, text) ->
+                        if (text.isNotBlank()) {
+                            historyJson.put(JSONObject().put("role", role).put("content", text.take(4000)))
+                        }
+                    }
+                    val body = JSONObject()
+                        .put("message", prompt)
+                        .put("clientRequestId", clientRequestId)
+                        .put("history", historyJson)
+                    if (apiKeyOverride.isNotBlank()) {
+                        body.put("geminiApiKey", apiKeyOverride)
+                    }
+                    connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
                 if (stream == null) throw IllegalStateException("Server tidak mengirim response body.")
@@ -614,15 +782,22 @@ class MainActivity : ComponentActivity() {
                     }
                     ChatResponsePayload(answer, parsedProducts, parsedImages)
                 }
-            } catch (e: Exception) {
-                val message = e.message.orEmpty()
-                val err = if (message.contains("Jawaban terlalu besar")) message
-                else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
-                ChatResponsePayload(err)
-            } finally {
-                connection?.disconnect()
+                } catch (e: Exception) {
+                    val message = e.message.orEmpty()
+                    if (attempt == 1 && !cancelled.get() && !message.contains("Jawaban terlalu besar")) {
+                        shouldRetry = true
+                    }
+                    val err = if (message.contains("Jawaban terlalu besar")) message
+                    else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
+                    ChatResponsePayload(err)
+                } finally {
+                    connection?.disconnect()
+                }
+                if (!shouldRetry) break
+                try { Thread.sleep(750L) } catch (_: InterruptedException) { break }
             }
-            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(payload) }
+            val finalPayload = payload ?: ChatResponsePayload("Gagal menghubungi JARVIS Worker.")
+            if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(finalPayload) }
         }.start()
         return {
             cancelled.set(true)
@@ -829,6 +1004,7 @@ class MainActivity : ComponentActivity() {
         }
         val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
         try {
+            requestMicFocus()
             recognitionStartPending = true
             voiceStatus.value = "CONNECTING MICROPHONE"
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -922,6 +1098,9 @@ class MainActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        runCatching { unregisterReceiver(voiceStopReceiver) }
+        unregisterConnectivityFlush()
+        abandonMicFocus()
         recognizer?.destroy()
         recognizer = null
         tts?.stop()
@@ -2024,13 +2203,14 @@ private fun JarvisScreen(
     recognizedText: String,
     status: String,
     rmsLevel: Float,
+    externalVoiceStop: Boolean = false,
     onConsumed: () -> Unit,
     onSpeak: (String) -> Unit,
     onStartListening: () -> Unit,
     onModeChanged: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
     onSaveGeminiKey: (String) -> Unit,
-    onAskGemini: (String, (ChatResponsePayload) -> Unit) -> (() -> Unit),
+    onAskGemini: (String, List<Pair<String, String>>, (ChatResponsePayload) -> Unit) -> (() -> Unit),
     onOpenDeviceSetup: () -> Unit,
     onDeviceCommand: (String, Map<String, String>, (String) -> Unit) -> Unit,
     onOpenApp: (String) -> Boolean,
@@ -2047,6 +2227,7 @@ private fun JarvisScreen(
     onOpenConversation: (String) -> Unit,
     onNewConversation: () -> Unit,
     onDeleteConversation: (String) -> Unit,
+    onRenameConversation: (String, String) -> Unit = { _, _ -> },
     onSaveTurn: (String, String) -> Unit
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
@@ -2216,8 +2397,37 @@ private fun JarvisScreen(
         if ((q.isEmpty() && files.isEmpty()) || busy) return
         command = ""
         pendingAttachments.clear()
-        val attachmentNote = if (files.isEmpty()) "" else "\n\nLampiran: " + files.joinToString("; ") { it.name + " (" + it.mime + ")" }
-        val requestText = q + attachmentNote
+        val attachmentDetails = if (files.isEmpty()) "" else buildString {
+            append("\n\nLampiran: ")
+            append(files.joinToString("; ") { "${it.name} (${it.mime})" })
+            files.forEach { file ->
+                if (file.mime.startsWith("text/") || file.mime in setOf("application/json", "application/xml") ||
+                    file.name.endsWith(".md", true) || file.name.endsWith(".txt", true) || file.name.endsWith(".csv", true) ||
+                    file.name.endsWith(".kt", true) || file.name.endsWith(".js", true) || file.name.endsWith(".py", true)
+                ) {
+                    val snippet = runCatching {
+                        context.contentResolver.openInputStream(file.uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                            val buf = CharArray(16384)
+                            val read = reader.read(buf)
+                            if (read > 0) String(buf, 0, read) else ""
+                        }
+                    }.getOrNull().orEmpty().trim()
+                    if (snippet.isNotBlank()) {
+                        append("\n\n[Isi Lampiran ${file.name}]:\n")
+                        append(snippet)
+                    }
+                } else if (file.mime.startsWith("image/")) {
+                    val dims = runCatching {
+                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(file.uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                        if (opts.outWidth > 0 && opts.outHeight > 0) "${opts.outWidth}x${opts.outHeight}px" else ""
+                    }.getOrNull().orEmpty()
+                    if (dims.isNotBlank()) append(" [Resolusi gambar: $dims]")
+                }
+            }
+        }
+        val requestText = (q.ifBlank { "Tolong analisis lampiran ini dan jelaskan isinya." }) + attachmentDetails
+        val priorHistory = lines.takeLast(16).map { (if (it.user) "user" else "assistant") to it.text }
         if (voice) {
             voiceTranscript = q
             voiceAnswer = ""
@@ -2264,7 +2474,7 @@ private fun JarvisScreen(
         // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
         busy = true
         onSearch(q)
-        cancelCurrentRequest = onAskGemini(requestText) { payload ->
+        cancelCurrentRequest = onAskGemini(requestText, priorHistory) { payload ->
             val answer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
                 .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
             if (!voice && accountEmail != null) onSaveTurn(requestText, answer)
@@ -2297,12 +2507,18 @@ private fun JarvisScreen(
         }
     }
 
+    LaunchedEffect(externalVoiceStop) {
+        if (externalVoiceStop && voiceListening) {
+            voiceListening = false
+        }
+    }
+
     // Voice remains silent until the user says JARVIS, then waits briefly for the command.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)\\bjarvis\\b[,.! ]*")
+            val wake = Regex("(?i)^(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?\\bjarvis\\b[,.! ]*|\\bjarvis\\b[,.! ]*")
             val hasWake = wake.containsMatchIn(heard)
             val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
 
@@ -2333,7 +2549,7 @@ private fun JarvisScreen(
                 return@LaunchedEffect
             }
             wakeAcknowledged = true
-            if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby)$").matches(request)) {
+            if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby|tidur|sleep|istirahat)$").matches(request)) {
                 wakeAcknowledged = false
                 voiceListening = false
                 return@LaunchedEffect
@@ -2626,12 +2842,26 @@ private fun JarvisScreen(
                                     modifier = Modifier.offset(y = hologramShift.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    VoiceHudReactor(
-                                        modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 132.dp else if (compact) 150.dp else 190.dp),
-                                        phase = phase,
-                                        spin = spin,
-                                        breathe = breathe
+                                    val orbState = resolveVoiceOrbState(
+                                        voiceEnabled = voiceListening,
+                                        recognitionActive = phase == "LISTEN",
+                                        processing = phase == "THINK",
+                                        speaking = phase == "SPEAK",
+                                        error = status.contains("ERROR", true) || status.contains("DENIED", true)
                                     )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        HolographicOrb(
+                                            state = orbState,
+                                            rmsLevel = rmsLevel,
+                                            size = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 136.dp else if (compact) 154.dp else 194.dp
+                                        )
+                                        VoiceHudReactor(
+                                            modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 132.dp else if (compact) 150.dp else 190.dp),
+                                            phase = phase,
+                                            spin = spin,
+                                            breathe = breathe
+                                        )
+                                    }
                                     Spacer(Modifier.height(8.dp))
                                     // Horizontal Waveform Visualizer
                                     Row(
@@ -3382,6 +3612,38 @@ private fun JarvisScreen(
                     )
                 }
 
+                var renameTarget by remember { mutableStateOf<SavedConversation?>(null) }
+                var renameDraft by remember { mutableStateOf("") }
+
+                if (renameTarget != null) {
+                    val target = renameTarget!!
+                    AlertDialog(
+                        onDismissRequest = { renameTarget = null },
+                        containerColor = Color(0xFF0B1826),
+                        title = { Text("UBAH JUDUL PERCAKAPAN", color = Ice, fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+                        text = {
+                            OutlinedTextField(
+                                value = renameDraft,
+                                onValueChange = { renameDraft = it },
+                                singleLine = true,
+                                label = { Text("Judul Baru") }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = renameDraft.trim().isNotBlank(),
+                                onClick = {
+                                    onRenameConversation(target.id, renameDraft.trim())
+                                    renameTarget = null
+                                }
+                            ) { Text("SIMPAN", color = Cyan) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { renameTarget = null }) { Text("BATAL", color = TextMuted) }
+                        }
+                    )
+                }
+
                 if (historyPanel) {
                     AlertDialog(
                         onDismissRequest = { historyPanel = false },
@@ -3396,15 +3658,33 @@ private fun JarvisScreen(
                             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                                 when {
                                     accountEmail == null -> Text("Masuk dengan Google untuk melihat riwayat chat.", color = TextMuted, fontSize = 12.sp)
-                                    historyBusy -> Text("Memuat percakapan...", color = TextMuted, fontSize = 12.sp)
+                                    historyBusy -> JarvisThinkingBar(stage = "MEMUAT PERCAKAPAN...")
                                     conversations.isEmpty() -> Text("Belum ada percakapan tersimpan.", color = TextMuted, fontSize = 12.sp)
                                     else -> conversations.forEach { item ->
-                                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(Color(0xFF102536)).border(1.dp, Color(0x3358DCEC), RoundedCornerShape(10.dp)).clickable { onOpenConversation(item.id); historyPanel = false }.padding(horizontal = 10.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Column(Modifier.weight(1f)) {
-                                                Text(item.title, color = Ice, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                                Text(item.updatedAt.take(16).replace("T", " "), color = TextMuted, fontSize = 9.sp)
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Color(0xFF102536))
+                                                .border(1.dp, Color(0x3358DCEC), RoundedCornerShape(10.dp))
+                                                .clickable { onOpenConversation(item.id); historyPanel = false }
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(Modifier.weight(1f)) {
+                                                JarvisConversationChip(
+                                                    title = item.title,
+                                                    updatedAt = item.updatedAt.take(16).replace("T", " "),
+                                                    selected = restoredMessages?.first == item.id,
+                                                    onClick = { onOpenConversation(item.id); historyPanel = false }
+                                                )
                                             }
-                                            TextButton(onClick = { onDeleteConversation(item.id) }) { Text("HAPUS", color = Color(0xFFFF8A8A), fontSize = 9.sp) }
+                                            TextButton(onClick = { renameDraft = item.title; renameTarget = item }) {
+                                                Text("UBAH", color = Cyan, fontSize = 9.sp)
+                                            }
+                                            TextButton(onClick = { onDeleteConversation(item.id) }) {
+                                                Text("HAPUS", color = Color(0xFFFF8A8A), fontSize = 9.sp)
+                                            }
                                         }
                                     }
                                 }

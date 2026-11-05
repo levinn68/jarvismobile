@@ -2,43 +2,54 @@ package com.jarvis.mobile.device
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.os.Bundle
-import android.os.Build
-import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Color
-import android.view.ViewGroup
-import android.widget.*
+import android.os.Build
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import java.util.concurrent.Executors
 
 /** User-facing pairing and permission setup. Secrets are entered only at runtime. */
 class DeviceSetupActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
     private lateinit var client: JarvisDeviceClient
+    private lateinit var cameraController: CameraController
     private lateinit var status: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         client = JarvisDeviceClient(this)
+        cameraController = CameraController(this)
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(32, 48, 32, 32)
             setBackgroundColor(Color.rgb(9, 17, 29))
         }
         fun label(text: String) = TextView(this).apply {
-            this.text = text; setTextColor(Color.WHITE); textSize = 16f
+            this.text = text
+            setTextColor(Color.WHITE)
+            textSize = 16f
             setPadding(0, 12, 0, 12)
             layout.addView(this)
         }
         fun button(text: String, action: () -> Unit) = Button(this).apply {
-            this.text = text; setOnClickListener { action() }; layout.addView(this)
+            this.text = text
+            setOnClickListener { action() }
+            layout.addView(this)
         }
         val googleAccessToken = intent.getStringExtra(EXTRA_SUPABASE_ACCESS_TOKEN).orEmpty()
         val supabaseUserId = intent.getStringExtra(EXTRA_SUPABASE_USER_ID)
         val targetDevice = EditText(this).apply {
             hint = "ID perangkat target (kosong = perangkat ini)"
             inputType = 0x00000001
-            setTextColor(Color.WHITE); setHintTextColor(Color.LTGRAY)
+            setTextColor(Color.WHITE)
+            setHintTextColor(Color.LTGRAY)
             setText(getSharedPreferences("jarvis_device_secure", MODE_PRIVATE).getString("target_device_id", ""))
             layout.addView(this)
         }
@@ -58,7 +69,9 @@ class DeviceSetupActivity : Activity() {
                     }
                     client.pair(client.storedAccountToken(supabaseUserId), Build.MODEL, Build.VERSION.RELEASE)
                     "Akun Google terhubung ($accountId). Perangkat berhasil dipair: ${client.deviceId()}"
-                } catch (e: Exception) { "Gagal menghubungkan akun Google: ${e.message}" }
+                } catch (e: Exception) {
+                    "Gagal menghubungkan akun Google: ${e.message}"
+                }
                 runOnUiThread { status.text = message }
             }
         }
@@ -84,7 +97,9 @@ class DeviceSetupActivity : Activity() {
                     client.createOrRestoreAccountWithSupabase(googleAccessToken)
                     client.storedAccountToken(supabaseUserId).takeIf { it.isNotBlank() }
                         ?: throw IllegalStateException("Token akun tidak tersedia")
-                } catch (e: Exception) { null }
+                } catch (_: Exception) {
+                    null
+                }
                 runOnUiThread {
                     if (token.isNullOrBlank()) {
                         status.text = "Gagal menyiapkan token pairing. Periksa koneksi dan sesi Google."
@@ -109,12 +124,15 @@ class DeviceSetupActivity : Activity() {
                     val output = StringBuilder("Total perangkat: ${devices.length()}")
                     for (i in 0 until devices.length()) {
                         val item = devices.optJSONObject(i) ?: continue
-                        output.append("\\n• ").append(item.optString("name"))
+                        output.append("\n• ").append(item.optString("name"))
                             .append(" — ").append(item.optString("platform"))
-                            .append("\\n  ").append(item.optString("deviceId"))
+                            .append(if (item.optBoolean("online")) " [ONLINE]" else "")
+                            .append("\n  ").append(item.optString("deviceId"))
                     }
                     output.toString()
-                } catch (e: Exception) { "Gagal memuat perangkat: ${e.message}" }
+                } catch (e: Exception) {
+                    "Gagal memuat perangkat: ${e.message}"
+                }
                 runOnUiThread { status.text = message }
             }
         }
@@ -167,7 +185,15 @@ class DeviceSetupActivity : Activity() {
                 .show()
         }
         button("Pilih folder yang boleh diakses") {
-            startActivityForResult(FileController(this).folderPickerIntent(), 501)
+            startActivityForResult(FileController(this).folderPickerIntent(), REQ_FOLDER_PICKER)
+        }
+        button("Uji kamera lokal (konfirmasi pengguna)") {
+            val capture = cameraController.captureIntent()
+            if (capture == null) {
+                status.text = "Aplikasi kamera sistem tidak ditemukan di perangkat ini."
+            } else {
+                startActivityForResult(capture, REQ_CAMERA_PREVIEW)
+            }
         }
         button("Pengaturan akses notifikasi") {
             startActivity(NotificationController(this).openAccessSettings())
@@ -176,30 +202,40 @@ class DeviceSetupActivity : Activity() {
             startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
         button("Izinkan akses kontak & kalender") {
-            requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.READ_CALENDAR), 602)
+            requestPermissions(
+                arrayOf(
+                    android.Manifest.permission.READ_CONTACTS,
+                    android.Manifest.permission.READ_CALENDAR,
+                    android.Manifest.permission.CAMERA
+                ),
+                REQ_PERMISSIONS
+            )
         }
         button("Perbarui izin & kemampuan perangkat") {
-            if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
+            if (!client.isConfigured()) {
+                status.text = "Pairing perangkat terlebih dahulu"
+                return@button
+            }
             status.text = "Memeriksa izin dan kemampuan Android..."
             worker.execute {
                 val permissionManager = DevicePermissionManager(this)
                 val capabilities = permissionManager.registeredCapabilities()
                 val permissionSummary = listOf(
                     "Mikrofon" to permissionManager.isGranted("voice.microphone"),
-                    "Kamera" to permissionManager.isGranted("camera.capture"),
+                    "Kamera (Izin OS)" to (permissionManager.missingPermissions("camera.capture").isEmpty()),
                     "Kontak" to permissionManager.isGranted("contacts.read"),
                     "Kalender" to permissionManager.isGranted("calendar.read"),
                     "Akses notifikasi" to permissionManager.isGranted("notifications.read"),
                     "Baca/kontrol layar" to permissionManager.isGranted("screen.read"),
                     "Folder pilihan" to permissionManager.hasUsableSelectedFolder()
-                ).joinToString("\\n") { (name, granted) ->
+                ).joinToString("\n") { (name, granted) ->
                     "$name: ${if (granted) "AKTIF" else "BELUM DIIZINKAN"}"
                 }
                 val message = try {
                     client.updateCapabilities(capabilities)
-                    "Kemampuan terdaftar di akun:\\n${capabilities.joinToString()}\\n\\nStatus izin perangkat:\\n$permissionSummary\\n\\nCatatan: izin kamera/mikrofon dilaporkan, tetapi tidak diiklankan sebagai perintah jarak jauh karena alur capture khusus belum tersedia."
+                    "Kemampuan terdaftar di akun:\n${capabilities.joinToString()}\n\nStatus izin perangkat:\n$permissionSummary\n\nCatatan: kamera hanya dapat dipicu secara lokal oleh pengguna dan tidak diiklankan sebagai perintah jarak jauh tanpa pengawasan."
                 } catch (e: Exception) {
-                    "Gagal memperbarui kemampuan: ${e.message}\\n\\nStatus izin perangkat:\\n$permissionSummary"
+                    "Gagal memperbarui kemampuan: ${e.message}\n\nStatus izin perangkat:\n$permissionSummary"
                 }
                 runOnUiThread { status.text = message }
             }
@@ -217,14 +253,23 @@ class DeviceSetupActivity : Activity() {
                     val queued = client.queueCommand(id, "system.status", expectedSupabaseUserId = supabaseUserId)
                     if (queued.optBoolean("ok")) "Perintah masuk antrean. Pastikan sinkronisasi aktif untuk mengeksekusi."
                     else "Perintah ditolak: ${queued.optString("reason", queued.optString("error", "tidak diizinkan"))}"
-                } catch (e: Exception) { "Gagal mengirim perintah: ${e.message}" }
+                } catch (e: Exception) {
+                    "Gagal mengirim perintah: ${e.message}"
+                }
                 runOnUiThread { status.text = message }
             }
         }
         button("Sinkronisasi perangkat: MULAI") {
-            if (!client.isConfigured()) { status.text = "Pairing perangkat terlebih dahulu"; return@button }
-            try { JarvisDeviceSyncService.start(this); status.text = "Sinkronisasi dimulai" }
-            catch (e: Exception) { status.text = "Tidak dapat memulai: ${e.message}" }
+            if (!client.isConfigured()) {
+                status.text = "Pairing perangkat terlebih dahulu"
+                return@button
+            }
+            try {
+                JarvisDeviceSyncService.start(this)
+                status.text = "Sinkronisasi dimulai"
+            } catch (e: Exception) {
+                status.text = "Tidak dapat memulai: ${e.message}"
+            }
         }
         button("Sinkronisasi perangkat: STOP") {
             JarvisDeviceSyncService.stop(this)
@@ -238,16 +283,40 @@ class DeviceSetupActivity : Activity() {
         val scroll = ScrollView(this).apply { addView(layout) }
         setContentView(scroll)
     }
+
     @Deprecated("Android activity result callback")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 501 && resultCode == RESULT_OK && data?.data != null) {
+        if (requestCode == REQ_FOLDER_PICKER && resultCode == RESULT_OK && data?.data != null) {
             try {
                 FileController(this).saveSelectedFolder(data.data!!)
                 status.text = "Folder dipilih dan izin disimpan"
-            } catch (e: Exception) { status.text = "Gagal menyimpan izin: ${e.message}" }
+            } catch (e: Exception) {
+                status.text = "Gagal menyimpan izin: ${e.message}"
+            }
+        } else if (requestCode == REQ_CAMERA_PREVIEW) {
+            val summary = cameraController.describeResult(resultCode, data)
+            status.text = if (summary.optBoolean("ok")) {
+                "Kamera lokal berhasil mengembalikan pratinjau (${summary.optInt("width")}x${summary.optInt("height")} px)."
+            } else if (summary.optBoolean("cancelled")) {
+                "Pengambilan gambar kamera dibatalkan oleh pengguna."
+            } else {
+                "Uji kamera gagal: ${summary.optString("error", "unknown")}"
+            }
         }
     }
-    override fun onDestroy() { worker.shutdown(); super.onDestroy() }
-    companion object { const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token"; const val EXTRA_SUPABASE_USER_ID = "jarvis_supabase_user_id" }
+
+    override fun onDestroy() {
+        worker.shutdown()
+        if (::client.isInitialized) client.close()
+        super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_SUPABASE_ACCESS_TOKEN = "jarvis_supabase_access_token"
+        const val EXTRA_SUPABASE_USER_ID = "jarvis_supabase_user_id"
+        private const val REQ_FOLDER_PICKER = 501
+        private const val REQ_CAMERA_PREVIEW = 502
+        private const val REQ_PERMISSIONS = 602
+    }
 }

@@ -1,3 +1,5 @@
+import { webCrypto } from "../utils.js";
+
 /**
  * Short-lived, single-use pairing sessions for QR / manual code flow.
  * Codes are bound to the account that created them and cannot enroll
@@ -10,14 +12,29 @@ const SESSION_TTL_SECONDS = 300; // 5 minutes
 const MAX_ATTEMPTS = 8;
 
 function randomCode() {
-  const bytes = crypto.getRandomValues(new Uint8Array(CODE_LENGTH));
+  const bytes = webCrypto.getRandomValues(new Uint8Array(CODE_LENGTH));
   let out = "";
   for (const b of bytes) out += CODE_ALPHABET[b % CODE_ALPHABET.length];
   return out;
 }
 
+export function extractPairingCode(rawInput) {
+  const raw = String(rawInput || "").trim();
+  if (!raw) return "";
+  if (raw.toLowerCase().startsWith("jarvis-pair://")) {
+    try {
+      const parsed = new URL(raw);
+      return String(parsed.searchParams.get("code") || "").trim().toUpperCase();
+    } catch (_) {
+      const match = raw.match(/[?&]code=([A-Za-z0-9]+)/);
+      return match ? match[1].toUpperCase() : "";
+    }
+  }
+  return raw.replace(/\s+/g, "").toUpperCase();
+}
+
 function sessionKey(code) {
-  return "pair:" + String(code || "").toUpperCase();
+  return "pair:" + extractPairingCode(code);
 }
 
 function rateKey(accountId) {
@@ -70,7 +87,6 @@ export async function createPairingSession({ kv, accountId, deviceHint = {} }) {
     code,
     expiresIn: SESSION_TTL_SECONDS,
     expiresAt,
-    // Payload for QR: desktop agents parse this deep-link style string.
     qrPayload: "jarvis-pair://v1?code=" + encodeURIComponent(code)
   };
 }
@@ -84,7 +100,7 @@ export async function redeemPairingSession({
   tokenSecret
 }) {
   if (!kv) throw new Error("DEVICE_REGISTRY KV binding is required for pairing sessions");
-  const normalized = String(code || "").trim().toUpperCase();
+  const normalized = extractPairingCode(code);
   if (!/^[A-Z0-9]{8}$/.test(normalized)) {
     throw new Error("Invalid pairing code format");
   }
@@ -121,7 +137,7 @@ export async function redeemPairingSession({
 
   const deviceId =
     String(deviceInput?.deviceId || "").trim() ||
-    platform + "-" + crypto.randomUUID();
+    platform + "-" + webCrypto.randomUUID();
 
   const device = await saveDevice({
     deviceId,
@@ -154,7 +170,7 @@ export async function redeemPairingSession({
 
 export async function getPairingSession({ kv, code, accountId }) {
   if (!kv) throw new Error("DEVICE_REGISTRY KV binding is required");
-  const normalized = String(code || "").trim().toUpperCase();
+  const normalized = extractPairingCode(code);
   const raw = await kv.get(sessionKey(normalized));
   if (!raw) return null;
   let session;

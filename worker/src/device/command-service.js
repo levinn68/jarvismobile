@@ -1,5 +1,6 @@
 import { validateCommand } from "./protocol.js";
 import { authorizeCapability } from "./policy.js";
+import { isCommandTimestampFresh } from "../utils.js";
 
 export async function enqueueDeviceCommand({ kv, device, input, context = {} }) {
   if (!kv) throw new Error("DEVICE_COMMANDS KV binding is required");
@@ -33,7 +34,7 @@ export async function enqueueDeviceCommand({ kv, device, input, context = {} }) 
   };
 }
 
-export async function listDeviceCommands({ kv, deviceId, limit = 20 }) {
+export async function listDeviceCommands({ kv, deviceId, limit = 20, nowMs = Date.now() }) {
   if (!kv) throw new Error("DEVICE_COMMANDS KV binding is required");
   if (!/^[a-zA-Z0-9_-]{8,80}$/.test(String(deviceId || ""))) {
     throw new Error("A valid deviceId is required");
@@ -67,10 +68,15 @@ export async function listDeviceCommands({ kv, deviceId, limit = 20 }) {
     );
 
     for (const record of records) {
-      if (record && (record.status === "queued" || record.status === "queued_pending_approval")) {
-        pending.push(record);
-        if (pending.length >= requestedLimit) break;
+      if (!record || (record.status !== "queued" && record.status !== "queued_pending_approval")) {
+        continue;
       }
+      // Missing or invalid timestamps are never trusted, including legacy or corrupted KV records.
+      if (!isCommandTimestampFresh(record.createdAt, nowMs)) {
+        continue;
+      }
+      pending.push(record);
+      if (pending.length >= requestedLimit) break;
     }
 
     if (page.list_complete === true || !page.cursor) break;
@@ -88,8 +94,11 @@ export async function acknowledgeDeviceCommand({ kv, deviceId, commandId, result
   if (!/^[a-f0-9-]{36}$/i.test(String(commandId || ""))) {
     throw new Error("A valid commandId is required");
   }
-  if (result !== null && result !== undefined &&
-      (typeof result !== "object" || Array.isArray(result))) {
+  if (
+    result !== null &&
+    result !== undefined &&
+    (typeof result !== "object" || Array.isArray(result))
+  ) {
     throw new Error("Command result must be a JSON object");
   }
   let serializedResult = "null";
@@ -115,10 +124,11 @@ export async function acknowledgeDeviceCommand({ kv, deviceId, commandId, result
     return { ok: true, commandId, status: "completed", duplicate: true };
   }
   record.status = "completed";
+  record.outcome = result && result.ok === false ? "failed" : "succeeded";
   record.completedAt = new Date().toISOString();
   record.result = result ?? null;
   await kv.put(key, JSON.stringify(record), { expirationTtl: 86400 });
-  return { ok: true, commandId, status: record.status };
+  return { ok: true, commandId, status: record.status, outcome: record.outcome };
 }
 
 export async function getDeviceCommand({ kv, deviceId, commandId }) {

@@ -56,3 +56,15 @@ test("desktop result cache keeps the original TTL and rejects expired entries", 
   assert.equal(payload.fresh.savedAt, now - 30_000);
   assert.equal(isResultCacheFresh(now + 1, now), false);
 });
+
+test("isCommandExpired rejects missing, malformed, expired, and future-dated command timestamps", async () => {
+  const { isCommandExpired, extractPairingCode } = await import("../src/agent.js");
+  const now = Date.parse("2026-11-05T10:00:00.000Z");
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T09:58:00.000Z" }, now), false);
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T09:54:00.000Z" }, now), true);
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T10:05:00.000Z" }, now), true);
+  assert.equal(isCommandExpired({ createdAt: "invalid" }, now), true);
+  assert.equal(isCommandExpired({}, now), true);
+  assert.equal(extractPairingCode("jarvis-pair://v1?code=xyzw6789"), "XYZW6789");
+  assert.equal(extractPairingCode("xyzw 6789"), "XYZW6789");
+});

@@ -1,3 +1,5 @@
+import { webCrypto } from "../utils.js";
+
 export const DEVICE_PROTOCOL_VERSION = "1.0.0";
 
 export const SUPPORTED_PLATFORMS = new Set([
@@ -61,7 +63,6 @@ function validateParams(action, raw, schema, platform) {
     }
     params.query = query;
   }
-
   if (platform === "android") {
     if (action === "files.read") {
       const documentId = typeof raw.documentId === "string" ? raw.documentId.trim() : "";
@@ -196,7 +197,7 @@ export function validateCommand(input, platform = "android") {
   if (!schema) throw new Error("Unsupported " + platform + " device action");
 
   return {
-    commandId: crypto.randomUUID(),
+    commandId: webCrypto.randomUUID(),
     action,
     capability: schema.capability,
     params: validateParams(action, input.params, schema, platform),
