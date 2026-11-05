@@ -1,0 +1,30 @@
+name: JARVIS macOS Connector Tests
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "desktop/macos/**"
+      - ".github/workflows/macos-connector.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktop/macos/**"
+      - ".github/workflows/macos-connector.yml"
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check macOS connector syntax
+        working-directory: desktop/macos
+        run: node --check src/agent.js
+      - name: Test folder access boundaries
+        working-directory: desktop/macos
+        run: npm test
