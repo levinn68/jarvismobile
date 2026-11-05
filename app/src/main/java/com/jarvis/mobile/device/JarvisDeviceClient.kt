@@ -121,6 +121,8 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun pollOnce(executor: DeviceCommandExecutor, onResult: (String) -> Unit = {}) {
         if (!isConfigured()) return
         io.execute {
+            var pendingApprovals = 0
+            var acknowledgementFailures = 0
             try {
                 heartbeat()
                 val commands = pollCommands()
@@ -134,16 +136,21 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
                         JSONObject().put("ok", false).put("error", e.message ?: "Execution failed")
                     }
                     if (result.optBoolean("pendingApproval", false)) {
-                        onResult("Menunggu persetujuan pengguna untuk ${command.optString("action")}")
+                        pendingApprovals++
                         continue
                     }
                     try {
                         acknowledge(id, result)
-                    } catch (e: Exception) {
-                        onResult("Acknowledgement failed: ${e.message}")
+                    } catch (_: Exception) {
+                        acknowledgementFailures++
                     }
                 }
-                onResult("Device sync completed")
+                val summary = buildList {
+                    add("Device sync completed")
+                    if (pendingApprovals > 0) add("$pendingApprovals command menunggu persetujuan lokal")
+                    if (acknowledgementFailures > 0) add("$acknowledgementFailures acknowledgement gagal")
+                }.joinToString("; ")
+                onResult(summary)
             } catch (e: Exception) {
                 onResult("Device sync failed: ${e.message}")
             }
