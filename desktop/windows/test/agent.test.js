@@ -45,7 +45,7 @@ test("safeTarget rejects traversal and absolute paths", async () => {
 
 
 test("result cache preserves original timestamps instead of extending TTL on every write", async () => {
-  const { buildResultCachePayload } = await import("../src/agent.js");
+  const { buildResultCachePayload, isResultCacheFresh } = await import("../src/agent.js");
   const now = 1_000_000;
   const results = new Map([
     ["fresh", { ok: true }],
@@ -59,4 +59,7 @@ test("result cache preserves original timestamps instead of extending TTL on eve
   assert.deepEqual(Object.keys(payload), ["fresh"]);
   assert.equal(payload.fresh.savedAt, now - 60_000);
   assert.deepEqual(payload.fresh.result, { ok: true });
+  assert.equal(isResultCacheFresh(now - 60_000, now), true);
+  assert.equal(isResultCacheFresh(now - 16 * 60_000, now), false);
+  assert.equal(isResultCacheFresh(now + 1, now), false);
 });
