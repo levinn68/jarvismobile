@@ -371,33 +371,27 @@ async function callOpenAICompatible(provider, env, prompt, system, keyName, hist
 
 async function askProvider(provider, env, prompt, system, options = {}) {
   const history = options.history || [];
-  const customGeminiKey =
-    provider === "gemini" && typeof options.geminiApiKey === "string" && options.geminiApiKey.trim().length >= 20
-      ? options.geminiApiKey.trim()
-      : "";
   const keys = keyOrder(provider, env);
-  if (!keys.length && !customGeminiKey) throw new Error(`No configured key for ${provider}`);
+  if (!keys.length) throw new Error(`No configured key for ${provider}`);
 
-  const candidateSlots = customGeminiKey ? ["__CUSTOM_KEY__", ...keys] : keys;
+  const candidateSlots = keys;
   let lastError;
   for (let i = 0; i < candidateSlots.length; i++) {
     const slot = candidateSlots[i];
     try {
       const answer = await withTimeout(
         provider === "gemini"
-          ? callGemini(env, prompt, system, slot === "__CUSTOM_KEY__" ? customGeminiKey : env[slot], history)
+          ? callGemini(env, prompt, system, env[slot], history)
           : callOpenAICompatible(provider, env, prompt, system, slot, history),
         45000,
         provider
       );
-      if (slot !== "__CUSTOM_KEY__") keyRotator.success(provider, slot);
+      keyRotator.success(provider, slot);
       return { answer, keySlot: i + 1 };
     } catch (error) {
       lastError = error;
       const classification = classifyProviderError(error);
-      if (slot !== "__CUSTOM_KEY__") {
-        keyRotator.failure(provider, slot, { status: classification.status });
-      }
+      keyRotator.failure(provider, slot, { status: classification.status });
       const retryable =
         isRetryableProviderError(error) ||
         classification.retryable ||
@@ -679,7 +673,7 @@ export async function handleChat(body, env, requestHeaders = null, authUser = nu
     const fallbackProviders = ["groq", "openai", "openrouter", "gemini", "deepseek"].filter(
       (provider) =>
         !plan.agents.includes(provider) &&
-        (keyOrder(provider, env).length > 0 || (provider === "gemini" && Boolean(geminiApiKey)))
+        keyOrder(provider, env).length > 0
     );
     const fallbackResults = await Promise.all(
       fallbackProviders.map((provider) =>
