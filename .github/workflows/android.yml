@@ -54,7 +54,7 @@ jobs:
 
       - name: Validate Google OAuth Web Client ID format
         run: |
-          if [[ ! "$GOOGLE_WEB_CLIENT_ID" =~ ^[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com$ ]]; then
+          if [[ ! "$GOOGLE_WEB_CLIENT_ID" =~ ^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$ ]]; then
             echo "::error::GOOGLE_WEB_CLIENT_ID is missing or malformed. Set it to the OAuth client ID of type Web application. The value is intentionally not printed."
             exit 1
           fi
