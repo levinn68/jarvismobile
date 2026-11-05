@@ -15,6 +15,32 @@ const MAX_FILE_BYTES = 64 * 1024;
 const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
 const appIndex = new Map();
 const pendingAcknowledgements = new Map();
+const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
+const RESULT_CACHE_LIMIT = 500;
+const resultCachePath = () => path.join(path.dirname(credentialPath()), "command-results.json");
+
+async function loadResultCache() {
+  try {
+    const raw = JSON.parse(await fs.readFile(resultCachePath(), "utf8"));
+    const now = Date.now();
+    for (const [id, entry] of Object.entries(raw || {})) {
+      if (entry && Number.isFinite(entry.savedAt) && now - entry.savedAt < RESULT_CACHE_TTL_MS && entry.result && typeof entry.result === "object") {
+        pendingAcknowledgements.set(id, entry.result);
+      }
+    }
+  } catch { /* Missing or invalid cache is treated as empty. */ }
+}
+
+async function persistResultCache() {
+  const now = Date.now();
+  const entries = [...pendingAcknowledgements.entries()].slice(-RESULT_CACHE_LIMIT);
+  const payload = Object.fromEntries(entries.map(([id, result]) => [id, { savedAt: now, result }]));
+  const file = resultCachePath();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temporary = file + ".tmp";
+  await fs.writeFile(temporary, JSON.stringify(payload), { mode: 0o600 });
+  await fs.rename(temporary, file);
+}
 
 async function apiRequest(method, endpoint, token, body) {
   const response = await fetch(API + endpoint, {
@@ -269,9 +295,11 @@ async function pollOnce() {
       try { result = await execute(command); }
       catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
       pendingAcknowledgements.set(command.commandId, result);
+      await persistResultCache();
     }
     await apiRequest("POST", "/v1/device/commands/ack", DEVICE_TOKEN, { deviceId: DEVICE_ID, commandId: command.commandId, result });
     pendingAcknowledgements.delete(command.commandId);
+    await persistResultCache();
   }
 }
 
@@ -288,6 +316,7 @@ async function resolveIdentity() {
 async function run() {
   if (process.platform !== "win32") throw new Error("This connector build targets Windows.");
   await resolveIdentity();
+  await loadResultCache();
   if (!DEVICE_ID || !DEVICE_TOKEN) {
     throw new Error("Missing credentials. Pair first (JARVIS_PAIRING_CODE=XXXXXXXX npm run pair) or set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN.");
   }
