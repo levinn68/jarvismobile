@@ -106,10 +106,6 @@ function buildContextualCards(answer) {
   if (keyPoint) {
     cards.push({ id: "key-insight", type: "text", title: "Inti jawaban", data: { text: keyPoint.slice(0, 1200) }, interactive: false });
   }
-  const imageMatches = [...source.matchAll(/!\\[([^\\]]*)\\]\\((https?:\\/\\/[^ )]+)\\)/g)];
-  for (const [index, match] of imageMatches.slice(0, 6).entries()) {
-    cards.push({ id: `image-${index + 1}`, type: "image", title: match[1] || "Visual pendukung", data: { image: match[2], alt: match[1] || "Visual pendukung" }, interactive: false });
-  }
   if (!cards.length) {
     cards.push({ id: "context-summary", type: "text", title: "Ringkasan visual", data: { text: source.slice(0, 1200) }, interactive: false });
   }
