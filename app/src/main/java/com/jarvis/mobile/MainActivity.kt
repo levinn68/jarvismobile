@@ -3472,6 +3472,8 @@ private fun JarvisScreen(
                         }
                     }
 
+                }
+
                 if (accountPanel) {
                     AlertDialog(
                         onDismissRequest = { accountPanel = false },
