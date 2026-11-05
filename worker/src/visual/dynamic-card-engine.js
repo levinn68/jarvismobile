@@ -1,2 +1,2 @@
 const TYPES=new Set(["text","image","product","map","chart","table","file","progress","device"]);
-export function normalizeCards(cards=[],limit=5){return (Array.isArray(cards)?cards:[]).slice(0,limit).map((card,index)=>({id:String(card.id||"card-"+index),type:TYPES.has(card.type)?card.type:"text",title:String(card.title||"").slice(0,120),data:card.data??null,interactive:Boolean(card.interactive)}));}
+export function normalizeCards(cards=[],limit=8){return (Array.isArray(cards)?cards:[]).slice(0,limit).map((card,index)=>({id:String(card.id||"card-"+index),type:TYPES.has(card.type)?card.type:"text",title:String(card.title||"").slice(0,120),data:card.data??null,interactive:Boolean(card.interactive)}));}
