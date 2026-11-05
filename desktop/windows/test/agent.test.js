@@ -63,3 +63,15 @@ test("result cache preserves original timestamps instead of extending TTL on eve
   assert.equal(isResultCacheFresh(now - 16 * 60_000, now), false);
   assert.equal(isResultCacheFresh(now + 1, now), false);
 });
+
+test("isCommandExpired rejects missing, malformed, expired, and future-dated command timestamps", async () => {
+  const { isCommandExpired, extractPairingCode } = await import("../src/agent.js");
+  const now = Date.parse("2026-11-05T10:00:00.000Z");
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T09:58:00.000Z" }, now), false);
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T09:54:00.000Z" }, now), true);
+  assert.equal(isCommandExpired({ createdAt: "2026-11-05T10:05:00.000Z" }, now), true);
+  assert.equal(isCommandExpired({ createdAt: "not-a-timestamp" }, now), true);
+  assert.equal(isCommandExpired({}, now), true);
+  assert.equal(extractPairingCode("jarvis-pair://v1?code=abcd2345"), "ABCD2345");
+  assert.equal(extractPairingCode(" abcd 2345 "), "ABCD2345");
+});
