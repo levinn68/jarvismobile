@@ -49,5 +49,5 @@ export function requestOriginAllowed(request, env) {
   if (!origin) return true;
   const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
     .split(",").map((item) => item.trim()).filter(Boolean);
-  return allowed.includes(origin);
+  return allowed.length === 0 || allowed.includes(origin);
 }
