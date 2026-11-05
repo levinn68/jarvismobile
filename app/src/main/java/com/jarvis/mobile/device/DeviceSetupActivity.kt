@@ -3,7 +3,8 @@ package com.jarvis.mobile.device
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
-import android.content.ClipboardManagerimport android.content.Intent
+import android.content.ClipboardManager
+import android.content.Intent
 import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
