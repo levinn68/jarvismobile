@@ -20,7 +20,7 @@ import { jsonResponse, boundedString, safeError } from "./utils.js";
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Jarvis-Gemini-Key, X-Client-Request-Id",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id",
 };
 
 const keyRotator = createKeyRotator({ cooldownMs: 30000, maxFailures: 3 });
