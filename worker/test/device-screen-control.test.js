@@ -112,3 +112,45 @@ test("screen read is sensitive and must be locally approved", () => {
   assert.equal(decision.requiresConfirmation, true);
   assert.equal(decision.onDeviceApprovalRequired, true);
 });
+
+
+test("command polling paginates past completed commands to find pending work", async () => {
+  const store = new Map();
+  for (let i = 0; i < 100; i++) {
+    const status = i < 60 ? "completed" : (i % 2 === 0 ? "queued_pending_approval" : "queued");
+    store.set("command:android-page-test:" + String(i).padStart(3, "0"), JSON.stringify({
+      commandId: String(i).padStart(8, "0") + "-0000-0000-0000-000000000000",
+      status,
+      sequence: i
+    }));
+  }
+
+  const kv = {
+    async get(key) { return store.get(key) ?? null; },
+    async list({ prefix, cursor }) {
+      const all = [...store.keys()].filter((key) => key.startsWith(prefix)).sort();
+      const offset = cursor ? Number(cursor) : 0;
+      const keys = all.slice(offset, offset + 25).map((name) => ({ name }));
+      const next = offset + keys.length;
+      return {
+        keys,
+        cursor: next < all.length ? String(next) : undefined,
+        list_complete: next >= all.length
+      };
+    }
+  };
+
+  const pending = await listDeviceCommands({ kv, deviceId: "android-page-test", limit: 20 });
+  assert.equal(pending.length, 20);
+  assert.ok(pending.every((item) => item.sequence >= 60));
+  assert.ok(pending.every((item) => item.status === "queued" || item.status === "queued_pending_approval"));
+});
+
+test("command polling validates device id and bounds requested result count", async () => {
+  const kv = {
+    async get() { return null; },
+    async list() { return { keys: [], list_complete: true }; }
+  };
+  await assert.rejects(() => listDeviceCommands({ kv, deviceId: "../other" }), /valid deviceId/);
+  assert.deepEqual(await listDeviceCommands({ kv, deviceId: "android-valid-123", limit: 5000 }), []);
+});
