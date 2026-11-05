@@ -35,6 +35,10 @@ Do not add a dependency just because a repository is popular. Porting React, Web
 | [Awesome Claude Skills](https://github.com/ComposioHQ/awesome-claude-skills) | Curated directory of Claude skills and tools | Discovery catalogue only; individual skills need their own applicability and license review before adoption. |
 | [Archify](https://github.com/tt-ali/archify) | Screenshot lists the name, but the repository could not be resolved at the supplied owner/repository path during this audit | **Unverified.** No source code copied or recommendation made until the exact repository URL is confirmed. |
 
+## Vendored UI/UX Pro Max source
+
+The official skill source is bundled in the repository at .claude/skills/ui-ux-pro-max/ with its MIT license, instructions, search script, design databases (styles, products, colors, typography, UI reasoning and UX guidelines), and the Jetpack Compose stack database. This preserves the upstream source and allows the project team to query the full dataset locally. It is a developer-time reference; it is not shipped inside the APK and does not become a runtime dependency.
+
 ## Applied to the current UI branch
 
 The current implementation branch applies a first screen-level pass:
