@@ -313,7 +313,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
 });
 
 test("Batch 8.5 Remediation 3 & 4 — Android Fish Audio fallback transparency, Crash Guard, and Zero-Deletion Verification", async () => {
-  const mainKt = fs.readFileSync(path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
+  const mainKt = fs.readFileSync(path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
   const collabKt = fs.readFileSync(
     path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/ui/JarvisCollaborationScreens.kt"),
     "utf8"
