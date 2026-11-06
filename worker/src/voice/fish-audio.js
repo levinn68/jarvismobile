@@ -6,5 +6,5 @@ export function detectSpeechLanguage(text) {
 }
 export function fishVoiceConfig(env,text) {
  const language=detectSpeechLanguage(text);
- return {language,voiceId:language==="en"?(env.FISH_VOICE_ID_EN||env.FISH_VOICE_ID||"612b878b113047d9a770c069c8b4fdfe"):(env.FISH_VOICE_ID_ID||env.FISH_VOICE_ID||"612b878b113047d9a770c069c8b4fdfe"),model:env.FISH_MODEL||"s2.1-pro-free",configured:Boolean(env.FISH_API_KEY)};
+ return {language,voiceId:language==="en"?(env.FISH_VOICE_ID_EN||env.FISH_VOICE_ID||"c7b2977d49894310866a70e6412afe10"):(env.FISH_VOICE_ID_ID||env.FISH_VOICE_ID||"c7b2977d49894310866a70e6412afe10"),model:env.FISH_MODEL||"s2.1-pro-free",configured:Boolean(env.FISH_API_KEY)};
 }
