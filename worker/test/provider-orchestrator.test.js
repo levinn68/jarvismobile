@@ -16,7 +16,6 @@ test("lists all configured JARVIS providers without exposing credentials", () =>
 test("PeaProxy is opt-in and requires HTTPS, local gateway key, and exact model id", () => {
   assert.deepEqual(listConfiguredJarvisProviders({
     PEAPROXY_BASE_URL: "http://127.0.0.1:8317/v1",
-    PEAPROXY_API_KEY: "local-key",
     PEAPROXY_MODEL: "some-model",
   }), []);
   assert.deepEqual(listConfiguredJarvisProviders({
@@ -25,8 +24,9 @@ test("PeaProxy is opt-in and requires HTTPS, local gateway key, and exact model 
   }), []);
   assert.deepEqual(listConfiguredJarvisProviders({
     PEAPROXY_BASE_URL: "https://proxy.example/v1",
-    PEAPROXY_API_KEY: "local-key",
     PEAPROXY_MODEL: "exact-live-model-id",
+    PEAPROXY_ACCESS_CLIENT_ID: "cf-id",
+    PEAPROXY_ACCESS_CLIENT_SECRET: "cf-secret",
   }), ["peaproxy"]);
 });
 
@@ -66,8 +66,9 @@ test("PeaProxy provider sends OpenAI-compatible chat request and reads assistant
     const result = await runJarvisProviders({
       env: {
         PEAPROXY_BASE_URL: "https://proxy.example/v1/",
-        PEAPROXY_API_KEY: "local-gateway-key",
-        PEAPROXY_MODEL: "gemini-model-from-catalog",
+            PEAPROXY_MODEL: "gemini-model-from-catalog",
+        PEAPROXY_ACCESS_CLIENT_ID: "cf-client-id",
+        PEAPROXY_ACCESS_CLIENT_SECRET: "cf-client-secret",
         PEAPROXY_ACCESS_CLIENT_ID: "cf-client-id",
         PEAPROXY_ACCESS_CLIENT_SECRET: "cf-client-secret",
       },
@@ -78,7 +79,6 @@ test("PeaProxy provider sends OpenAI-compatible chat request and reads assistant
     assert.equal(result.provider, "peaproxy");
     assert.equal(result.result, "Hello from PeaProxy Gemini.");
     assert.equal(calledUrl, "https://proxy.example/v1/chat/completions");
-    assert.equal(calledHeaders.Authorization, "Bearer local-gateway-key");
     assert.equal(calledHeaders["CF-Access-Client-Id"], "cf-client-id");
     assert.equal(calledHeaders["CF-Access-Client-Secret"], "cf-client-secret");
     assert.equal(calledBody.model, "gemini-model-from-catalog");
@@ -105,8 +105,9 @@ test("falls back to PeaProxy after the preferred provider fails", async () => {
       env: {
         GROQ_API_KEY_1: "groq-test",
         PEAPROXY_BASE_URL: "https://proxy.example/v1",
-        PEAPROXY_API_KEY: "local-gateway-key",
         PEAPROXY_MODEL: "gemini-model-from-catalog",
+        PEAPROXY_ACCESS_CLIENT_ID: "cf-client-id",
+        PEAPROXY_ACCESS_CLIENT_SECRET: "cf-client-secret",
       },
       messages: [{ role: "user", content: "Hello" }],
       level: "simple",
