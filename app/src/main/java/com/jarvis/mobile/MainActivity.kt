@@ -34,6 +34,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -174,23 +175,85 @@ data class ChatResponsePayload(
 
 private const val MAX_VISUAL_CARDS = 5
 
-private fun defaultVisualFallbackFor(query: String, isError: Boolean = false): List<Pair<String, String>> {
-    val q = query.lowercase(Locale.ROOT)
+private fun extractInlineMarkdownImages(markdown: String): List<Pair<String, String>> {
+    val matches = Regex("!\\[([^]]*)\\]\\((https://[^ )]+)\\)").findAll(markdown)
+    return matches.mapNotNull { match ->
+        val title = match.groupValues[1].trim().ifBlank { "Referensi Visual JARVIS" }
+        val url = match.groupValues[2].trim()
+        if (url.startsWith("https://")) title to url else null
+    }.distinctBy { it.second }.take(MAX_VISUAL_CARDS).toList()
+}
+
+private fun extractConciseVoiceSummary(fullAnswer: String): String {
+    val cleaned = fullAnswer
+        .replace(Regex("```[\\s\\S]*?```"), " ")
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("(?m)^\\s*\\|.*\\|\\s*$"), " ")
+        .replace(Regex("[#*>_`~]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (cleaned.isBlank()) return "Respons visual telah ditampilkan pada layar HUD."
+    val afterConclusion = fullAnswer
+        .substringAfter("KESIMPULAN JARVIS", "")
+        .ifBlank { fullAnswer.substringAfter("JAWABAN AKHIR", "") }
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("[#*>_`~|]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val source = if (afterConclusion.length >= 24) afterConclusion else cleaned
+    val sentences = source.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+    val summary = sentences.take(2).joinToString(" ").ifBlank { source }
+    return if (summary.length > 260) summary.take(257).trimEnd() + "..." else summary
+}
+
+private fun defaultVisualFallbackFor(
+    query: String,
+    answer: String = "",
+    isError: Boolean = false
+): List<Pair<String, String>> {
+    val inlineFromAnswer = extractInlineMarkdownImages(answer)
+    if (inlineFromAnswer.isNotEmpty() && !isError) {
+        return inlineFromAnswer.take(MAX_VISUAL_CARDS)
+    }
+    val q = (query + " " + answer.take(400)).lowercase(Locale.ROOT)
     return when {
         isError -> listOf(
-            "Status Diagnostik Sistem JARVIS" to "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80"
+            "Status Diagnostik Sistem JARVIS" to "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80",
+            "Pemulihan Koneksi & Jaringan HUD" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
         )
-        q.contains("windows") || q.contains("laptop") || q.contains("pc") || q.contains("komputer") || q.contains("macos") || q.contains("linux") -> listOf(
+        q.contains("windows") || q.contains("laptop") || q.contains("pc") || q.contains("komputer") || q.contains("macos") || q.contains("linux") || q.contains("desktop") -> listOf(
             "Kontrol Perangkat & Sistem Desktop" to "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=900&q=80",
-            "Telemetri Jaringan & Perangkat" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
+            "Telemetri Jaringan & Workstation" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
         )
-        q.contains("baterai") || q.contains("status") || q.contains("aplikasi") || q.contains("notifikasi") || q.contains("kalender") || q.contains("kontak") || q.contains("layar") -> listOf(
+        q.contains("baterai") || q.contains("status") || q.contains("aplikasi") || q.contains("notifikasi") || q.contains("kalender") || q.contains("kontak") || q.contains("layar") || q.contains("android") || q.contains("rog") || q.contains("hp") -> listOf(
             "Telemetri Perangkat Android" to "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=900&q=80",
-            "Integrasi Sistem JARVIS" to "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=900&q=80"
+            "Integrasi Sistem JARVIS Mobile" to "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("kode") || q.contains("coding") || q.contains("python") || q.contains("kotlin") || q.contains("javascript") || q.contains("html") || q.contains("css") || q.contains("api") || q.contains("debug") || q.contains("program") -> listOf(
+            "Arsitektur Kode & Engineering" to "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=900&q=80",
+            "Analisis Algoritma & Terminal" to "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("harga") || q.contains("keuangan") || q.contains("anggaran") || q.contains("investasi") || q.contains("saham") || q.contains("crypto") || q.contains("rupiah") || q.contains("biaya") -> listOf(
+            "Analisis Finansial & Anggaran" to "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80",
+            "Strategi Portofolio & Ekonomi" to "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("travel") || q.contains("itinerary") || q.contains("bali") || q.contains("yogya") || q.contains("liburan") || q.contains("hotel") || q.contains("wisata") || q.contains("penerbangan") -> listOf(
+            "Eksplorasi Destinasi & Rute" to "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+            "Perencanaan Perjalanan Terpadu" to "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("game") || q.contains("gaming") || q.contains("film") || q.contains("musik") || q.contains("roblox") || q.contains("esport") -> listOf(
+            "Performa Gaming & Hiburan Digital" to "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=900&q=80",
+            "Ekosistem Audio & Visual" to "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("belajar") || q.contains("materi") || q.contains("surya") || q.contains("sains") || q.contains("fisika") || q.contains("matematika") || q.contains("sejarah") || q.contains("soal") -> listOf(
+            "Eksplorasi Sains & Pengetahuan" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80",
+            "Modul Pembelajaran Terstruktur" to "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=900&q=80"
         )
         else -> listOf(
-            "Analisis Visual JARVIS HUD" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80",
-            "Pusat Pemrosesan AI Council" to "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=900&q=80"
+            "Analisis Visual JARVIS HUD" to "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=900&q=80",
+            "Pusat Pemrosesan AI Council" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80"
         )
     }.take(MAX_VISUAL_CARDS)
 }
@@ -339,10 +402,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun stopSpeaking(resumeListeningIfActive: Boolean = false) {
+        speechGeneration.incrementAndGet()
+        activeTtsConnection.getAndSet(null)?.let { conn -> runCatching { conn.disconnect() } }
+        geminiSpeechInProgress = false
+        suppressRecognizerCallbacks = false
+        runCatching { tts?.stop() }
+        runCatching { speechPlayer?.stop() }
+        runCatching { speechPlayer?.release() }
+        speechPlayer = null
+        if (resumeListeningIfActive && voiceModeEnabled && !isFinishing && !isDestroyed) {
+            voiceStatus.value = "SPEECH INTERRUPTED · LISTENING"
+            handler.post { restartListeningSession() }
+        } else if (!voiceModeEnabled) {
+            voiceStatus.value = "MIC OFF"
+        } else {
+            voiceStatus.value = "VOICE STANDBY"
+        }
+    }
+
     private fun stopVoiceMode() {
         voiceModeEnabled = false
         voiceModeState.value = false
         handler.removeCallbacks(listeningRestart)
+        stopSpeaking(resumeListeningIfActive = false)
         recognitionActive = false
         recognitionStartPending = false
         clapDetector.reset()
@@ -561,6 +644,10 @@ class MainActivity : ComponentActivity() {
     @Volatile private var recognitionActive = false
     @Volatile private var recognitionStartPending = false
     @Volatile private var suppressRecognizerCallbacks = false
+    @Volatile private var ttsInitialized = false
+    private val speechGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+    private val activeTtsConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
+    @Volatile private var activeChatCancel: (() -> Unit)? = null
     private var speechPlayer: MediaPlayer? = null
     private var voiceModeEnabled = false
     private var recognitionLanguage = "id-ID"
@@ -583,22 +670,37 @@ class MainActivity : ComponentActivity() {
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         tts = TextToSpeech(this) { result ->
             if (result == TextToSpeech.SUCCESS) {
+                ttsInitialized = true
                 val voices = tts?.voices.orEmpty()
                 val indoVoice = voices.firstOrNull { it.locale.toLanguageTag().equals("id-ID", true) }
                 if (indoVoice != null) tts?.voice = indoVoice else tts?.language = Locale("id", "ID")
                 tts?.setSpeechRate(0.88f)
                 tts?.setPitch(0.80f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { runOnUiThread { voiceStatus.value = "JARVIS SPEAKING" } }
+                    override fun onStart(utteranceId: String?) {
+                        runOnUiThread {
+                            geminiSpeechInProgress = true
+                            voiceStatus.value = "JARVIS SPEAKING"
+                        }
+                    }
                     override fun onDone(utteranceId: String?) {
-                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.post { restartListeningSession() }
+                        runOnUiThread {
+                            geminiSpeechInProgress = false
+                            if (voiceModeEnabled) restartListeningSession()
+                        }
                     }
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
-                        if (!geminiSpeechInProgress && voiceModeEnabled) handler.post { restartListeningSession() }
+                        runOnUiThread {
+                            geminiSpeechInProgress = false
+                            if (voiceModeEnabled) restartListeningSession()
+                        }
                     }
                 })
                 if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
+            } else {
+                ttsInitialized = false
+                voiceStatus.value = "ANDROID TTS ENGINE UNAVAILABLE"
             }
         }
         createSpeechRecognizer()
@@ -628,6 +730,7 @@ class MainActivity : ComponentActivity() {
                 rmsLevel = liveRms.value,
                 onConsumed = { voiceText.value = "" },
                 onSpeak = { speak(it) },
+                onStopSpeaking = { stopSpeaking(resumeListeningIfActive = voiceModeEnabled) },
                 onStartListening = { startListening() },
                 externalVoiceStop = !voiceModeState.value,
                 onModeChanged = { voiceMode ->
@@ -864,7 +967,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     val finalImages = if (parsedProducts.isEmpty() && parsedImages.isEmpty()) {
-                        defaultVisualFallbackFor(prompt)
+                        defaultVisualFallbackFor(prompt, answer = answer)
                     } else {
                         parsedImages.take(MAX_VISUAL_CARDS)
                     }
@@ -891,10 +994,12 @@ class MainActivity : ComponentActivity() {
             )
             if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(finalPayload) }
         }.start()
-        return {
+        val cancelFn: () -> Unit = {
             cancelled.set(true)
             activeConnection.getAndSet(null)?.disconnect()
         }
+        activeChatCancel = cancelFn
+        return cancelFn
     }
 
     private fun speak(text: String) {
@@ -907,6 +1012,11 @@ class MainActivity : ComponentActivity() {
             .trim()
             .take(1800)
         if (cleanSpeech.isBlank()) return
+        val gen = speechGeneration.incrementAndGet()
+        activeTtsConnection.getAndSet(null)?.let { prev -> runCatching { prev.disconnect() } }
+        runCatching { speechPlayer?.stop() }
+        runCatching { speechPlayer?.release() }
+        speechPlayer = null
         geminiSpeechInProgress = true
         recognitionActive = false
         recognitionStartPending = false
@@ -914,16 +1024,20 @@ class MainActivity : ComponentActivity() {
         recognizer?.cancel()
         clapDetector.reset()
         tts?.stop()
+        voiceStatus.value = "JARVIS SPEAKING"
         Thread {
             var connection: HttpURLConnection? = null
             try {
+                if (speechGeneration.get() != gen) return@Thread
                 var accessToken = try { supabaseClient.currentAccessToken() } catch (_: Exception) { "" }
                 if (accessToken.isBlank()) throw IllegalStateException("Supabase session required for Worker TTS")
                 var resolvedAudio: ByteArray? = null
                 val workerBaseUrl = JarvisDeviceClient.resolveWorkerBaseUrl(this@MainActivity)
                 for (attempt in 1..2) {
+                    if (speechGeneration.get() != gen) return@Thread
                     val endpoint = URL("$workerBaseUrl/v1/tts")
                     connection = endpoint.openConnection() as HttpURLConnection
+                    activeTtsConnection.set(connection)
                     connection.requestMethod = "POST"
                     connection.connectTimeout = 20000
                     connection.readTimeout = 90000
@@ -951,18 +1065,29 @@ class MainActivity : ComponentActivity() {
                     resolvedAudio = connection.inputStream.use { it.readBytes() }
                     break
                 }
+                if (speechGeneration.get() != gen) return@Thread
                 val audio = resolvedAudio ?: ByteArray(0)
                 if (audio.isEmpty()) throw IllegalStateException("Fish Audio returned empty audio")
                 val audioFile = File(cacheDir, "jarvis_mcu_voice.mp3")
                 FileOutputStream(audioFile).use { it.write(audio) }
                 handler.post {
+                    if (speechGeneration.get() != gen) return@post
                     try {
                         speechPlayer?.release()
                         speechPlayer = MediaPlayer().apply {
-                            setAudioStreamType(android.media.AudioManager.STREAM_MUSIC)
+                            setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
                             setVolume(1.0f, 1.0f)
                             setDataSource(audioFile.absolutePath)
                             setOnPreparedListener {
+                                if (speechGeneration.get() != gen) {
+                                    it.release()
+                                    return@setOnPreparedListener
+                                }
                                 setVolume(1.0f, 1.0f)
                                 voiceStatus.value = "JARVIS SPEAKING"
                                 it.start()
@@ -971,15 +1096,18 @@ class MainActivity : ComponentActivity() {
                                 it.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                handler.post { restartListeningSession() }
+                                if (speechGeneration.get() == gen) {
+                                    handler.post { restartListeningSession() }
+                                }
                             }
                             setOnErrorListener { player, _, _ ->
                                 player.release()
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
-                                voiceStatus.value = "AUDIO PLAYBACK ERROR · USING ANDROID TTS"
-                                geminiSpeechInProgress = false
-                                speakWithAndroid(cleanSpeech)
+                                if (speechGeneration.get() == gen) {
+                                    voiceStatus.value = "AUDIO PLAYBACK ERROR · USING ANDROID TTS"
+                                    speakWithAndroid(cleanSpeech)
+                                }
                                 true
                             }
                             prepareAsync()
@@ -988,16 +1116,21 @@ class MainActivity : ComponentActivity() {
                         speechPlayer?.release()
                         speechPlayer = null
                         geminiSpeechInProgress = false
-                        voiceStatus.value = "VOICE PLAYBACK ERROR · USING ANDROID TTS"
-                        speakWithAndroid(cleanSpeech)
+                        if (speechGeneration.get() == gen) {
+                            voiceStatus.value = "VOICE PLAYBACK ERROR · USING ANDROID TTS"
+                            speakWithAndroid(cleanSpeech)
+                        }
                     }
                 }
             } catch (_: Exception) {
                 handler.post {
-                    geminiSpeechInProgress = false
-                    speakWithAndroid(cleanSpeech)
+                    if (speechGeneration.get() == gen) {
+                        geminiSpeechInProgress = false
+                        speakWithAndroid(cleanSpeech)
+                    }
                 }
             } finally {
+                activeTtsConnection.compareAndSet(connection, null)
                 connection?.disconnect()
             }
         }.start()
@@ -1017,9 +1150,10 @@ class MainActivity : ComponentActivity() {
     }
     private fun speakWithAndroid(text: String) {
         val engine = tts
-        if (engine == null) {
+        if (engine == null || !ttsInitialized) {
             geminiSpeechInProgress = false
             suppressRecognizerCallbacks = false
+            voiceStatus.value = "TTS UNAVAILABLE · VISUAL RESPONSE ACTIVE"
             handler.post { restartListeningSession() }
             return
         }
@@ -1028,6 +1162,7 @@ class MainActivity : ComponentActivity() {
         if (status == TextToSpeech.ERROR) {
             geminiSpeechInProgress = false
             suppressRecognizerCallbacks = false
+            voiceStatus.value = "TTS PLAYBACK ERROR · RESUMING MIC"
             handler.post { restartListeningSession() }
         }
     }
@@ -1057,11 +1192,23 @@ class MainActivity : ComponentActivity() {
                         voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
                         return
                     }
+                    val statusHint = when (error) {
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "LISTENING · STANDBY"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "VOICE ENGINE BUSY · RETRYING"
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "VOICE NETWORK ERROR · RETRYING"
+                        SpeechRecognizer.ERROR_AUDIO -> "AUDIO INPUT ERROR · RECONNECTING"
+                        else -> "LISTENING · RECONNECTING"
+                    }
                     // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
-                    voiceStatus.value = if (voiceModeEnabled) "LISTENING · RECONNECTING" else "MIC OFF"
+                    voiceStatus.value = if (voiceModeEnabled) statusHint else "MIC OFF"
                     if (voiceModeEnabled) {
                         handler.removeCallbacks(listeningRestart)
-                        handler.postDelayed(listeningRestart, if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) 300L else 850L)
+                        val delayMs = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 300L
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1200L
+                            else -> 850L
+                        }
+                        handler.postDelayed(listeningRestart, delayMs)
                     }
                 }
                 override fun onResults(results: Bundle?) {
@@ -1230,6 +1377,9 @@ class MainActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        activeChatCancel?.invoke()
+        activeChatCancel = null
+        activeTtsConnection.getAndSet(null)?.let { conn -> runCatching { conn.disconnect() } }
         clapDetector.reset()
         stopVoiceForegroundService()
         runCatching { unregisterReceiver(voiceStopReceiver) }
@@ -1413,15 +1563,30 @@ private fun RemoteMarkdownImage(alt: String, url: String) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(16.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(156.dp)
+                            .background(Brush.verticalGradient(listOf(Color(0xFF0A1D30), Color(0xFF050E18))))
+                            .padding(16.dp)
                     ) {
-                        Icon(Icons.Default.BrokenImage, null, tint = WarnAmber.copy(alpha = 0.8f), modifier = Modifier.size(28.dp))
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = "Visual HUD Fallback", tint = Cyan.copy(alpha = 0.8f), modifier = Modifier.size(28.dp))
                         Text(
-                            text = alt.ifBlank { "Visual tidak dapat dimuat (ketuk ikon kanan atas untuk membuka sumber)" },
-                            color = TextMuted,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center
+                            text = alt.ifBlank { "Kartu Visual JARVIS HUD" },
+                            color = Ice,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Text(
+                            text = "VISUAL HUD FALLBACK · PRATINJAU SIAP",
+                            color = Cyan.copy(alpha = 0.75f),
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(Modifier.weight(1f))
                     }
                 }
             }
@@ -1534,6 +1699,7 @@ private fun ProductCarouselCards(products: List<VisualProduct>) {
                     .padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                var imgLoadError by remember(item.image) { mutableStateOf(false) }
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1541,17 +1707,18 @@ private fun ProductCarouselCards(products: List<VisualProduct>) {
                         .clip(RoundedCornerShape(10.dp))
                         .background(Color(0xFF040B14))
                 ) {
-                    if (item.image.isNotBlank()) {
+                    if (item.image.isNotBlank() && !imgLoadError) {
                         AsyncImage(
                             model = ImageRequest.Builder(context).data(item.image)
                                 .memoryCacheKey(item.image).diskCacheKey(item.image).build(),
                             contentDescription = item.title,
+                            onError = { imgLoadError = true },
                             modifier = Modifier.fillMaxSize(),
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop
                         )
                     } else {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Default.ShoppingBag, null, tint = Cyan.copy(alpha = 0.4f), modifier = Modifier.size(32.dp))
+                            Icon(Icons.Default.ShoppingBag, contentDescription = item.title, tint = Cyan.copy(alpha = 0.55f), modifier = Modifier.size(30.dp))
                         }
                     }
                     Box(
@@ -2017,7 +2184,10 @@ private fun SourceLogo(url: String) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             runCatching {
                 val encoded = URLEncoder.encode(url, "UTF-8")
-                URL("https://www.google.com/s2/favicons?domain_url=" + encoded + "&sz=64").openStream().use { BitmapFactory.decodeStream(it) }
+                val conn = URL("https://www.google.com/s2/favicons?domain_url=" + encoded + "&sz=64").openConnection() as HttpURLConnection
+                conn.connectTimeout = 4000
+                conn.readTimeout = 4000
+                conn.inputStream.use { BitmapFactory.decodeStream(it) }
             }.getOrNull()
         }
     }
@@ -2329,6 +2499,27 @@ private fun HomeHeroOrb(modifier: Modifier, spin: Float, breathe: Float) {
 }
 
 @Composable
+private fun VoiceHudClock() {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val clock12 = remember(now / 1000L) {
+        SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
+    }
+    Text(
+        text = clock12,
+        color = Ice,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.sp,
+        fontFamily = FontFamily.Monospace
+    )
+}
+
+@Composable
 private fun VoiceHudReactor(
     modifier: Modifier,
     phase: String,
@@ -2336,7 +2527,10 @@ private fun VoiceHudReactor(
     breathe: Float
 ) {
     val accent = when (phase) {
+        "ERROR" -> AlertRed
+        "MUTED" -> Color(0xFF4A6578)
         "THINK" -> WarnAmber
+        "RESPOND" -> Color(0xFF38D4FF)
         "SPEAK" -> Color(0xFF66F7FF)
         else -> Cyan
     }
@@ -2441,6 +2635,7 @@ private fun JarvisScreen(
     externalVoiceStop: Boolean = false,
     onConsumed: () -> Unit,
     onSpeak: (String) -> Unit,
+    onStopSpeaking: () -> Unit = {},
     onStartListening: () -> Unit,
     onModeChanged: (Boolean) -> Unit,
     onSearch: (String) -> Unit,
@@ -2469,11 +2664,14 @@ private fun JarvisScreen(
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
+        val id: String = java.util.UUID.randomUUID().toString(),
         val user: Boolean,
         val text: String,
         val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
         val attachments: List<Attachment> = emptyList(),
         val products: List<VisualProduct> = emptyList(),
+        val isError: Boolean = false,
+        val retryPrompt: String = "",
         val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
@@ -2483,6 +2681,8 @@ private fun JarvisScreen(
     var command by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
     var voiceAnswer by remember { mutableStateOf("") }
+    var voiceConciseSummary by remember { mutableStateOf("") }
+    var voiceResponding by remember { mutableStateOf(false) }
     var voiceStatusNote by remember { mutableStateOf("") }
     var wakeAcknowledged by remember { mutableStateOf(false) }
     var awaitingCommandAfterWake by remember { mutableStateOf(false) }
@@ -2554,8 +2754,32 @@ private fun JarvisScreen(
     val breathe by transition.animateFloat(.95f, 1.05f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "breathe")
     val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "wavePhase")
 
-    fun showJarvis(answer: String, products: List<VisualProduct> = emptyList()) {
-        val responseLine = Line(user = false, text = answer, products = products)
+    BackHandler(enabled = page == "VOICE") {
+        onStopSpeaking()
+        voiceListening = false
+        page = "CHAT"
+    }
+
+    LaunchedEffect(voiceResponding) {
+        if (voiceResponding) {
+            kotlinx.coroutines.delay(950)
+            voiceResponding = false
+        }
+    }
+
+    fun showJarvis(
+        answer: String,
+        products: List<VisualProduct> = emptyList(),
+        isError: Boolean = false,
+        retryPrompt: String = ""
+    ) {
+        val responseLine = Line(
+            user = false,
+            text = answer,
+            products = products,
+            isError = isError,
+            retryPrompt = retryPrompt
+        )
         responseLine.displayText.value = answer
         responseLine.revealed.value = true
         lines.add(responseLine)
@@ -2692,8 +2916,11 @@ private fun JarvisScreen(
         val userDisplayText = q.ifBlank { "Tolong analisis lampiran ini dan jelaskan isinya." }
         lines.add(Line(user = true, text = userDisplayText, attachments = files))
         if (voice) {
+            onStopSpeaking()
             voiceTranscript = q
             voiceAnswer = ""
+            voiceConciseSummary = ""
+            voiceResponding = false
             voiceErrorState = false
             voiceProducts.clear()
             voiceImages.clear()
@@ -2717,10 +2944,12 @@ private fun JarvisScreen(
                     append("\n\n")
                     fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
                 }.trim()
-                showJarvis(richResult)
+                showJarvis(richResult, isError = !opened, retryPrompt = if (!opened) q else "")
                 if (accountEmail != null) onSaveTurn(requestText, richResult)
                 if (voice) {
                     voiceAnswer = result
+                    voiceConciseSummary = extractConciseVoiceSummary(result)
+                    voiceResponding = opened
                     voiceErrorState = !opened
                     voiceImages.clear()
                     voiceImages.addAll(fallbackImg)
@@ -2732,16 +2961,18 @@ private fun JarvisScreen(
             processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
             onDeviceCommand(action, params) { result ->
                 val isFailed = result.contains("gagal", true) || result.contains("tidak dapat", true)
-                val fallbackImg = defaultVisualFallbackFor(q, isError = isFailed)
+                val fallbackImg = defaultVisualFallbackFor(q, answer = result, isError = isFailed)
                 val richResult = buildString {
                     append(result)
                     append("\n\n")
                     fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
                 }.trim()
-                showJarvis(richResult)
+                showJarvis(richResult, isError = isFailed, retryPrompt = if (isFailed) q else "")
                 if (accountEmail != null) onSaveTurn(requestText, richResult)
                 if (voice) {
                     voiceAnswer = result
+                    voiceConciseSummary = extractConciseVoiceSummary(result)
+                    voiceResponding = !isFailed
                     voiceErrorState = isFailed
                     voiceImages.clear()
                     voiceImages.addAll(fallbackImg)
@@ -2757,9 +2988,15 @@ private fun JarvisScreen(
         busy = true
         onSearch(q)
         cancelCurrentRequest = onAskGemini(requestText, priorHistory) { payload ->
-            val baseAnswer = payload.answer.substringAfter("KESIMPULAN JARVIS", payload.answer)
-                .substringAfter("JAWABAN AKHIR", payload.answer).trim().ifBlank { payload.answer.trim() }
-            val missingImages = payload.images.take(MAX_VISUAL_CARDS).filter { (_, url) -> url.isNotBlank() && !baseAnswer.contains(url) }
+            // Chat Mode MUST display the complete assistant response without stripping sections before KESIMPULAN JARVIS.
+            val baseAnswer = payload.answer.trim().ifBlank { "JARVIS tidak menerima jawaban akhir." }
+            val conciseVoiceSummary = extractConciseVoiceSummary(baseAnswer)
+            val resolvedImages = if (payload.images.isNotEmpty()) {
+                payload.images.take(MAX_VISUAL_CARDS)
+            } else {
+                defaultVisualFallbackFor(q, answer = baseAnswer, isError = payload.isError)
+            }
+            val missingImages = resolvedImages.take(MAX_VISUAL_CARDS).filter { (_, url) -> url.isNotBlank() && !baseAnswer.contains(url) }
             val answer = if (missingImages.isEmpty()) baseAnswer else buildString {
                 append(baseAnswer)
                 append("\n\n")
@@ -2772,17 +3009,25 @@ private fun JarvisScreen(
                 }
             }.trim()
             if (accountEmail != null) onSaveTurn(requestText, answer)
-            val responseLine = Line(user = false, text = answer, products = payload.products.take(MAX_VISUAL_CARDS))
+            val responseLine = Line(
+                user = false,
+                text = answer,
+                products = payload.products.take(MAX_VISUAL_CARDS),
+                isError = payload.isError,
+                retryPrompt = if (payload.isError) q else ""
+            )
             responseLine.displayText.value = answer
-            responseLine.revealed.value = !voice
+            responseLine.revealed.value = true
             lines.add(responseLine)
             if (voice) {
                 voiceAnswer = baseAnswer
+                voiceConciseSummary = conciseVoiceSummary
+                voiceResponding = !payload.isError
                 voiceErrorState = payload.isError
                 voiceProducts.clear()
                 voiceProducts.addAll(payload.products.take(MAX_VISUAL_CARDS))
                 voiceImages.clear()
-                voiceImages.addAll(payload.images.take(MAX_VISUAL_CARDS))
+                voiceImages.addAll(resolvedImages.take(MAX_VISUAL_CARDS))
             }
             busy = false
             cancelCurrentRequest = null
@@ -2790,7 +3035,7 @@ private fun JarvisScreen(
                 kotlinx.coroutines.delay(24)
                 lines.lastOrNull()?.revealed?.value = true
             }
-            if (voice) onSpeak(buildSpokenReply(q, baseAnswer, payload.products.take(MAX_VISUAL_CARDS)))
+            if (voice) onSpeak(buildSpokenReply(q, conciseVoiceSummary, payload.products.take(MAX_VISUAL_CARDS)))
         }
     }
 
@@ -2898,32 +3143,30 @@ private fun JarvisScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
     val inputFocus = remember { FocusRequester() }
-    val now by produceState(System.currentTimeMillis()) {
-        while (true) {
-            value = System.currentTimeMillis()
-            kotlinx.coroutines.delay(1000)
-        }
-    }
-    val clock12 = SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
 
     val hologramShift by animateFloatAsState(
-        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) -68f else 0f,
-        animationSpec = tween(520),
+        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) -36f else 0f,
+        animationSpec = tween(420),
         label = "hologramPosition"
     )
 
+    val isVoiceError = voiceErrorState ||
+        status.contains("ERROR", true) ||
+        status.contains("DENIED", true) ||
+        status.contains("REQUIRED", true) ||
+        status.contains("UNAVAILABLE", true)
+
     val phase = when {
-        busy -> "THINK"
+        isVoiceError -> "ERROR"
         status.contains("SPEAK", true) -> "SPEAK"
-        page == "VOICE" && voiceListening -> "LISTEN"
+        voiceResponding -> "RESPOND"
+        busy -> "THINK"
+        page == "VOICE" && !voiceListening -> "MUTED"
+        page == "VOICE" && voiceListening && (status.contains("LISTENING", true) || status.contains("HEARING", true) || status.contains("INPUT ACTIVE", true)) -> "LISTEN"
         else -> "IDLE"
     }
 
-    val coreModeLabel = when {
-        page == "VOICE" -> "CORE 01 / VOICE"
-        lines.isEmpty() -> "CORE 01 / HOME"
-        else -> "CORE 01 / CHAT"
-    }
+    val coreModeLabel = if (page == "VOICE") "CORE 01 / VOICE" else "CORE 01 / CHAT" 
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
         Box(Modifier.fillMaxSize().background(Background)) {
@@ -3024,7 +3267,7 @@ private fun JarvisScreen(
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 if (page == "CHAT" && lines.isNotEmpty()) {
                                     Text(
-                                        text = "HOME",
+                                        text = "RESET CHAT",
                                         color = Cyan,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.SemiBold,
@@ -3033,8 +3276,11 @@ private fun JarvisScreen(
                                             .clip(RoundedCornerShape(4.dp))
                                             .background(Color(0xFF0A2236))
                                             .border(0.6.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                            .clickable { lines.clear() }
-                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                            .clickable {
+                                                onNewConversation()
+                                                lines.clear()
+                                            }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
                                     )
                                 }
                                 Text(
@@ -3090,22 +3336,18 @@ private fun JarvisScreen(
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 Column(horizontalAlignment = Alignment.End) {
+                                    VoiceHudClock()
                                     Text(
-                                        text = clock12,
-                                        color = Ice,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        letterSpacing = 1.sp,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = when {
-                                            !voiceListening -> "AUDIO STANDBY"
-                                            phase == "THINK" -> "VOICE PROCESSING"
-                                            phase == "SPEAK" -> "AUDIO OUTPUT ACTIVE"
-                                            else -> "AUDIO INPUT ACTIVE"
+                                        text = when (phase) {
+                                            "ERROR" -> "VOICE DIAGNOSTIC ALERT"
+                                            "MUTED" -> "MICROPHONE MUTED"
+                                            "THINK" -> "VOICE PROCESSING"
+                                            "RESPOND" -> "RESPONSE READY"
+                                            "SPEAK" -> "AUDIO OUTPUT ACTIVE"
+                                            "LISTEN" -> "AUDIO INPUT ACTIVE"
+                                            else -> "VOICE CORE IDLE"
                                         },
-                                        color = TextMuted,
+                                        color = if (phase == "ERROR") AlertRed else TextMuted,
                                         fontSize = 8.sp,
                                         letterSpacing = 1.sp,
                                         fontFamily = FontFamily.Monospace
@@ -3122,7 +3364,7 @@ private fun JarvisScreen(
                                                 Modifier
                                                     .width(2.dp)
                                                     .height(hBar.dp)
-                                                    .background(Cyan)
+                                                    .background(if (phase == "ERROR") AlertRed else Cyan)
                                             )
                                         }
                                     }
@@ -3133,7 +3375,7 @@ private fun JarvisScreen(
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(if (compact) 190.dp else 250.dp)
+                                    .height(if (compact) 186.dp else 238.dp)
                                     .animateContentSize(animationSpec = tween(420)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -3145,17 +3387,19 @@ private fun JarvisScreen(
                                         voiceEnabled = voiceListening,
                                         recognitionActive = phase == "LISTEN",
                                         processing = phase == "THINK",
+                                        responding = phase == "RESPOND",
                                         speaking = phase == "SPEAK",
-                                        error = status.contains("ERROR", true) || status.contains("DENIED", true)
+                                        error = phase == "ERROR",
+                                        muted = !voiceListening
                                     )
                                     Box(contentAlignment = Alignment.Center) {
                                         HolographicOrb(
                                             state = orbState,
                                             rmsLevel = rmsLevel,
-                                            size = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 136.dp else if (compact) 154.dp else 194.dp
+                                            size = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 134.dp else if (compact) 152.dp else 188.dp
                                         )
                                         VoiceHudReactor(
-                                            modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty()) 132.dp else if (compact) 150.dp else 190.dp),
+                                            modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 130.dp else if (compact) 148.dp else 184.dp),
                                             phase = phase,
                                             spin = spin,
                                             breathe = breathe
@@ -3166,32 +3410,41 @@ private fun JarvisScreen(
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(3.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.height(26.dp)
+                                        modifier = Modifier.height(24.dp)
                                     ) {
                                         val barCount = 29
                                         repeat(barCount) { idx ->
                                             val centerDist = kotlin.math.abs(idx - barCount / 2).toFloat() / (barCount / 2f)
                                             val envelope = (1f - centerDist * 0.75f).coerceAtLeast(0.15f)
                                             val dynamicBoost = if (phase == "LISTEN" || phase == "SPEAK") (rmsLevel / 10f).coerceIn(0.35f, 1.3f) else 0.2f
-                                            val hVal = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase * 1.4f + idx * 0.45f)) * 22f * envelope * dynamicBoost
+                                            val hVal = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase * 1.4f + idx * 0.45f)) * 20f * envelope * dynamicBoost
                                             Box(
                                                 Modifier
                                                     .width(2.5.dp)
                                                     .height(hVal.dp)
                                                     .clip(RoundedCornerShape(99.dp))
-                                                    .background(Cyan.copy(alpha = if (phase == "IDLE") 0.35f else 0.9f))
+                                                    .background(
+                                                        when (phase) {
+                                                            "ERROR" -> AlertRed.copy(alpha = 0.85f)
+                                                            "MUTED", "IDLE" -> Cyan.copy(alpha = 0.35f)
+                                                            else -> Cyan.copy(alpha = 0.9f)
+                                                        }
+                                                    )
                                             )
                                         }
                                     }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
-                                        text = when (phase) {
-                                            "THINK" -> "PROCESSING"
-                                            "SPEAK" -> "SPEAKING"
-                                            "LISTEN" -> "LISTENING"
-                                            else -> "STANDBY"
+                                        text = when (orbState) {
+                                            VoiceOrbState.Error -> "ERROR · ${status.take(28)}"
+                                            VoiceOrbState.Speaking -> "SPEAKING"
+                                            VoiceOrbState.Responding -> "RESPONDING"
+                                            VoiceOrbState.Processing -> "PROCESSING"
+                                            VoiceOrbState.Listening -> "LISTENING"
+                                            VoiceOrbState.Muted -> "MUTED"
+                                            VoiceOrbState.Idle, VoiceOrbState.Standby -> "IDLE"
                                         },
-                                        color = Cyan,
+                                        color = if (orbState == VoiceOrbState.Error) AlertRed else Cyan,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Bold,
                                         letterSpacing = 2.sp,
@@ -3281,8 +3534,8 @@ private fun JarvisScreen(
 
                             Spacer(Modifier.height(8.dp))
 
-                            // VOICE VISUAL DISPLAY: Visual Cards Only (max 5) + Compact Status Indicator (No Long Text Explanation Panel)
-                            if (busy || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty() || voiceErrorState) {
+                            // VOICE VISUAL DISPLAY: Concise Voice Response Summary + Visual Cards (max 5) + Interruption Control
+                            if (busy || voiceConciseSummary.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty() || voiceErrorState || phase == "SPEAK") {
                                 Column(
                                     Modifier
                                         .fillMaxWidth()
@@ -3290,27 +3543,80 @@ private fun JarvisScreen(
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Row(
+                                        modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, if (voiceErrorState) AlertRed else Cyan, CircleShape)
+                                            )
+                                            Text(
+                                                text = when {
+                                                    busy -> processStage
+                                                    voiceErrorState -> "PERINGATAN SISTEM · AUDIO AKTIF"
+                                                    else -> "VISUAL HUD AKTIF (${maxOf(voiceProducts.size, voiceImages.size).coerceAtMost(MAX_VISUAL_CARDS)} KARTU)"
+                                                },
+                                                color = if (voiceErrorState) AlertRed else TextMuted,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                letterSpacing = 1.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        if (phase == "SPEAK" || busy) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(999.dp))
+                                                    .background(AlertRed.copy(alpha = 0.18f))
+                                                    .border(1.dp, AlertRed.copy(alpha = 0.65f), RoundedCornerShape(999.dp))
+                                                    .clickable {
+                                                        cancelCurrentRequest?.invoke()
+                                                        cancelCurrentRequest = null
+                                                        busy = false
+                                                        onStopSpeaking()
+                                                    }
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Default.Stop, contentDescription = "Hentikan suara", tint = AlertRed, modifier = Modifier.size(13.dp))
+                                                Text(
+                                                    text = if (busy) "BATALKAN" else "HENTIKAN SUARA",
+                                                    color = AlertRed,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (voiceConciseSummary.isNotBlank()) {
                                         Box(
-                                            Modifier
-                                                .size(10.dp)
-                                                .clip(CircleShape)
-                                                .border(1.5.dp, if (voiceErrorState) AlertRed else Cyan, CircleShape)
-                                        )
-                                        Text(
-                                            text = when {
-                                                busy -> processStage
-                                                voiceErrorState -> "PERINGATAN SISTEM · AUDIO AKTIF"
-                                                else -> "VISUAL HUD AKTIF (${maxOf(voiceProducts.size, voiceImages.size).coerceAtMost(MAX_VISUAL_CARDS)} KARTU)"
-                                            },
-                                            color = if (voiceErrorState) AlertRed else TextMuted,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            letterSpacing = 1.sp,
-                                            fontFamily = FontFamily.Monospace
-                                        )
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color(0xFF081726))
+                                                .border(1.dp, if (voiceErrorState) AlertRed.copy(alpha = 0.45f) else Cyan.copy(alpha = 0.34f), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = voiceConciseSummary,
+                                                color = Ice,
+                                                fontSize = 12.sp,
+                                                lineHeight = 17.sp,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
                                     }
 
                                     if (voiceProducts.isNotEmpty()) {
@@ -3452,8 +3758,7 @@ private fun JarvisScreen(
                                 }
                             }
 
-                            items(lines.size) { i ->
-                                val line = lines[i]
+                            items(items = lines, key = { it.id }) { line ->
                                 AnimatedVisibility(visible = true, enter = fadeIn(tween(220)) + expandVertically()) {
                                     if (line.user) {
                                         Column(
@@ -3521,6 +3826,14 @@ private fun JarvisScreen(
                                             Column(Modifier.weight(1f)) {
                                                 AnimatedVisibility(visible = line.revealed.value, enter = fadeIn(tween(200))) {
                                                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        if (line.isError) {
+                                                            JarvisChatErrorCard(
+                                                                message = line.text.substringBefore("\n\n![").trim(),
+                                                                onRetry = if (line.retryPrompt.isNotBlank() && !busy) {
+                                                                    { send(line.retryPrompt, voice = false) }
+                                                                } else null
+                                                            )
+                                                        }
                                                         RichMessageText(
                                                             markdown = line.displayText.value.ifBlank { line.text },
                                                             products = line.products,
@@ -3785,7 +4098,7 @@ private fun JarvisScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val isChat = page == "CHAT"
-                        // Left Tab (CHAT / COMMAND)
+                        // Left Tab (CHAT MODE)
                         Row(
                             Modifier
                                 .weight(1f)
@@ -3800,22 +4113,23 @@ private fun JarvisScreen(
                                     shape = RoundedCornerShape(999.dp)
                                 )
                                 .clickable {
+                                    onStopSpeaking()
                                     voiceListening = false
                                     page = "CHAT"
                                 }
-                                .padding(vertical = 9.dp),
+                                .padding(vertical = 10.dp),
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                if (isChat) Icons.Default.Home else Icons.Default.GridView,
-                                contentDescription = null,
+                                Icons.Default.Chat,
+                                contentDescription = "Mode Chat",
                                 tint = if (isChat) Cyan else TextMuted,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(Modifier.width(6.dp))
                             Text(
-                                text = if (isChat) "CHAT" else "COMMAND",
+                                text = "CHAT",
                                 color = if (isChat) Ice else TextMuted,
                                 fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold,
@@ -3867,6 +4181,7 @@ private fun JarvisScreen(
                     }
                 }
 
+                var confirmSignOut by remember { mutableStateOf(false) }
                 if (accountPanel) {
                     val isAuthError = accountStatus.contains("GAGAL", true) ||
                         accountStatus.contains("DITOLAK", true) ||
@@ -3875,7 +4190,7 @@ private fun JarvisScreen(
                         accountStatus.contains("DIBATALKAN", true)
                     val isAuthSuccess = accountStatus.startsWith("[AUTH_SUCCESS]") || accountEmail != null
                     AlertDialog(
-                        onDismissRequest = { accountPanel = false },
+                        onDismissRequest = { confirmSignOut = false; accountPanel = false },
                         containerColor = Color(0xFF0B1826),
                         title = { Text("J.A.R.V.I.S. ACCOUNT", color = Ice, fontWeight = FontWeight.Bold) },
                         text = {
@@ -3935,11 +4250,15 @@ private fun JarvisScreen(
                                 enabled = !accountBusy,
                                 onClick = {
                                     if (accountEmail == null) {
+                                        confirmSignOut = false
                                         if (webClientIdDraft.isNotBlank()) {
                                             onSaveGoogleWebClientId(webClientIdDraft.trim())
                                         }
                                         onGoogleSignIn()
+                                    } else if (!confirmSignOut) {
+                                        confirmSignOut = true
                                     } else {
+                                        confirmSignOut = false
                                         onGoogleSignOut()
                                     }
                                 }
@@ -3949,13 +4268,20 @@ private fun JarvisScreen(
                                         accountBusy -> "MEMPROSES..."
                                         accountEmail == null && isAuthError -> "COBA LAGI LOGIN GOOGLE"
                                         accountEmail == null -> "MASUK DENGAN GOOGLE"
+                                        confirmSignOut -> "YA, KONFIRMASI KELUAR"
                                         else -> "KELUAR"
                                     },
-                                    color = Cyan
+                                    color = if (confirmSignOut) AlertRed else Cyan
                                 )
                             }
                         },
-                        dismissButton = { TextButton(onClick = { accountPanel = false }) { Text("TUTUP", color = TextMuted) } }
+                        dismissButton = {
+                            TextButton(onClick = {
+                                if (confirmSignOut) confirmSignOut = false else accountPanel = false
+                            }) {
+                                Text(if (confirmSignOut) "BATAL" else "TUTUP", color = TextMuted)
+                            }
+                        }
                     )
                 }
 
