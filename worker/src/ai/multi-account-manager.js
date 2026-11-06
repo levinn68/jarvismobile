@@ -68,7 +68,7 @@ export function validateCustomProviderEndpoint(value, fieldName = "endpoint") {
   try { parsed = new URL(raw); }
   catch (_) { return { valid: false, error: `${fieldName} must be a valid HTTPS URL.` }; }
   const host = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, "");
-  const ipv4 = /^(?:\\d{1,3}\\.){3}\\d{1,3}$/.test(host);
+  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host);
   const ipv6 = host.includes(":");
   const blockedSuffixes = [".localhost", ".local", ".internal", ".test", ".example", ".invalid"];
   const blockedExact = new Set(["localhost", "metadata.google.internal", "metadata", "instance-data", "instance-data.ec2.internal"]);
