@@ -31,6 +31,7 @@ jobs:
     env:
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
       GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
     steps:
@@ -41,24 +42,19 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Check optional OAuth configuration
+      - name: Validate Google OAuth & Supabase configuration
         run: |
           if [ -z "$GOOGLE_WEB_CLIENT_ID" ]; then
-            echo "::warning::GOOGLE_WEB_CLIENT_ID is not configured. The APK can be compiled, but Google sign-in will remain unavailable until OAuth is configured."
+            echo "::warning::GOOGLE_WEB_CLIENT_ID is not configured in GitHub Secrets. The APK will compile and allow runtime Web Client ID configuration in J.A.R.V.I.S. Settings/Account dialog, or set GOOGLE_WEB_CLIENT_ID in repository secrets."
+          elif echo "$GOOGLE_WEB_CLIENT_ID" | grep -Eq '^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$'; then
+            echo "GOOGLE_WEB_CLIENT_ID format verified (OAuth 2.0 Web Client ID)."
           else
-            echo "Google OAuth Web Client ID is present."
-          fi
-          if [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::warning::SUPABASE_ANON_KEY is not configured in GitHub Actions. The app will use its build-time public fallback; configure the project key before production use."
-          fi
-
-      - name: Validate Google OAuth Web Client ID format
-        run: |
-          if [[ ! "$GOOGLE_WEB_CLIENT_ID" =~ ^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$ ]]; then
-            echo "::error::GOOGLE_WEB_CLIENT_ID is missing or malformed. Set it to the OAuth client ID of type Web application. The value is intentionally not printed."
+            echo "::error::GOOGLE_WEB_CLIENT_ID does not match <project>-<hash>.apps.googleusercontent.com. Ensure you use the Web application Client ID, not the Android Client ID."
             exit 1
           fi
-          echo "Google OAuth Web Client ID format is valid; secret value withheld."
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::notice::SUPABASE_ANON_KEY secret not set; using build.gradle.kts public publishable key fallback."
+          fi
       - name: Locate Android SDK
         run: |
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
