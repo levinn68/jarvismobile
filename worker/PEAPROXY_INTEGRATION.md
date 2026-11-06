@@ -21,16 +21,17 @@ Keep PeaProxy bound to loopback behind the tunnel. Do not expose port 8317 direc
 Set these values as Cloudflare Worker Secrets (not in source control):
 
 - `PEAPROXY_BASE_URL`: HTTPS base URL ending in `/v1`, e.g. `https://your-protected-host.example/v1`.
-- `PEAPROXY_API_KEY`: PeaProxy's local gateway bearer token.
 - `PEAPROXY_MODEL`: exact model ID returned by PeaProxy's live `GET /v1/models` catalog.
-- `PEAPROXY_ACCESS_CLIENT_ID`: optional Cloudflare Access service-token client ID.
-- `PEAPROXY_ACCESS_CLIENT_SECRET`: optional Cloudflare Access service-token client secret.
+- `PEAPROXY_ACCESS_CLIENT_ID`: Cloudflare Access service-token client ID.
+- `PEAPROXY_ACCESS_CLIENT_SECRET`: Cloudflare Access service-token client secret.
 
-The provider is considered configured only when base URL, gateway token, and model ID are present and the base URL uses HTTPS. The Worker sends non-streaming OpenAI Chat Completions requests to `/v1/chat/completions`. It does not guess model IDs.
+The Access application must require service authentication and allow this service token. The Worker sends both Access headers with its non-streaming OpenAI Chat Completions request to `/v1/chat/completions`. PeaProxy is not expected to validate a separate J.A.R.V.I.S. Bearer token; Cloudflare Access protects the public tunnel before the request reaches PeaProxy.
+
+The provider is considered configured only when the HTTPS base URL, exact model ID, and both Access credentials are present. The Worker does not guess model IDs.
 
 ## Local verification
 
-With the PeaProxy server running locally, verify its model catalog:
+With PeaProxy running locally, verify its model catalog:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8317/v1/models
@@ -38,7 +39,7 @@ Invoke-RestMethod http://127.0.0.1:8317/v1/models
 
 The local URL is only for a local test tool. It must not be configured as the Cloudflare Worker's production upstream.
 
-To verify chat locally, use PeaProxy's own documented endpoint. Do not paste gateway tokens or OAuth credentials into GitHub issues, chat messages, or source files.
+To verify chat locally, use PeaProxy's documented endpoint. Do not paste Access service-token values or OAuth credentials into GitHub issues, chat messages, or source files.
 
 ## Tests
 
@@ -48,4 +49,4 @@ Run:
 npm test --prefix worker
 ```
 
-The tests verify provider opt-in, HTTPS validation, OpenAI-compatible request shape, optional Access service-token headers, and fallback behavior.
+The tests verify provider opt-in, HTTPS validation, OpenAI-compatible request shape, Access service-token headers, and fallback behavior.
