@@ -64,7 +64,8 @@ class PairingQrActivity : Activity() {
     ): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = dp(cornerDp).toFloat()
-        setColor(fillColor)        setStroke(dp(strokeWidthDp).coerceAtLeast(1), strokeColor)
+        setColor(fillColor)
+        setStroke(dp(strokeWidthDp).coerceAtLeast(1), strokeColor)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
