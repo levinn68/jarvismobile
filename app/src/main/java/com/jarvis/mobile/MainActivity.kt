@@ -1057,12 +1057,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (code !in 200..299) {
-                        val detail = connection.errorStream?.let { stream ->
+                        val failedConnection = connection ?: throw IllegalStateException("Fish Audio connection was not initialized")
+                        val detail = failedConnection.errorStream?.let { stream ->
                             BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                         }.orEmpty()
                         throw IllegalStateException("Fish Audio HTTP $code: $detail")
                     }
-                    resolvedAudio = connection.inputStream.use { it.readBytes() }
+                    resolvedAudio = (connection ?: throw IllegalStateException("Fish Audio connection was not initialized")).inputStream.use { it.readBytes() }
                     break
                 }
                 if (speechGeneration.get() != gen) return@Thread
