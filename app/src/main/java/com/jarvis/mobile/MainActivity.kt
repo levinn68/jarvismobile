@@ -2765,6 +2765,8 @@ private fun JarvisScreen(
             }
         }
     }
+    var voiceProfileTranscript by remember { mutableStateOf("") }
+    var voiceProfileStatus by remember { mutableStateOf("") }
     var voiceProfileBusy by remember { mutableStateOf(false) }
 
     val voiceProfilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -2803,9 +2805,6 @@ private fun JarvisScreen(
     var historyPanel by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     var webClientIdDraft by remember(initialGoogleWebClientId) { mutableStateOf(initialGoogleWebClientId) }
-    var voiceProfileTranscript by remember { mutableStateOf("") }
-    var voiceProfileStatus by remember { mutableStateOf("") }
-    var voiceProfileBusy by remember { mutableStateOf(false) }
     val lines = remember { mutableStateListOf<Line>() }
     LaunchedEffect(restoredMessages?.first) {
         val restored = restoredMessages ?: return@LaunchedEffect
