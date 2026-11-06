@@ -162,7 +162,7 @@ async function handleTts(request, env) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120000);
     try {
-      const upstream = await fetch(`${String(env.VOXCPM_URL).replace(/\\/$/, "")}/v1/audio/speech`, {
+      const upstream = await fetch(`${String(env.VOXCPM_URL).replace(/\/$/, "")}/v1/audio/speech`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${env.VOXCPM_API_KEY}`,
