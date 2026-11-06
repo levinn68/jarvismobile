@@ -391,11 +391,7 @@ class PairingQrActivity : Activity() {
         cancelButton.isEnabled = false
         copyButton.isEnabled = false
         qrView.setImageBitmap(null)
-        if (codeToCancel.isNotBlank() && supabaseUserId.isNotBlank()) {
-            worker.execute {
-                runCatching { client.cancelPairingSession(codeToCancel, supabaseUserId) }
-            }
-        }
+        // Pairing codes expire server-side; the Worker has no cancellation endpoint.
     }
 
     private fun stopPolling() {
