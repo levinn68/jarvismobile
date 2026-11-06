@@ -13,6 +13,19 @@ function unb64(value) {
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }
 
+export function constantTimeEqual(a, b) {
+  const strA = String(a ?? "");
+  const strB = String(b ?? "");
+  const bytesA = encoder.encode(strA);
+  const bytesB = encoder.encode(strB);
+  const maxLen = Math.max(bytesA.length, bytesB.length);
+  let diff = bytesA.length ^ bytesB.length;
+  for (let i = 0; i < maxLen; i++) {
+    diff |= (bytesA[i] || 0) ^ (bytesB[i] || 0);
+  }
+  return diff === 0 && bytesA.length > 0;
+}
+
 async function sign(value, secret) {
   const key = await webCrypto.subtle.importKey(
     "raw",
@@ -27,26 +40,41 @@ async function sign(value, secret) {
 async function issueToken(claims, secret, ttlSeconds) {
   if (!secret) throw new Error("DEVICE_TOKEN_SECRET is not configured");
   const now = Math.floor(Date.now() / 1000);
-  const payload = b64(encoder.encode(JSON.stringify({ ...claims, iat: now, exp: now + ttlSeconds })));
+  const payload = b64(
+    encoder.encode(
+      JSON.stringify({
+        ...claims,
+        jti: claims.jti || webCrypto.randomUUID(),
+        iat: now,
+        exp: now + ttlSeconds
+      })
+    )
+  );
   return payload + "." + (await sign(payload, secret));
+}
+
+export function extractDeviceOrBearerToken(request) {
+  const authHeader = (request?.headers?.get?.("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  if (authHeader) return authHeader;
+  return (request?.headers?.get?.("X-Jarvis-Device-Token") || "").trim();
 }
 
 async function verifyToken(request, secret, scope, expectedSubject) {
   if (!secret) return null;
-  const token = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  const token =
+    scope === "device"
+      ? extractDeviceOrBearerToken(request)
+      : (request?.headers?.get?.("Authorization") || "").replace(/^Bearer\s+/i, "").trim();
   const [payload, signature, ...extra] = token.split(".");
   if (!payload || !signature || extra.length) return null;
   const expected = await sign(payload, secret);
-  if (signature.length !== expected.length) return null;
-  let difference = 0;
-  for (let i = 0; i < signature.length; i++) {
-    difference |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
-  }
-  if (difference !== 0) return null;
+  if (!constantTimeEqual(signature, expected)) return null;
   try {
     const claims = JSON.parse(new TextDecoder().decode(unb64(payload)));
+    const nowSec = Date.now() / 1000;
     if (
-      claims.exp < Date.now() / 1000 ||
+      typeof claims.exp !== "number" ||
+      claims.exp < nowSec ||
       claims.scope !== scope ||
       (expectedSubject && claims.sub !== expectedSubject)
     ) {
@@ -58,14 +86,14 @@ async function verifyToken(request, secret, scope, expectedSubject) {
   }
 }
 
-export const issueDeviceToken = (deviceId, secret, ttlSeconds = 2592000) =>
-  issueToken({ sub: deviceId, scope: "device" }, secret, ttlSeconds);
+export const issueDeviceToken = (deviceId, secret, ttlSeconds = 2592000, extraClaims = {}) =>
+  issueToken({ sub: deviceId, scope: "device", ...extraClaims }, secret, ttlSeconds);
 
 export const verifyDeviceToken = (request, secret, expectedDeviceId) =>
   verifyToken(request, secret, "device", expectedDeviceId);
 
-export const issueAccountToken = (accountId, secret, ttlSeconds = 31536000) =>
-  issueToken({ sub: accountId, scope: "account" }, secret, ttlSeconds);
+export const issueAccountToken = (accountId, secret, ttlSeconds = 31536000, extraClaims = {}) =>
+  issueToken({ sub: accountId, scope: "account", ...extraClaims }, secret, ttlSeconds);
 
 export const verifyAccountToken = (request, secret) =>
   verifyToken(request, secret, "account");

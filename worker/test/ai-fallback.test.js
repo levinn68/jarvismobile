@@ -26,8 +26,7 @@ test("runWithFallback switches to the next provider after failure", async () => 
     onAttempt: (e) => attempts.push(e),
     invoke: async (provider) => {
       if (provider === "broken") {
-        const err = new Error("HTTP 503: down");
-        err.status = 503;
+        const err = new Error("HTTP 503: down");        err.status = 503;
         throw err;
       }
       return { text: "ok from " + provider };

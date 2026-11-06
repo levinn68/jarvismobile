@@ -9,8 +9,7 @@ if (!fs.existsSync(target)) {
 
 let source = fs.readFileSync(target, "utf8");
 if (source.includes('from "./personality.js"') && source.includes("buildPersonalityPrompt")) {
-  console.log("Personality Engine tampaknya sudah terpasang. Tidak ada perubahan.");
-  process.exit(0);
+  console.log("Personality Engine tampaknya sudah terpasang. Tidak ada perubahan.");  process.exit(0);
 }
 
 if (!source.includes("const systemBase =")) {

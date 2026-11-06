@@ -81,7 +81,6 @@ test("Batch 7 Frontend Overhaul — 3. Voice Mode supports all 7 required Orb st
   assert.ok(mainKt.includes("ProductCarouselCards(voiceProducts.take(MAX_VISUAL_CARDS))"), "Voice Mode must render up to 5 product cards");
   assert.ok(mainKt.includes("VoiceImageCarouselCards(voiceImages.take(MAX_VISUAL_CARDS))"), "Voice Mode must render up to 5 image cards");
 });
-
 test("Batch 7 Frontend Overhaul — 4. Voice Mode interruption, speech deduplication, AudioAttributes, and recognizer error handling", () => {
   // Interruption & deduplication
   assert.ok(mainKt.includes("private fun stopSpeaking("), "MainActivity must implement stopSpeaking() for voice interruption");

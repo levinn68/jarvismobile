@@ -66,7 +66,7 @@ class ScreenActionApprovalActivity : Activity() {
 
         val description = when (action) {
             "screen.read" -> "JARVIS meminta membaca teks yang sedang terlihat pada layar. Konten hanya dikembalikan untuk perintah ini."
-            "screen.tap" -> {
+            "screen.tap", "TAP_COORDINATE" -> {
                 val x = params.optDouble("x", Double.NaN)
                 val y = params.optDouble("y", Double.NaN)
                 if (x.isNaN() || y.isNaN() || x !in 0.0..1.0 || y !in 0.0..1.0) {
@@ -75,9 +75,21 @@ class ScreenActionApprovalActivity : Activity() {
                     "JARVIS meminta menekan layar pada posisi normalisasi x=${"%.3f".format(x)}, y=${"%.3f".format(y)}."
                 }
             }
-            "screen.type" -> {
+            "screen.type", "TYPE_TEXT" -> {
                 val text = params.optString("text").take(500)
                 "JARVIS meminta mengetik teks berikut:\n\n$text"
+            }
+            "screen.click_text", "CLICK_TEXT" -> {
+                val text = params.optString("text").take(200)
+                "JARVIS meminta mengklik elemen layar berlabel: '$text'."
+            }
+            "screen.scroll", "SCROLL" -> {
+                val dir = params.optString("direction").take(16)
+                "JARVIS meminta menggulir (scroll) layar ke arah: $dir."
+            }
+            "screen.global_action", "GLOBAL_ACTION" -> {
+                val ga = params.optString("globalAction").take(32)
+                "JARVIS meminta menjalankan aksi navigasi sistem: $ga."
             }
             else -> "JARVIS meminta tindakan layar: $action"
         }

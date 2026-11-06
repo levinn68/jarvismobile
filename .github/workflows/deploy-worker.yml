@@ -1,9 +1,5 @@
 name: Deploy JARVIS Cloudflare Worker
 on:
-  push:
-    paths:
-      - "worker/**"
-      - ".github/workflows/deploy-worker.yml"
   workflow_dispatch:
 concurrency:
   group: jarvis-worker-${{ github.ref }}
@@ -13,6 +9,7 @@ permissions:
 jobs:
   deploy:
     if: github.ref == 'refs/heads/main'
+    environment: production
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source
@@ -41,11 +38,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           DEVICE_TOKEN_SECRET: ${{ secrets.DEVICE_TOKEN_SECRET }}
+          AI_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.AI_CREDENTIAL_ENCRYPTION_KEY }}
         run: |
+          test -n "$AI_CREDENTIAL_ENCRYPTION_KEY" || (echo "Missing GitHub secret AI_CREDENTIAL_ENCRYPTION_KEY" && exit 1)
           test -n "$SUPABASE_ANON_KEY" || (echo "Missing GitHub secret SUPABASE_ANON_KEY" && exit 1)
           test -n "$DEVICE_TOKEN_SECRET" || (echo "Missing GitHub secret DEVICE_TOKEN_SECRET" && exit 1)
           printf '%s' "$SUPABASE_ANON_KEY" | wrangler secret put SUPABASE_ANON_KEY --name jarvis-api
           printf '%s' "$DEVICE_TOKEN_SECRET" | wrangler secret put DEVICE_TOKEN_SECRET --name jarvis-api
+          printf '%s' "$AI_CREDENTIAL_ENCRYPTION_KEY" | wrangler secret put AI_CREDENTIAL_ENCRYPTION_KEY --name jarvis-api
       - name: Configure optional SerpApi visual search
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

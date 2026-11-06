@@ -45,13 +45,18 @@ class AppController(private val context: Context) {
     }
 
     fun launch(packageName: String): JSONObject {
-        if (packageName.isBlank() || packageName.length > 200)
+        val clean = packageName.trim()
+        if (clean.isBlank() || clean.length > 200 || !PACKAGE_NAME_REGEX.matches(clean))
             return JSONObject().put("ok", false).put("error", "A valid packageName is required")
-        val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+        val intent = context.packageManager.getLaunchIntentForPackage(clean)
             ?: return JSONObject().put("ok", false).put("error", "App is not installed or has no launcher activity")
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
-        return JSONObject().put("ok", true).put("launchedPackage", packageName)
+        return JSONObject().put("ok", true).put("launchedPackage", clean)
+    }
+
+    companion object {
+        private val PACKAGE_NAME_REGEX = Regex("^[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+$")
     }
 }
 

@@ -221,7 +221,7 @@ function recentAssistantTexts(history) {
   }).map((item) => normalizeText(item?.content || item?.text || item?.message));
 }
 
-function pickResponse(category, history = []) {
+export function pickResponse(category, history = []) {
   const pool = POOLS[category];
   if (!pool || !pool.length) return "";
   const recent = new Set(recentAssistantTexts(history));
@@ -233,10 +233,10 @@ function pickResponse(category, history = []) {
 export function buildPersonalityPrompt(prompt, history = []) {
   const category = getCategory(prompt);
   const phrase = category ? pickResponse(category, history) : "";
-  const examples = category && POOLS[category] ? `
-OPTIONAL NATURAL RESPONSE EXAMPLES FOR THIS SITUATION:
-${POOLS[category].map((x) => `- ${x}`).join("\n")}
-` : "";
+  const examples = category && POOLS[category]
+    ? `\nOPTIONAL NATURAL RESPONSE EXAMPLES FOR THIS SITUATION:\n${POOLS[category].map((x) => `- ${x}`).join("\n")}\n`
+    : "";
+
   return `${PERSONA_CORE}
 LATEST MESSAGE CATEGORY: ${category || "general conversation/task"}.
 ${phrase ? `OPTIONAL SHORT REACTION: "${phrase}". Use it only if it genuinely fits; do not force it or simply echo it.` : ""}
@@ -244,3 +244,5 @@ ${examples}
 IMPORTANT: The user's actual request always takes priority over persona flourishes.
 Do not answer a substantive question with only a canned phrase.`;
 }
+
+export { POOLS };

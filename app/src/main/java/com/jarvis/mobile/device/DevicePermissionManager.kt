@@ -98,10 +98,21 @@ class DevicePermissionManager(private val context: Context) {
     }
 
     fun registeredActions(): List<String> = buildList {
-        addAll(listOf("apps.list", "apps.launch", "apps.launch_label", "system.status"))
+        addAll(listOf("apps.list", "apps.launch", "apps.launch_label", "OPEN_APP", "system.status", "system.wait", "WAIT"))
         if (isGranted("files.read")) addAll(listOf("files.list", "files.search", "files.read"))
         if (isGranted("notifications.read")) add("notifications.list")
-        if (isGranted("screen.read")) addAll(listOf("screen.read", "screen.tap", "screen.type"))
+        if (isGranted("screen.read")) {
+            addAll(
+                listOf(
+                    "screen.read",
+                    "screen.tap", "TAP_COORDINATE",
+                    "screen.type", "TYPE_TEXT",
+                    "screen.click_text", "CLICK_TEXT",
+                    "screen.scroll", "SCROLL",
+                    "screen.global_action", "GLOBAL_ACTION"
+                )
+            )
+        }
         if (isGranted("contacts.read")) add("contacts.list")
         if (isGranted("calendar.read")) add("calendar.list")
     }

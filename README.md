@@ -19,8 +19,7 @@ Firebase AI features require your own Firebase project configuration. Do not com
 The GitHub Actions deployment workflow requires these repository secrets:
 
 - `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` for deployment.
-- `FISH_API_KEY` for Fish Audio TTS.
-- `SUPABASE_ANON_KEY` to validate the signed-in Supabase user before device-account enrollment.
+- `FISH_API_KEY` for Fish Audio TTS.- `SUPABASE_ANON_KEY` to validate the signed-in Supabase user before device-account enrollment.
 - `DEVICE_TOKEN_SECRET` to sign and verify account/device tokens and authorize pairing and device commands. Use a cryptographically random secret (at least 32 random bytes); never reuse an OAuth or Supabase key.
 
 Add them under GitHub → Settings → Secrets and variables → Actions. The workflow uploads the runtime secrets to the Cloudflare Worker and fails before deployment if the required device-authentication secrets are missing. AI provider keys (`GEMINI_API_KEY_1`, `DEEPSEEK_API_KEY_1`, `GROQ_API_KEY_1`, `OPENAI_API_KEY_1`, and `OPENROUTER_API_KEY_1`) are configured separately as Worker Secrets when those providers are used.

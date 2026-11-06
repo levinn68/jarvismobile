@@ -1,7 +1,12 @@
 package com.jarvis.mobile.device
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import androidx.core.app.NotificationCompat
+import com.jarvis.mobile.R
 import android.os.Build
 import android.os.SystemClock
 import org.json.JSONObject
@@ -56,8 +61,11 @@ class DeviceCommandExecutor(private val context: Context) {
         val params = command.optJSONObject("params") ?: JSONObject()
         val result = when (action) {
             "screen.read" -> JarvisAccessibilityService.snapshot()
-            "screen.tap" -> executeTap(params)
-            "screen.type" -> executeType(params)
+            "screen.tap", "TAP_COORDINATE" -> executeTap(params)
+            "screen.type", "TYPE_TEXT" -> executeType(params)
+            "screen.click_text", "CLICK_TEXT" -> executeClickText(params)
+            "screen.scroll", "SCROLL" -> executeScroll(params)
+            "screen.global_action", "GLOBAL_ACTION" -> executeGlobalAction(params)
             else -> JSONObject()
                 .put("ok", false)
                 .put("approved", true)
@@ -68,6 +76,25 @@ class DeviceCommandExecutor(private val context: Context) {
         if (commandId.isNotBlank()) markHandled(commandId, result)
         clearPendingApproval(commandId)
         return result
+    }
+
+    /**
+     * Records a local user rejection or dismissal so that if the network drops during
+     * the rejection acknowledgement, subsequent poll cycles replay the rejection
+     * instead of re-opening the approval dialog.
+     */
+    fun recordRejectedApproval(commandId: String, errorMessage: String = "Rejected by device user"): JSONObject {
+        val rejected = JSONObject()
+            .put("ok", false)
+            .put("approved", false)
+            .put("executed", false)
+            .put("rejectedByUser", true)
+            .put("error", errorMessage)
+        if (commandId.isNotBlank()) {
+            markHandled(commandId, rejected)
+            clearPendingApproval(commandId)
+        }
+        return rejected
     }
 
     fun execute(command: JSONObject): JSONObject {
@@ -104,9 +131,14 @@ class DeviceCommandExecutor(private val context: Context) {
             "apps.list" -> appController.listApps()
             "apps.launch" -> appController.launch(params.optString("packageName"))
             "apps.launch_label" -> appController.launchByLabel(params.optString("appName"))
+            "OPEN_APP" -> {
+                val pkg = params.optString("packageName").trim()
+                if (pkg.isNotBlank()) appController.launch(pkg)
+                else appController.launchByLabel(params.optString("appName"))
+            }
+            "system.wait", "WAIT" -> executeWait(params)
             "system.status" -> deviceController.status()
             "notifications.list" -> notificationController.list()
-            "screen.read" -> JarvisAccessibilityService.snapshot()
             "contacts.list" -> contactController.list()
             "calendar.list" -> calendarController.list()
             "camera.capture" -> JSONObject()
@@ -118,14 +150,16 @@ class DeviceCommandExecutor(private val context: Context) {
             else -> JSONObject().put("ok", false).put("error", "Unsupported action on this Android connector")
         }
 
-        if (commandId.isNotBlank() && result.optBoolean("ok")) markHandled(commandId, result)
+        if (commandId.isNotBlank() && !result.optBoolean("pendingApproval", false)) {
+            markHandled(commandId, result)
+        }
         return result
     }
 
     private fun capabilityFor(action: String): String? = when (action) {
         "apps.list" -> "apps.list"
-        "apps.launch", "apps.launch_label" -> "apps.launch"
-        "system.status" -> "system.read"
+        "apps.launch", "apps.launch_label", "OPEN_APP" -> "apps.launch"
+        "system.status", "system.wait", "WAIT" -> "system.read"
         "notifications.list" -> "notifications.read"
         "screen.read" -> "screen.read"
         "contacts.list" -> "contacts.read"
@@ -191,7 +225,11 @@ class DeviceCommandExecutor(private val context: Context) {
             val intent = Intent(context, ScreenActionApprovalActivity::class.java)
                 .putExtra(ScreenActionApprovalActivity.EXTRA_COMMAND, command.toString())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            context.startActivity(intent)
+            val launchedViaAccessibility = JarvisAccessibilityService.startApprovalActivity(intent)
+            if (!launchedViaAccessibility) {
+                context.startActivity(intent)
+            }
+            postApprovalFallbackNotification(commandId, command.optString("action"), intent)
             JSONObject()
                 .put("ok", true)
                 .put("pendingApproval", true)
@@ -206,21 +244,50 @@ class DeviceCommandExecutor(private val context: Context) {
         }
     }
 
-    fun recordRejectedApproval(commandId: String, reason: String): JSONObject {
-        val result = JSONObject().put("ok", false).put("approved", false)
-            .put("executed", false).put("rejected", true).put("error", reason.take(240))
-        if (commandId.isNotBlank()) {
-            markHandled(commandId, result)
-            clearPendingApproval(commandId)
-        }
-        return result
-    }
-
     fun clearPendingApproval(commandId: String) {
         if (commandId.isNotBlank()) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(pendingKey(commandId)).apply()
+            try {
+                context.getSystemService(NotificationManager::class.java)?.cancel(approvalNotificationId(commandId))
+            } catch (_: Exception) {
+                // Ignore notification cancellation errors in unit tests.
+            }
         }
     }
+
+    private fun postApprovalFallbackNotification(commandId: String, action: String, intent: Intent) {
+        try {
+            val nm = context.getSystemService(NotificationManager::class.java) ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                nm.createNotificationChannel(
+                    NotificationChannel(APPROVAL_CHANNEL_ID, "JARVIS Screen Approval", NotificationManager.IMPORTANCE_HIGH).apply {
+                        description = "Persetujuan tindakan layar JARVIS"
+                    }
+                )
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                approvalNotificationId(commandId),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val notification = NotificationCompat.Builder(context, APPROVAL_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_jarvis)
+                .setContentTitle("Persetujuan Tindakan Layar JARVIS")
+                .setContentText("Ketuk untuk meninjau dan menyetujui/menolak perintah $action.")
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .build()
+            nm.notify(approvalNotificationId(commandId), notification)
+        } catch (_: Exception) {
+            // Best-effort fallback notification for Android 14 BAL edge cases.
+        }
+    }
+
+    private fun approvalNotificationId(commandId: String): Int =
+        4200 + (commandId.hashCode() and 0x7fffffff) % 1000
 
     private fun executeTap(params: JSONObject): JSONObject {
         if (!params.has("x") || !params.has("y")) {
@@ -248,6 +315,60 @@ class DeviceCommandExecutor(private val context: Context) {
         return JarvisAccessibilityService.typeText(text)
     }
 
+    private fun executeClickText(params: JSONObject): JSONObject {
+        val text = params.optString("text", "").trim()
+        if (text.isBlank() || text.length > 200) {
+            return JSONObject()
+                .put("ok", false)
+                .put("executed", false)
+                .put("error", "CLICK_TEXT membutuhkan teks 1–200 karakter.")
+        }
+        return JarvisAccessibilityService.clickText(text)
+    }
+
+    private fun executeScroll(params: JSONObject): JSONObject {
+        val direction = params.optString("direction", "").trim().lowercase()
+        if (direction !in setOf("up", "down", "left", "right")) {
+            return JSONObject()
+                .put("ok", false)
+                .put("executed", false)
+                .put("error", "SCROLL membutuhkan direction (up, down, left, atau right).")
+        }
+        return JarvisAccessibilityService.scroll(direction)
+    }
+
+    private fun executeGlobalAction(params: JSONObject): JSONObject {
+        val globalAction = params.optString("globalAction", "").trim().uppercase()
+        if (globalAction !in setOf("BACK", "HOME", "RECENTS", "NOTIFICATIONS", "QUICK_SETTINGS")) {
+            return JSONObject()
+                .put("ok", false)
+                .put("executed", false)
+                .put("error", "GLOBAL_ACTION membutuhkan BACK, HOME, RECENTS, NOTIFICATIONS, atau QUICK_SETTINGS.")
+        }
+        return JarvisAccessibilityService.globalAction(globalAction)
+    }
+
+    private fun executeWait(params: JSONObject): JSONObject {
+        val durationMs = params.optLong("durationMs", -1L)
+        if (durationMs !in 100L..5000L) {
+            return JSONObject()
+                .put("ok", false)
+                .put("executed", false)
+                .put("error", "WAIT membutuhkan durationMs antara 100 dan 5000 ms.")
+        }
+        return try {
+            Thread.sleep(durationMs)
+            JSONObject()
+                .put("ok", true)
+                .put("executed", true)
+                .put("action", "system.wait")
+                .put("waitedMs", durationMs)
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            JSONObject().put("ok", false).put("error", "WAIT diinterupsi.")
+        }
+    }
+
     private fun isAlreadyHandled(commandId: String): Boolean {
         if (commandId.isBlank()) return false
         val memo = recentHandled[commandId]
@@ -272,7 +393,7 @@ class DeviceCommandExecutor(private val context: Context) {
             .put("ok", false)
             .put("error", "Command sudah diproses sebelumnya; hasil asli tidak tersedia.")
         replay.put("duplicate", true).put("replayed", true)
-        if (approved) replay.put("approved", true)
+        if (approved && !replay.has("approved")) replay.put("approved", true)
         return replay
     }
 
@@ -319,6 +440,7 @@ class DeviceCommandExecutor(private val context: Context) {
     companion object {
         const val LOCAL_APPROVAL_MARKER = "_jarvisLocalApproval"
         private const val PREFS = "jarvis_command_dedupe"
+        private const val APPROVAL_CHANNEL_ID = "jarvis_screen_approval"
         const val COMMAND_TTL_MS = 5 * 60 * 1000L
         const val MAX_FUTURE_SKEW_MS = 60 * 1000L
         private const val DEDUPE_WINDOW_MS = 15 * 60 * 1000L
@@ -326,7 +448,14 @@ class DeviceCommandExecutor(private val context: Context) {
         private val recentHandled = ConcurrentHashMap<String, Long>()
 
         fun requiresLocalApproval(action: String): Boolean =
-            action == "screen.read" || action == "screen.tap" || action == "screen.type"
+            action in setOf(
+                "screen.read",
+                "screen.tap", "TAP_COORDINATE",
+                "screen.type", "TYPE_TEXT",
+                "screen.click_text", "CLICK_TEXT",
+                "screen.scroll", "SCROLL",
+                "screen.global_action", "GLOBAL_ACTION"
+            )
 
         /**
          * Parses an ISO-8601 UTC timestamp across API 23..35 without requiring API 26 desugaring.

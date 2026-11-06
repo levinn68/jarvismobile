@@ -1,14 +1,16 @@
 {
   "name": "jarvis-macos-connector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
   "scripts": {
     "start": "node src/agent.js",
     "pair": "node src/agent.js pair",
+    "reconstruct": "bash RECONSTRUCT_AGENT.sh",
+    "check": "node --check src/agent.js && node --check src/credentials.js",
     "test": "node --test"
   }
 }

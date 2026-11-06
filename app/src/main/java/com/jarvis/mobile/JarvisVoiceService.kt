@@ -1,14 +1,18 @@
 package com.jarvis.mobile
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 
 /**
  * Foreground service that keeps the process eligible for an active microphone
@@ -28,7 +32,6 @@ class JarvisVoiceService : Service() {
                 }
             )
         }
-        startForeground(NOTIFICATION_ID, buildNotification())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -46,11 +49,36 @@ class JarvisVoiceService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_REFRESH -> {
+                if (!startMicrophoneForeground()) return START_NOT_STICKY
                 val nm = getSystemService(NotificationManager::class.java)
                 nm.notify(NOTIFICATION_ID, buildNotification())
             }
+            else -> {
+                if (!startMicrophoneForeground()) return START_NOT_STICKY
+            }
         }
         return START_STICKY
+    }
+
+    private fun startMicrophoneForeground(): Boolean {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            sendBroadcast(Intent(ACTION_STOP).setPackage(packageName))
+            stopSelf()
+            return false
+        }
+        return try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+            true
+        } catch (_: SecurityException) {
+            sendBroadcast(Intent(ACTION_STOP).setPackage(packageName))
+            stopSelf()
+            false
+        }
     }
 
     private fun buildNotification(): Notification {

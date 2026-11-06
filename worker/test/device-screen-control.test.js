@@ -82,8 +82,7 @@ test("acknowledge is idempotent for completed screen commands", async () => {
     kv,
     device,
     input: { action: "screen.type", params: { text: "ok" } }
-  });
-  const first = await acknowledgeDeviceCommand({
+  });  const first = await acknowledgeDeviceCommand({
     kv,
     deviceId: device.deviceId,
     commandId: queued.commandId,
