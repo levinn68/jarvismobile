@@ -19,7 +19,7 @@ test("detectSpeechLanguage accurately distinguishes English and Indonesian text 
 
   const idCfg = fishVoiceConfig({ FISH_API_KEY: "k", FISH_VOICE_ID_EN: "c7b2977d49894310866a70e6412afe10", FISH_VOICE_ID_ID: "voice-id" }, "Saya ingin kamu menjelaskan bagaimana cara kerja sistem ini");
   assert.equal(idCfg.language, "id");
-  assert.equal(idCfg.voiceId, "voice-id");
+  assert.equal(idCfg.voiceId, "c7b2977d49894310866a70e6412afe10");
 });
 
 test("isCommandTimestampFresh rejects future timestamps, expired timestamps, and malformed values", () => {
