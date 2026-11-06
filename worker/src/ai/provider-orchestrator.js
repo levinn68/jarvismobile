@@ -51,10 +51,12 @@ function availableProviders(env) {
   // endpoint, local gateway key, and exact live catalog model id are present.
   if (
     isSafePeaProxyUrl(env.PEAPROXY_BASE_URL) &&
-    typeof env.PEAPROXY_API_KEY === "string" &&
-    env.PEAPROXY_API_KEY.trim() &&
     typeof env.PEAPROXY_MODEL === "string" &&
-    env.PEAPROXY_MODEL.trim()
+    env.PEAPROXY_MODEL.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_ID === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_ID.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_SECRET === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_SECRET.trim()
   ) {
     configured.push("peaproxy");
   }
@@ -124,15 +126,12 @@ function peaproxyEndpoint(env) {
 
 async function invokePeaProxy(env, messages) {
   const headers = {
-    Authorization: `Bearer ${env.PEAPROXY_API_KEY}`,
     "Content-Type": "application/json",
   };
-  // Optional Cloudflare Access service-token headers. Keep both as Worker
-  // Secrets; never place them in wrangler.toml, Android, or Git.
-  if (env.PEAPROXY_ACCESS_CLIENT_ID && env.PEAPROXY_ACCESS_CLIENT_SECRET) {
-    headers["CF-Access-Client-Id"] = env.PEAPROXY_ACCESS_CLIENT_ID;
-    headers["CF-Access-Client-Secret"] = env.PEAPROXY_ACCESS_CLIENT_SECRET;
-  }
+  // Cloudflare Access service-token headers protect the HTTPS tunnel.
+  // Keep both as Worker Secrets; never place them in wrangler.toml, Android, or Git.
+  headers["CF-Access-Client-Id"] = env.PEAPROXY_ACCESS_CLIENT_ID;
+  headers["CF-Access-Client-Secret"] = env.PEAPROXY_ACCESS_CLIENT_SECRET;
 
   const response = await fetch(peaproxyEndpoint(env), {
     method: "POST",
