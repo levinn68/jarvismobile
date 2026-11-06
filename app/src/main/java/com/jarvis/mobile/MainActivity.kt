@@ -3840,12 +3840,58 @@ private fun JarvisScreen(
                         ) {
                             if (lines.isEmpty()) {
                                 item {
-                                    JarvisHomeDashboard(
-                                        compact = compact,
-                                        spin = spin,
-                                        breathe = breathe,
-                                        onSelectPrompt = { selectedPrompt -> send(selectedPrompt, voice = false) }
-                                    )
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 34.dp, bottom = 18.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(54.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.radialGradient(listOf(Color(0x6657DDF5), Color(0x220B2639), Color.Transparent)))
+                                                .border(1.dp, Cyan.copy(alpha = 0.48f), CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Ice, modifier = Modifier.size(24.dp))
+                                        }
+                                        Text(
+                                            text = "CHAT SESSION READY",
+                                            color = Ice,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.8.sp
+                                        )
+                                        Text(
+                                            text = "Mulai percakapan dengan JARVIS.",
+                                            color = TextMuted,
+                                            fontSize = 11.sp
+                                        )
+                                        Spacer(Modifier.height(5.dp))
+                                        listOf(
+                                            "Jelaskan topik yang sedang saya pelajari",
+                                            "Bantu analisis dan selesaikan masalah",
+                                            "Buat rencana kerja yang terstruktur"
+                                        ).forEach { prompt ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(13.dp))
+                                                    .background(Brush.horizontalGradient(listOf(Color(0xB20D2639), Color(0x88203D50))))
+                                                    .border(1.dp, Cyan.copy(alpha = 0.24f), RoundedCornerShape(13.dp))
+                                                    .clickable { send(prompt, voice = false) }
+                                                    .padding(horizontal = 13.dp, vertical = 13.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = Cyan, modifier = Modifier.size(16.dp))
+                                                Text(prompt, color = Ice, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                                Icon(Icons.Default.ArrowForward, contentDescription = null, tint = TextMuted, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
