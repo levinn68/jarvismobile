@@ -26,8 +26,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Glass HUD projection stage. The content is revealed as a holographic projection,
- * rather than appearing as an ordinary image strip.
+ * Translucent glass HUD projection stage.
+ * Uses layered gradients and restrained edge highlights so the panel reads as
+ * glass without relying on expensive real-time blur on the mobile GPU.
  */
 @Composable
 fun HologramProjectionStage(
@@ -35,54 +36,81 @@ fun HologramProjectionStage(
     title: String = "HOLOGRAPHIC PROJECTION",
     content: @Composable () -> Unit
 ) {
+    val shape = RoundedCornerShape(20.dp)
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(520)) + slideInVertically(
-            animationSpec = tween(620),
-            initialOffsetY = { it / 3 }
+        enter = fadeIn(tween(420)) + slideInVertically(
+            animationSpec = tween(520),
+            initialOffsetY = { it / 4 }
         )
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
+                .clip(shape)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xCC0B2535), Color(0x99203B4B), Color(0xAA061521))
+                        listOf(
+                            Color(0xA82C6075),
+                            Color(0x7A102C40),
+                            Color(0xA8061725)
+                        )
                     )
                 )
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
-                        listOf(Color(0x9958E8FF), Color(0x3342A9C6), Color(0x6658E8FF))
+                        listOf(
+                            Color(0xB8B9F5FF),
+                            Color(0x4D55CBEA),
+                            Color(0x8064DDF4)
+                        )
                     ),
-                    shape = RoundedCornerShape(18.dp)
+                    shape = shape
                 )
-                .padding(10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            // Subtle glass sheen; intentionally static and GPU-light.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.White.copy(alpha = 0.075f),
+                            0.16f to Color(0x2259DDF5),
+                            0.48f to Color.Transparent,
+                            1f to Color(0x1600BFEA)
+                        )
+                    )
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                Text(
-                    text = title,
-                    color = Color(0xFF9CEFFF),
-                    fontSize = 9.sp,
-                    letterSpacing = 1.8.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "PROJECTION ACTIVE",
-                    color = Color(0xFF5CCFE8),
-                    fontSize = 8.sp,
-                    letterSpacing = 1.sp,
-                    fontFamily = FontFamily.Monospace
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = title,
+                        color = Color(0xFFC5F6FF),
+                        fontSize = 9.sp,
+                        letterSpacing = 1.65.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "PROJECTION ACTIVE",
+                        color = Color(0xFF78DDF2),
+                        fontSize = 8.sp,
+                        letterSpacing = 0.9.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Box(Modifier.fillMaxWidth()) { content() }
             }
-            Box(Modifier.fillMaxWidth()) { content() }
         }
     }
 }
