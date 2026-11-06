@@ -13,14 +13,16 @@ test("lists all configured JARVIS providers without exposing credentials", () =>
   assert.deepEqual(listConfiguredJarvisProviders(env), ["gemini", "deepseek", "groq", "openai", "openrouter"]);
 });
 
-test("PeaProxy is opt-in and requires HTTPS, local gateway key, and exact model id", () => {
+test("PeaProxy is opt-in and requires HTTPS, exact model id, and Cloudflare Access service credentials", () => {
   assert.deepEqual(listConfiguredJarvisProviders({
     PEAPROXY_BASE_URL: "http://127.0.0.1:8317/v1",
     PEAPROXY_MODEL: "some-model",
+    PEAPROXY_ACCESS_CLIENT_ID: "cf-id",
+    PEAPROXY_ACCESS_CLIENT_SECRET: "cf-secret",
   }), []);
   assert.deepEqual(listConfiguredJarvisProviders({
     PEAPROXY_BASE_URL: "https://proxy.example/v1",
-    PEAPROXY_API_KEY: "local-key",
+    PEAPROXY_MODEL: "exact-live-model-id",
   }), []);
   assert.deepEqual(listConfiguredJarvisProviders({
     PEAPROXY_BASE_URL: "https://proxy.example/v1",
@@ -49,7 +51,7 @@ test("uses configured provider and returns normalized assistant text", async () 
   }
 });
 
-test("PeaProxy provider sends OpenAI-compatible chat request and reads assistant response", async () => {
+test("PeaProxy provider sends OpenAI-compatible request with Cloudflare Access service token", async () => {
   const originalFetch = globalThis.fetch;
   let calledUrl = "";
   let calledHeaders;
@@ -66,9 +68,7 @@ test("PeaProxy provider sends OpenAI-compatible chat request and reads assistant
     const result = await runJarvisProviders({
       env: {
         PEAPROXY_BASE_URL: "https://proxy.example/v1/",
-            PEAPROXY_MODEL: "gemini-model-from-catalog",
-        PEAPROXY_ACCESS_CLIENT_ID: "cf-client-id",
-        PEAPROXY_ACCESS_CLIENT_SECRET: "cf-client-secret",
+        PEAPROXY_MODEL: "gemini-model-from-catalog",
         PEAPROXY_ACCESS_CLIENT_ID: "cf-client-id",
         PEAPROXY_ACCESS_CLIENT_SECRET: "cf-client-secret",
       },
