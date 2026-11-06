@@ -429,7 +429,7 @@ class MainActivity : ComponentActivity() {
         stopSpeaking(resumeListeningIfActive = false)
         recognitionActive = false
         recognitionStartPending = false
-        clapDetector.reset()
+        // No auxiliary activation detector to reset.
         recognizer?.cancel()
         abandonMicFocus()
         stopVoiceForegroundService()
@@ -631,14 +631,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var clapActivationInProgress = false
     private val clapDetector by lazy {
         ClapPatternDetector(handler) { count ->
-            if (voiceModeEnabled) handler.post {
-                if (voiceModeEnabled && voiceText.value.isBlank()) {
-                    clapActivationInProgress = true
-                    recognizer?.cancel()
-                    voiceStatus.value = if (count == 2) "DOUBLE CLAP · JARVIS ACTIVATED" else "SINGLE CLAP · JARVIS ACTIVATED"
-                    voiceText.value = "JARVIS, OPEN"
-                }
-            }
+            // Wake activation is intentionally voice-keyword only: "Jarvis, open".
         }
     }
     @Volatile private var geminiSpeechInProgress = false
@@ -1158,8 +1151,10 @@ class MainActivity : ComponentActivity() {
                                 speechPlayer = null
                                 geminiSpeechInProgress = false
                                 if (speechGeneration.get() == gen) {
-                                    voiceStatus.value = "AUDIO PLAYBACK ERROR · USING ANDROID TTS"
-                                    speakWithAndroid(cleanSpeech)
+                                    geminiSpeechInProgress = false
+                                    suppressRecognizerCallbacks = false
+                                    voiceStatus.value = "FISH AUDIO PLAYBACK ERROR · CHECK VOICE SERVICE"
+                                    handler.post { restartListeningSession() }
                                 }
                                 true
                             }
@@ -1170,8 +1165,10 @@ class MainActivity : ComponentActivity() {
                         speechPlayer = null
                         geminiSpeechInProgress = false
                         if (speechGeneration.get() == gen) {
-                            voiceStatus.value = "VOICE PLAYBACK ERROR · USING ANDROID TTS"
-                            speakWithAndroid(cleanSpeech)
+                            geminiSpeechInProgress = false
+                            suppressRecognizerCallbacks = false
+                            voiceStatus.value = "FISH AUDIO PLAYBACK ERROR · CHECK VOICE SERVICE"
+                            handler.post { restartListeningSession() }
                         }
                     }
                 }
@@ -1179,7 +1176,9 @@ class MainActivity : ComponentActivity() {
                 handler.post {
                     if (speechGeneration.get() == gen) {
                         geminiSpeechInProgress = false
-                        speakWithAndroid(cleanSpeech)
+                        suppressRecognizerCallbacks = false
+                        voiceStatus.value = "FISH AUDIO REQUEST FAILED · CHECK SIGN-IN / API"
+                        handler.post { restartListeningSession() }
                     }
                 }
             } finally {
@@ -1233,7 +1232,7 @@ class MainActivity : ComponentActivity() {
                 override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
                 override fun onRmsChanged(rmsdB: Float) {
                     liveRms.value = rmsdB.coerceIn(0f, 16f)
-                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
+                    // No clap activation; wake phrase is the only activation path.
                 }
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
@@ -1319,7 +1318,7 @@ class MainActivity : ComponentActivity() {
         }, 650L)
     }
     private fun startListening() {
-        clapActivationInProgress = false
+        // Keep the recognizer in passive wake-word standby.
         if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress || recognitionActive || recognitionStartPending) return
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             if (!permissionAsked) {
@@ -3118,7 +3117,7 @@ private fun JarvisScreen(
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)^(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?\\bjarvis\\b[,.! ]*|\\bjarvis\\b[,.! ]*")
+            val wake = Regex("(?i)^\\s*(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?jarvis[,.! ]+open\\b[,.! ]*")
             val hasWake = wake.containsMatchIn(heard)
             val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
 
@@ -3137,7 +3136,7 @@ private fun JarvisScreen(
             }
 
             awaitingCommandAfterWake = false
-            if (Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
+            if (request.isBlank()) {
                 voiceStatusNote = "READY FOR COMMAND"
                 wakeAcknowledged = true
                 val readyReply = if (detectEnglishContent(heard)) {
