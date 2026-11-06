@@ -646,6 +646,7 @@ class MainActivity : ComponentActivity() {
     @Volatile private var suppressRecognizerCallbacks = false
     @Volatile private var ttsInitialized = false
     private val speechGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+    private val recognizerRestartInProgress = java.util.concurrent.atomic.AtomicBoolean(false)
     private val activeTtsConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
     @Volatile private var activeChatCancel: (() -> Unit)? = null
     private var speechPlayer: MediaPlayer? = null
@@ -965,11 +966,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    val finalImages = if (parsedProducts.isEmpty() && parsedImages.isEmpty()) {
-                        defaultVisualFallbackFor(prompt, answer = answer)
-                    } else {
-                        parsedImages.take(MAX_VISUAL_CARDS)
-                    }
+                    val finalImages = parsedImages.distinctBy { it.second }.take(MAX_VISUAL_CARDS)
                     ChatResponsePayload(answer, parsedProducts.take(MAX_VISUAL_CARDS), finalImages)
                 }
                 } catch (e: Exception) {
@@ -1241,11 +1238,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun restartListeningSession() {
+        if (!recognizerRestartInProgress.compareAndSet(false, true)) return
         handler.removeCallbacks(listeningRestart)
         recognitionActive = false
         recognitionStartPending = false
         suppressRecognizerCallbacks = true
-        if (!voiceModeEnabled || geminiSpeechInProgress || isFinishing || isDestroyed) return
+        if (!voiceModeEnabled || geminiSpeechInProgress || isFinishing || isDestroyed) {
+            recognizerRestartInProgress.set(false)
+            return
+        }
         voiceStatus.value = "RECONNECTING VOICE CORE"
         runCatching {
             recognizer?.cancel()
@@ -1256,6 +1257,7 @@ class MainActivity : ComponentActivity() {
         }.onFailure {
             voiceStatus.value = "VOICE CORE RESTARTING"
         }
+        recognizerRestartInProgress.set(false)
         handler.postDelayed({
             if (voiceModeEnabled && !geminiSpeechInProgress) startListening()
         }, 650L)
@@ -2936,14 +2938,9 @@ private fun JarvisScreen(
             if (action == "apps.launch" || action == "apps.launch_label") {
                 val appTarget = params["appName"] ?: params["packageName"].orEmpty()
                 val opened = onOpenApp(appTarget)
-                val fallbackImg = defaultVisualFallbackFor(q, isError = !opened)
                 val result = if (opened) "Aplikasi $appTarget berhasil dibuka di perangkat ini."
                     else "Aplikasi $appTarget tidak ditemukan atau tidak dapat dibuka di perangkat ini."
-                val richResult = buildString {
-                    append(result)
-                    append("\n\n")
-                    fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
-                }.trim()
+                val richResult = result
                 showJarvis(richResult, isError = !opened, retryPrompt = if (!opened) q else "")
                 if (accountEmail != null) onSaveTurn(requestText, richResult)
                 if (voice) {
@@ -2952,7 +2949,6 @@ private fun JarvisScreen(
                     voiceResponding = opened
                     voiceErrorState = !opened
                     voiceImages.clear()
-                    voiceImages.addAll(fallbackImg)
                     onSpeak(result)
                 }
                 return
@@ -2961,12 +2957,7 @@ private fun JarvisScreen(
             processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
             onDeviceCommand(action, params) { result ->
                 val isFailed = result.contains("gagal", true) || result.contains("tidak dapat", true)
-                val fallbackImg = defaultVisualFallbackFor(q, answer = result, isError = isFailed)
-                val richResult = buildString {
-                    append(result)
-                    append("\n\n")
-                    fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
-                }.trim()
+                val richResult = result
                 showJarvis(richResult, isError = isFailed, retryPrompt = if (isFailed) q else "")
                 if (accountEmail != null) onSaveTurn(requestText, richResult)
                 if (voice) {
@@ -2975,7 +2966,6 @@ private fun JarvisScreen(
                     voiceResponding = !isFailed
                     voiceErrorState = isFailed
                     voiceImages.clear()
-                    voiceImages.addAll(fallbackImg)
                     onSpeak(result)
                 }
                 busy = false
@@ -2991,12 +2981,10 @@ private fun JarvisScreen(
             // Chat Mode MUST display the complete assistant response without stripping sections before KESIMPULAN JARVIS.
             val baseAnswer = payload.answer.trim().ifBlank { "JARVIS tidak menerima jawaban akhir." }
             val conciseVoiceSummary = extractConciseVoiceSummary(baseAnswer)
-            val resolvedImages = if (payload.images.isNotEmpty()) {
-                payload.images.take(MAX_VISUAL_CARDS)
-            } else {
-                defaultVisualFallbackFor(q, answer = baseAnswer, isError = payload.isError)
-            }
-            val missingImages = resolvedImages.take(MAX_VISUAL_CARDS).filter { (_, url) -> url.isNotBlank() && !baseAnswer.contains(url) }
+            val resolvedImages = (payload.images + extractInlineMarkdownImages(baseAnswer))
+                .distinctBy { it.second }
+                .take(MAX_VISUAL_CARDS)
+            val missingImages = resolvedImages.filter { (_, url) -> url.isNotBlank() && !baseAnswer.contains(url) }
             val answer = if (missingImages.isEmpty()) baseAnswer else buildString {
                 append(baseAnswer)
                 append("\n\n")
@@ -3082,9 +3070,9 @@ private fun JarvisScreen(
                 voiceStatusNote = "READY FOR COMMAND"
                 wakeAcknowledged = true
                 val readyReply = if (detectEnglishContent(heard)) {
-                    "Ready, Sir. I'm listening for your command."
+                    "Ready, Sir. Please give your command."
                 } else {
-                    "Siap, Sir. Saya aktif dan mendengarkan perintah Anda."
+                    "Siap, Sir. Silakan beri perintah."
                 }
                 onSpeak(readyReply)
                 return@LaunchedEffect
