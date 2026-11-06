@@ -2707,7 +2707,7 @@ private fun JarvisScreen(
         val revealed: MutableState<Boolean> = mutableStateOf(true)
     )
 
-    var page by remember { mutableStateOf("CHAT") }
+    var page by remember(accountEmail) { mutableStateOf(if (accountEmail != null) "VOICE" else "CHAT") }
     var voiceListening by remember { mutableStateOf(false) }
     var command by remember { mutableStateOf("") }
     var voiceTranscript by remember { mutableStateOf("") }
