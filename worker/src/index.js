@@ -164,7 +164,7 @@ async function handleTts(request, env) {
       headers: {
         "Authorization": `Bearer ${env.FISH_API_KEY}`,
         "Content-Type": "application/json",
-        "model": env.FISH_MODEL || "s2.1-pro",
+        "model": env.FISH_MODEL || "s2.1-pro-free",
       },
       body: JSON.stringify({ text, reference_id: referenceId, format: "mp3", latency: "balanced" }),
       signal: controller.signal,
