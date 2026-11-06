@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="jarvis_accessibility_description">Allows JARVIS to read visible screen text only when you explicitly request screen analysis. It does not monitor screen changes, tap, type, or change settings.</string>
+    <string name="app_name">J.A.R.V.I.S.</string>
+    <string name="jarvis_subtitle">Just A Rather Very Intelligent System</string>
+    <string name="jarvis_chat_placeholder">Ketik perintah atau tanya JARVIS…</string>
+    <string name="jarvis_voice_placeholder">Ucapkan perintah atau ketik di sini…</string>
+    <string name="jarvis_accessibility_description">Allows JARVIS to read visible screen text or perform a requested tap/text entry only after you explicitly approve each action on this device. It never monitors background screen events or changes system settings.</string>
 </resources>
