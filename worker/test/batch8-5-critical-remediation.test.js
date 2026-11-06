@@ -240,7 +240,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
     email: "fajar@jarvis.id",
     apiKey: "sk-user-custom-account-key-9999",
     isDefault: true
-  });
+  }, { AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long" });
   assert.equal(savedAcc.accountId, "acc-user-openai-custom");
 
   let usedAuthHeader = "";
@@ -270,6 +270,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_ANON_KEY: "anon-key",
       OPENAI_API_KEY_1: "sk-server-default-key",
+      AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long",
       FISH_API_KEY: "fish-secret-key",
       DEVICE_REGISTRY: kv
     };
