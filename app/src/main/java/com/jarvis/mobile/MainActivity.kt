@@ -809,8 +809,8 @@ class MainActivity : ComponentActivity() {
                 val raw = String(rawBytes, Charsets.UTF_8).trim()
                 val json = try { JSONObject(raw) } catch (_: Exception) { null }
                 if (json == null) {
-                    if (code in 200..299 && raw.isNotBlank()) ChatResponsePayload(raw, images = defaultVisualFallbackFor(prompt))
-                    else ChatResponsePayload("JARVIS API mengirim respons yang tidak valid (HTTP $code).", images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                    if (code in 200..299 && raw.isNotBlank()) ChatResponsePayload(raw, images = emptyList())
+                    else ChatResponsePayload("JARVIS API mengirim respons yang tidak valid (HTTP $code).", images = emptyList(), isError = true)
                 } else if (code !in 200..299 || !json.optBoolean("ok", json.has("answer") || json.has("reply") || json.has("response"))) {
                     if (code == 401 && attempt == 1 && !cancelled.get() && supabaseClient.hasSession()) {
                         val refreshed = runCatching { supabaseClient.refreshSessionBlocking() }.getOrDefault("")
@@ -827,7 +827,7 @@ class MainActivity : ComponentActivity() {
                     val errText = json.optString("error").ifBlank {
                         json.optString("detail").ifBlank { "JARVIS API error ($code)." }
                     } + if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
-                    ChatResponsePayload(errText, images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                    ChatResponsePayload(errText, images = emptyList(), isError = true)
                 } else {
                     val answer = sequenceOf("answer", "reply", "response", "message", "text", "output")
                         .map { json.optString(it).trim() }
@@ -896,7 +896,7 @@ class MainActivity : ComponentActivity() {
                     }
                     val err = if (message.contains("Jawaban terlalu besar")) message
                     else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
-                    ChatResponsePayload(err, images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                    ChatResponsePayload(err, images = emptyList(), isError = true)
                 } finally {
                     connection?.disconnect()
                 }
@@ -905,7 +905,7 @@ class MainActivity : ComponentActivity() {
             }
             val finalPayload = payload ?: ChatResponsePayload(
                 "Gagal menghubungi JARVIS Worker.",
-                images = defaultVisualFallbackFor(prompt, isError = true),
+                images = emptyList(),
                 isError = true
             )
             if (!cancelled.get()) handler.post { if (!cancelled.get()) callback(finalPayload) }
@@ -1329,10 +1329,25 @@ class MainActivity : ComponentActivity() {
                 true
             } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
         }
-        val found = candidates.firstOrNull { it.first.equals(cleaned, true) }
-            ?: candidates.firstOrNull { it.first.startsWith(cleaned, true) }
-            ?: candidates.firstOrNull { it.first.contains(cleaned, true) }
-            ?: candidates.firstOrNull { item -> cleaned.split(" ").all { token -> token.length > 1 && item.first.contains(token, true) } }
+        fun appScore(item: Triple<String, String, String>): Int {
+            val label = item.first.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N} ]"), " ").replace(Regex("\\s+"), " ").trim()
+            val packageText = item.second.lowercase(Locale.ROOT).replace('.', ' ')
+            val query = cleaned.lowercase(Locale.ROOT)
+            val tokens = query.split(" ").filter { it.length > 1 }
+            return when {
+                label == query -> 1000
+                label.startsWith(query) -> 900
+                label.contains(query) -> 800
+                tokens.isNotEmpty() && tokens.all { label.contains(it) || packageText.contains(it) } -> 700 + tokens.size
+                tokens.any { token -> label.split(" ").any { it.startsWith(token) } } -> 500
+                else -> 0
+            }
+        }
+        val found = candidates
+            .map { it to appScore(it) }
+            .filter { it.second > 0 }
+            .maxByOrNull { it.second }
+            ?.first
         if (found == null) { voiceStatus.value = "APP NOT FOUND · SEARCHING WEB"; return false }
         return try {
             val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(ComponentName(found.second, found.third)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -2643,7 +2658,41 @@ private fun JarvisScreen(
     onRenameConversation: (String, String) -> Unit = { _, _ -> },
     onSaveTurn: (String, String) -> Unit,
     onUploadVoiceProfile: (Uri, String, (String) -> Unit) -> Unit
-) {
+ ) {
+    if (accountEmail == null) {
+        Box(
+            Modifier.fillMaxSize().background(Background).padding(28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                Text("J.A.R.V.I.S.", color = Ice, fontSize = 30.sp, fontWeight = FontWeight.Light, letterSpacing = 5.sp)
+                Text("PERSONAL INTELLIGENCE SYSTEM", color = Cyan, fontSize = 9.sp, letterSpacing = 2.sp)
+                Text(
+                    "Masuk dengan akun Google untuk melanjutkan.",
+                    color = TextMuted, fontSize = 13.sp, textAlign = TextAlign.Center
+                )
+                Button(
+                    onClick = onGoogleSignIn,
+                    enabled = !accountBusy,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF123A4A), contentColor = Ice),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (accountBusy) CircularProgressIndicator(Modifier.size(17.dp), color = Cyan, strokeWidth = 2.dp)
+                    else Icon(Icons.Default.AccountCircle, contentDescription = null)
+                    Spacer(Modifier.width(9.dp))
+                    Text(if (accountBusy) "MENGHUBUNGKAN GOOGLE..." else "CONTINUE WITH GOOGLE")
+                }
+                if (accountStatus.isNotBlank()) {
+                    Text(accountStatus, color = if (accountStatus.contains("GAGAL", true) || accountStatus.contains("ERROR", true)) AlertRed else TextMuted, fontSize = 11.sp, textAlign = TextAlign.Center)
+                }
+            }
+        }
+        return
+    }
+
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
         val id: String = java.util.UUID.randomUUID().toString(),
@@ -3036,42 +3085,33 @@ private fun JarvisScreen(
         }
     }
 
-    // Voice remains silent until the user says JARVIS, then waits briefly for the command.
+    // Every voice command must carry the JARVIS prefix. "Jarvis, open" only arms the session.
     LaunchedEffect(recognizedText, page, voiceListening) {
         if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
             val heard = recognizedText.trim()
             onConsumed()
-            val wake = Regex("(?i)^\\s*(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?jarvis[,.! ]+open\\b[,.! ]*")
-            val hasWake = wake.containsMatchIn(heard)
-            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
-
-            if (!hasWake && !awaitingCommandAfterWake) {
-                kotlinx.coroutines.delay(250)
+            val prefix = Regex("(?i)^\\s*(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?jarvis(?:\\s*[,.:;!?-]\\s*|\\s+)(.*)$")
+            val match = prefix.matchEntire(heard)
+            if (match == null) {
+                voiceStatusNote = if (wakeAcknowledged) "COMMAND IGNORED · SAY JARVIS FIRST" else "WAITING FOR JARVIS, OPEN"
+                kotlinx.coroutines.delay(180)
                 onStartListening()
                 return@LaunchedEffect
             }
 
-            if (hasWake && request.isBlank()) {
-                awaitingCommandAfterWake = true
-                voiceStatusNote = "LISTENING FOR COMMAND"
-                kotlinx.coroutines.delay(250)
-                onStartListening()
-                return@LaunchedEffect
-            }
-
-            awaitingCommandAfterWake = false
-            if (request.isBlank()) {
-                voiceStatusNote = "READY FOR COMMAND"
+            val request = match.groupValues[1].trim()
+            val normalizedRequest = request.lowercase(Locale.ROOT).replace(Regex("[.!?]+$"), "").trim()
+            if (normalizedRequest.isBlank() || normalizedRequest == "open") {
                 wakeAcknowledged = true
-                val readyReply = if (detectEnglishContent(heard)) {
-                    "Ready, Sir. Please give your command."
-                } else {
-                    "Siap, Sir. Silakan beri perintah."
-                }
-                onSpeak(readyReply)
+                awaitingCommandAfterWake = false
+                voiceStatusNote = "JARVIS ACTIVE · PREFIX REQUIRED"
+                kotlinx.coroutines.delay(180)
+                onStartListening()
                 return@LaunchedEffect
             }
+
             wakeAcknowledged = true
+            awaitingCommandAfterWake = false
             if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby|tidur|sleep|istirahat)$").matches(request)) {
                 wakeAcknowledged = false
                 voiceListening = false
@@ -3088,7 +3128,7 @@ private fun JarvisScreen(
                 }
                 voiceErrorState = !opened
                 voiceImages.clear()
-                voiceImages.addAll(defaultVisualFallbackFor(request, isError = !opened))
+                voiceProducts.clear()
                 onSpeak(reply)
             } else send(request, voice = true)
         }
