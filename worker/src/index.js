@@ -152,56 +152,10 @@ async function handleTts(request, env) {
   const text = boundedString(body.text || "", 1800);
   if (!text) return json({ ok: false, error: "text is required" }, 400);
 
-  // VoxCPM2 is the preferred engine when a GPU inference service and an
-  // account-owned reference profile are configured. Fish Audio remains fallback.
-  const profileKey = `voice-profile:v1:${auth.user.id}`;
-  const savedProfile = env.DEVICE_REGISTRY
-    ? await env.DEVICE_REGISTRY.get(profileKey, "json").catch(() => null)
-    : null;
-  if (env.VOXCPM_URL && env.VOXCPM_API_KEY && savedProfile?.audioBase64) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
-    try {
-      const upstream = await fetch(`${String(env.VOXCPM_URL).replace(/\/$/, "")}/v1/audio/speech`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${env.VOXCPM_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          reference_audio_base64: savedProfile.audioBase64,
-          prompt_text: savedProfile.transcript || undefined,
-          style: body.style || undefined,
-          seed: Number.isInteger(body.seed) ? body.seed : 42,
-        }),
-        signal: controller.signal,
-      });
-      if (!upstream.ok) {
-        const detail = (await upstream.text().catch(() => "")).slice(0, 400);
-        return json({ ok: false, error: `VoxCPM2 returned HTTP ${upstream.status}: ${detail}` }, upstream.status >= 500 ? 502 : upstream.status);
-      }
-      return new Response(await upstream.arrayBuffer(), {
-        status: 200,
-        headers: {
-          ...CORS,
-          "Content-Type": "audio/wav",
-          "Cache-Control": "no-store",
-          "X-Jarvis-Voice-Engine": "VoxCPM2",
-        },
-      });
-    } catch (error) {
-      const message = error?.name === "AbortError" ? "VoxCPM2 inference timed out." : String(error?.message || error).slice(0, 200);
-      return json({ ok: false, error: message }, 502);
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
   if (!env.FISH_API_KEY) return json({ ok: false, error: "No voice engine is configured. Configure VoxCPM2 with a saved profile or set FISH_API_KEY." }, 503);
 
   const { language, voiceId } = fishVoiceConfig(env, text);
-  const referenceId = voiceId || "c7b2977d49894310866a70e6412afe10";
+  const referenceId = voiceId || "612b878b113047d9a770c069c8b4fdfe";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 80000);
   try {
