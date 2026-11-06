@@ -112,6 +112,51 @@ function buildContextualCards(answer) {
   return normalizeCards(cards, 8);
 }
 
+
+async function handleTts(request, env) {
+  const auth = await authenticateSupabaseUserDetailed(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+  if (!env.FISH_API_KEY) return json({ ok: false, error: "Fish Audio is not configured." }, 503);
+  let body = {};
+  try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
+  const text = boundedString(body.text || "", 1800);
+  if (!text) return json({ ok: false, error: "text is required" }, 400);
+  const { language, voiceId } = fishVoiceConfig(env, text);
+  const referenceId = voiceId || "c7b2977d49894310866a70e6412afe10";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 80000);
+  try {
+    const upstream = await fetch("https://api.fish.audio/v1/tts", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.FISH_API_KEY}`,
+        "Content-Type": "application/json",
+        "model": env.FISH_MODEL || "s2.1-pro",
+      },
+      body: JSON.stringify({ text, reference_id: referenceId, format: "mp3", latency: "balanced" }),
+      signal: controller.signal,
+    });
+    if (!upstream.ok) {
+      const detail = (await upstream.text().catch(() => "")).slice(0, 500);
+      return json({ ok: false, error: `Fish Audio returned HTTP ${upstream.status}: ${detail}` }, upstream.status >= 500 ? 502 : upstream.status);
+    }
+    const audio = await upstream.arrayBuffer();
+    if (!audio.byteLength) return json({ ok: false, error: "Fish Audio returned empty audio." }, 502);
+    return new Response(audio, { status: 200, headers: {
+      ...CORS,
+      "Content-Type": upstream.headers.get("Content-Type") || "audio/mpeg",
+      "Cache-Control": "no-store",
+      "X-Jarvis-Voice-Language": language,
+      "X-Jarvis-Voice-Profile": referenceId,
+    }});
+  } catch (error) {
+    const message = error?.name === "AbortError" ? "Fish Audio request timed out." : String(error?.message || error).slice(0, 240);
+    return json({ ok: false, error: message }, 502);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function handleChat(request, env) {
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
@@ -225,6 +270,10 @@ export default {
 
     if (url.pathname === "/v1/chat" && request.method === "POST") {
       return handleChat(request, env);
+    }
+
+    if (url.pathname === "/v1/tts" && request.method === "POST") {
+      return handleTts(request, env);
     }
 
     return json({ ok: false, error: "Not found" }, 404);
