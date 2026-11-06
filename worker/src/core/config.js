@@ -8,10 +8,23 @@ export const JARVIS_CONFIG = Object.freeze({
 });
 
 export function readRuntimeConfig(env = {}) {
+  const aiProviders = ["gemini", "deepseek", "groq", "openai", "openrouter"];
+  if (
+    typeof env.PEAPROXY_BASE_URL === "string" &&
+    env.PEAPROXY_BASE_URL.startsWith("https://") &&
+    typeof env.PEAPROXY_MODEL === "string" &&
+    env.PEAPROXY_MODEL.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_ID === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_ID.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_SECRET === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_SECRET.trim()
+  ) aiProviders.push("peaproxy");
+
   return {
     serviceName: JARVIS_CONFIG.serviceName,
     protocolVersion: JARVIS_CONFIG.protocolVersion,
-    aiProviders: ["gemini", "deepseek", "groq", "openai", "openrouter"],
+    aiProviders,
+    peaproxyConfigured: aiProviders.includes("peaproxy"),
     fishAudioConfigured: Boolean(env.FISH_API_KEY),
     serpApiConfigured: Boolean(env.SERPAPI_API_KEY),
     deviceRegistryConfigured: Boolean(env.DEVICE_REGISTRY),

@@ -1,0 +1,30 @@
+name: JARVIS Worker Tests
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "worker/**"
+      - ".github/workflows/test-worker.yml"
+  pull_request:
+    paths:
+      - "worker/**"
+      - ".github/workflows/test-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run Worker tests
+        run: npm test --prefix worker
