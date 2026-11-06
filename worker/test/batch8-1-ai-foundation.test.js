@@ -102,7 +102,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     isDefault: false,
     quotaUsedTokens: 10000,
     quotaLimitTokens: 200000
-  });
+  }, env);
   assert.equal(acc2.isDefault, false);
 
   // Switch default to Akun Work
@@ -128,7 +128,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     quotaUsedTokens: 200000,
     quotaLimitTokens: 200000
   });
-  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333" });
+  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long", OPENAI_API_KEY_1: "sk-server-fallback-3333" });
   assert.equal(chainAfterQuota[0].accountId, "acc-openai-primary");
 
   const removed = await removeUserAiAccount(kv, userId, "acc-openai-work");
