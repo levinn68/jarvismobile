@@ -2765,6 +2765,16 @@ private fun JarvisScreen(
             }
         }
     }
+    val voiceProfilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            voiceProfileBusy = true
+            voiceProfileStatus = "Mengunggah sampel suara..." 
+            onUploadVoiceProfile(uri, voiceProfileTranscript) { result ->
+                voiceProfileBusy = false
+                voiceProfileStatus = result
+            }
+        }
+    }
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         uris.forEach { uri ->
             if (pendingAttachments.size < 5 && pendingAttachments.none { it.uri == uri }) {
@@ -2791,6 +2801,9 @@ private fun JarvisScreen(
     var historyPanel by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
     var webClientIdDraft by remember(initialGoogleWebClientId) { mutableStateOf(initialGoogleWebClientId) }
+    var voiceProfileTranscript by remember { mutableStateOf("") }
+    var voiceProfileStatus by remember { mutableStateOf("") }
+    var voiceProfileBusy by remember { mutableStateOf(false) }
     val lines = remember { mutableStateListOf<Line>() }
     LaunchedEffect(restoredMessages?.first) {
         val restored = restoredMessages ?: return@LaunchedEffect
@@ -4449,6 +4462,29 @@ private fun JarvisScreen(
                                     placeholder = { Text("123456-abc.apps.googleusercontent.com", color = TextMuted, fontSize = 11.sp) },
                                     label = { Text("Google Web Client ID Override") }
                                 )
+                                Text("PROFIL SUARA JARVIS · VOXCPM2", color = Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Pilih WAV PCM mono 16 kHz, durasi 2–30 detik, maksimal 8 MB. Transcript membantu menjaga pelafalan.", color = TextMuted, fontSize = 11.sp)
+                                OutlinedTextField(
+                                    value = voiceProfileTranscript,
+                                    onValueChange = { voiceProfileTranscript = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2,
+                                    maxLines = 3,
+                                    placeholder = { Text("Transkrip persis isi rekaman (opsional)", color = TextMuted, fontSize = 11.sp) },
+                                    label = { Text("Transcript referensi") }
+                                )
+                                OutlinedButton(
+                                    onClick = { voiceProfilePicker.launch(arrayOf("audio/wav", "audio/x-wav")) },
+                                    enabled = !voiceProfileBusy && accountEmail != null,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.RecordVoiceOver, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (voiceProfileBusy) "MENGUNGGAH PROFIL..." else "PILIH & SIMPAN SUARA JARVIS (WAV)")
+                                }
+                                if (voiceProfileStatus.isNotBlank()) {
+                                    Text(voiceProfileStatus, color = if (voiceProfileStatus.startsWith("Profil suara berhasil")) OkGreen else WarnAmber, fontSize = 11.sp)
+                                }
                                 OutlinedButton(
                                     onClick = {
                                         if (webClientIdDraft.isNotBlank()) onSaveGoogleWebClientId(webClientIdDraft.trim())
