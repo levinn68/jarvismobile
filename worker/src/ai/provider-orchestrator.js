@@ -121,7 +121,7 @@ async function invokeCompatible(name, env, messages) {
 }
 
 function peaproxyEndpoint(env) {
-  return `${String(env.PEAPROXY_BASE_URL).replace(/\\/+$/, "")}/chat/completions`;
+  return `${String(env.PEAPROXY_BASE_URL).replace(/\/+$/, "")}/chat/completions`;
 }
 
 async function invokePeaProxy(env, messages) {
