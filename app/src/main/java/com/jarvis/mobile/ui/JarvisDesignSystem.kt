@@ -40,7 +40,9 @@ object JarvisColors {
     val Error = Color(0xFFFF5E6E)
     val Listening = Color(0xFF00E5FF)
     val Thinking = Color(0xFFB26BFF)
+    val Responding = Color(0xFF38D4FF)
     val Speaking = Color(0xFF5BFFC8)
+    val Muted = Color(0xFF4A6578)
 }
 
 object JarvisShapes {
@@ -61,12 +63,19 @@ object JarvisSpacing {
     val xxl = 32.dp
 }
 
-/** Voice orb visual state driven by real recognition / TTS / error flags. */
+/**
+ * Voice orb visual state driven by real recognition / processing / response / TTS / mute / error flags.
+ * Supports all 7 required states (Idle, Listening, Processing, Responding, Speaking, Muted, Error)
+ * plus Standby alias for backward compatibility.
+ */
 enum class VoiceOrbState {
+    Idle,
     Standby,
     Listening,
     Processing,
+    Responding,
     Speaking,
+    Muted,
     Error
 }
 
@@ -92,12 +101,15 @@ fun resolveVoiceOrbState(
     recognitionActive: Boolean,
     processing: Boolean,
     speaking: Boolean,
-    error: Boolean
+    error: Boolean,
+    responding: Boolean = false,
+    muted: Boolean = !voiceEnabled
 ): VoiceOrbState = when {
     error -> VoiceOrbState.Error
     speaking -> VoiceOrbState.Speaking
+    responding -> VoiceOrbState.Responding
     processing -> VoiceOrbState.Processing
-    voiceEnabled && recognitionActive -> VoiceOrbState.Listening
-    voiceEnabled -> VoiceOrbState.Standby
-    else -> VoiceOrbState.Standby
+    muted || !voiceEnabled -> VoiceOrbState.Muted
+    recognitionActive -> VoiceOrbState.Listening
+    else -> VoiceOrbState.Idle
 }
