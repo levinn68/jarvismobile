@@ -1361,7 +1361,7 @@ class MainActivity : ComponentActivity() {
         activeChatCancel?.invoke()
         activeChatCancel = null
         activeTtsConnection.getAndSet(null)?.let { conn -> runCatching { conn.disconnect() } }
-        clapDetector.reset()
+
         stopVoiceForegroundService()
         runCatching { unregisterReceiver(voiceStopReceiver) }
         unregisterConnectivityFlush()
