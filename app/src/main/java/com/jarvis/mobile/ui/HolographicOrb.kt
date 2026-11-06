@@ -144,6 +144,31 @@ fun HolographicOrb(
                 )
             }
 
+            // Segmented instrument halo: thin radial marks create a projected,
+            // precision-built reactor silhouette without expensive blur effects.
+            rotate(-spin * 0.22f, Offset(cx, cy)) {
+                val haloRadius = baseR * 2.12f
+                drawCircle(
+                    color = coreColor.copy(alpha = 0.18f * intensity),
+                    radius = haloRadius,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 0.85.dp.toPx())
+                )
+                for (tick in 0 until 48) {
+                    val angle = Math.toRadians((tick * 7.5).toDouble())
+                    val major = tick % 4 == 0
+                    val inner = haloRadius - if (major) 8.dp.toPx() else 3.dp.toPx()
+                    val outer = haloRadius + if (major) 3.dp.toPx() else 1.dp.toPx()
+                    drawLine(
+                        color = coreColor.copy(alpha = (if (major) 0.52f else 0.20f) * intensity),
+                        start = Offset(cx + cos(angle).toFloat() * inner, cy + sin(angle).toFloat() * inner),
+                        end = Offset(cx + cos(angle).toFloat() * outer, cy + sin(angle).toFloat() * outer),
+                        strokeWidth = if (major) 1.2.dp.toPx() else 0.7.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
             rotate(spin, Offset(cx, cy)) {
                 val arcStroke = Stroke(width = 2.4f, cap = StrokeCap.Round)
                 drawArc(
