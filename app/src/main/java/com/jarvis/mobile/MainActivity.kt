@@ -2765,6 +2765,8 @@ private fun JarvisScreen(
             }
         }
     }
+    var voiceProfileBusy by remember { mutableStateOf(false) }
+
     val voiceProfilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             voiceProfileBusy = true
