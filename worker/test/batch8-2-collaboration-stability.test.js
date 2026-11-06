@@ -244,7 +244,7 @@ test("Batch 8.2 — Worker HTTP Endpoints (/v1/collaboration/modes, /v1/collabor
 test("Batch 8.2 — Android Crash Elimination, Smooth Animations, Storyboard Screens 12-30 & Zero-Deletion Verification", async () => {
   const stabilityPath = path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/stability/JarvisStabilityGuard.kt");
   const collabUiPath = path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/ui/JarvisCollaborationScreens.kt");
-  const mainActivityPath = path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt");
+  const mainActivityPath = path.join(repoRoot, "docs/archive/b8-7/docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt");
   const migrationPath = path.join(repoRoot, "supabase/migrations/20261106082000_jarvis_b8_2_collaboration_history.sql");
 
   assert.ok(fs.existsSync(stabilityPath), "JarvisStabilityGuard.kt must exist");
