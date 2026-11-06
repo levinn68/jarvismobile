@@ -822,7 +822,8 @@ class MainActivity : ComponentActivity() {
                 onNewConversation = { newConversation() },
                 onDeleteConversation = { id -> deleteConversation(id) },
                 onRenameConversation = { id, title -> renameConversation(id, title) },
-                onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) }
+                onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) },
+                onUploadVoiceProfile = { uri, transcript, callback -> uploadVoiceProfile(uri, transcript, callback) }
             )
         }
     }
@@ -997,6 +998,56 @@ class MainActivity : ComponentActivity() {
         }
         activeChatCancel = cancelFn
         return cancelFn
+    }
+
+    private fun uploadVoiceProfile(uri: Uri, transcript: String, callback: (String) -> Unit) {
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 8 * 1024 * 1024) throw IllegalArgumentException("Audio melebihi batas 8 MB.")
+                        out.write(buffer, 0, count)
+                    }
+                    out.toByteArray()
+                } ?: throw IllegalArgumentException("File audio tidak dapat dibaca.")
+                if (bytes.size < 32000 || bytes.size < 44 ||
+                    String(bytes, 0, 4, Charsets.US_ASCII) != "RIFF" ||
+                    String(bytes, 8, 4, Charsets.US_ASCII) != "WAVE") {
+                    throw IllegalArgumentException("Pilih file WAV PCM mono 16 kHz berdurasi 2–30 detik.")
+                }
+                val token = supabaseClient.currentAccessToken().takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("Masuk dengan akun Google terlebih dahulu.")
+                val worker = JarvisDeviceClient.resolveWorkerBaseUrl(this@MainActivity)
+                connection = (URL("$worker/v1/voice-profile").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "PUT"
+                    connectTimeout = 20000
+                    readTimeout = 60000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("Authorization", "Bearer $token")
+                }
+                val payload = JSONObject()
+                    .put("audioBase64", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                    .put("transcript", transcript.trim().take(1200))
+                connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+                if (code !in 200..299) throw IllegalStateException("Worker HTTP $code: $response")
+                val result = JSONObject(response)
+                if (!result.optBoolean("ok")) throw IllegalStateException(result.optString("error", "Upload profil gagal."))
+                handler.post { callback("Profil suara berhasil disimpan. VoxCPM2 akan dipakai setelah server GPU dikonfigurasi.") }
+            } catch (error: Exception) {
+                handler.post { callback("Gagal menyimpan profil suara: ${error.message ?: "kesalahan tidak diketahui"}") }
+            } finally { connection?.disconnect() }
+        }.start()
     }
 
     private fun speak(text: String) {
@@ -2667,7 +2718,8 @@ private fun JarvisScreen(
     onNewConversation: () -> Unit,
     onDeleteConversation: (String) -> Unit,
     onRenameConversation: (String, String) -> Unit = { _, _ -> },
-    onSaveTurn: (String, String) -> Unit
+    onSaveTurn: (String, String) -> Unit,
+    onUploadVoiceProfile: (Uri, String, (String) -> Unit) -> Unit
 ) {
     data class Attachment(val uri: Uri, val name: String, val mime: String)
     data class Line(
