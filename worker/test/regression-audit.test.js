@@ -188,7 +188,7 @@ test("authenticated /v1/tts proxies Fish Audio with one stable Jarvis voice prof
       assert.equal(init.headers.Authorization, "Bearer fish-test-key");
       assert.equal(init.headers.model, "s2.1-pro-free");
       const body = JSON.parse(init.body);
-      assert.equal(body.reference_id, "612b878b113047d9a770c069c8b4fdfe");
+      assert.equal(body.reference_id, "c7b2977d49894310866a70e6412afe10");
       assert.equal(body.format, "mp3");
       return new Response(new Uint8Array([73, 68, 51, 4]), { status: 200, headers: { "Content-Type": "audio/mpeg" } });
     }
