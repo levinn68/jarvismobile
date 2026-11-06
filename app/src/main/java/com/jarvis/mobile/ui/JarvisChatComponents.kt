@@ -3,6 +3,7 @@ package com.jarvis.mobile.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,13 +14,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -31,16 +35,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Premium chat bubbles and composer for JARVIS Chat Mode.
+ * Premium chat bubbles, error cards, conversation chips, and composer for JARVIS Chat Mode.
  * Graphite base, cyan/violet accents — no large white panels.
  */
 
@@ -144,17 +150,49 @@ fun JarvisChatErrorCard(
             .fillMaxWidth()
             .clip(JarvisShapes.CardSm)
             .background(JarvisColors.Error.copy(alpha = 0.12f))
-            .border(1.dp, JarvisColors.Error.copy(alpha = 0.4f), JarvisShapes.CardSm)
+            .border(1.dp, JarvisColors.Error.copy(alpha = 0.45f), JarvisShapes.CardSm)
             .padding(12.dp)
+            .semantics { contentDescription = "Peringatan kesalahan sistem JARVIS" }
     ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                Icons.Default.ErrorOutline,
+                contentDescription = "Error",
+                tint = JarvisColors.Error,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = "DIAGNOSTIK KONEKSI JARVIS",
+                color = JarvisColors.Error,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+        Spacer(Modifier.height(6.dp))
         Text(
             text = message,
-            color = JarvisColors.Error,
+            color = JarvisColors.Ice,
             fontSize = 13.sp,
             lineHeight = 18.sp
         )
         if (onRetry != null) {
-            TextButton(onClick = onRetry) {
+            Spacer(Modifier.height(6.dp))
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.heightIn(min = 40.dp)
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Coba lagi",
+                    tint = JarvisColors.Cyan,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(Modifier.width(6.dp))
                 Text("COBA LAGI", color = JarvisColors.Cyan, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
@@ -175,7 +213,8 @@ fun JarvisChatComposer(
     Row(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(24.dp))
             .background(JarvisColors.BackgroundElevated)
             .border(
                 1.dp,
@@ -185,7 +224,7 @@ fun JarvisChatComposer(
                         JarvisColors.Violet.copy(alpha = 0.35f)
                     )
                 ),
-                RoundedCornerShape(20.dp)
+                RoundedCornerShape(24.dp)
             )
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -212,22 +251,30 @@ fun JarvisChatComposer(
             }
         )
         if (busy && onCancel != null) {
-            IconButton(onClick = onCancel) {
-                Icon(Icons.Default.Close, contentDescription = "Stop", tint = JarvisColors.Warn)
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Hentikan pemrosesan", tint = JarvisColors.Warn)
             }
         } else {
             if (onMic != null) {
-                IconButton(onClick = onMic, enabled = !busy) {
-                    Icon(Icons.Default.Mic, contentDescription = "Voice", tint = JarvisColors.CyanDim)
+                IconButton(
+                    onClick = onMic,
+                    enabled = !busy,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(Icons.Default.Mic, contentDescription = "Mode Suara", tint = JarvisColors.CyanDim)
                 }
             }
             IconButton(
                 onClick = onSend,
-                enabled = !busy && value.isNotBlank()
+                enabled = !busy && value.isNotBlank(),
+                modifier = Modifier.size(44.dp)
             ) {
                 Icon(
                     Icons.Default.Send,
-                    contentDescription = "Send",
+                    contentDescription = "Kirim pesan",
                     tint = if (!busy && value.isNotBlank()) JarvisColors.Cyan else JarvisColors.TextDim
                 )
             }
@@ -253,6 +300,7 @@ fun JarvisConversationChip(
                 if (selected) JarvisColors.Cyan.copy(alpha = 0.5f) else JarvisColors.GlassBorder,
                 JarvisShapes.CardSm
             )
+            .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
         Text(
@@ -260,7 +308,8 @@ fun JarvisConversationChip(
             color = JarvisColors.TextPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
         Spacer(Modifier.height(4.dp))
         Text(
