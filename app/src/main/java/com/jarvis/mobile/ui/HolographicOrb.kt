@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
@@ -28,8 +30,14 @@ import kotlin.math.sin
 
 /**
  * Holographic orb bound to real [VoiceOrbState].
- * Standby: slow pulse. Listening: reactive rings + RMS. Processing: spin.
- * Speaking: outward energy. Error: red alert pulse.
+ * Supports all 7 states:
+ * - Idle / Standby: calm ambient pulse.
+ * - Listening: reactive rings + live microphone RMS expansion.
+ * - Processing: accelerated dual-ring orbital spin.
+ * - Responding: synthesized response burst before/with visual card reveal.
+ * - Speaking: outward harmonic energy + orbital nodes.
+ * - Muted: dimmed graphite-amber dormant ring with diagonal mute vector.
+ * - Error: high-visibility alert pulse.
  */
 @Composable
 fun HolographicOrb(
@@ -39,17 +47,27 @@ fun HolographicOrb(
     modifier: Modifier = Modifier
 ) {
     val infinite = rememberInfiniteTransition(label = "orb")
+    val spinDuration = when (state) {
+        VoiceOrbState.Processing -> 3600
+        VoiceOrbState.Responding -> 4800
+        VoiceOrbState.Speaking -> 6400
+        VoiceOrbState.Muted -> 24000
+        else -> 14000
+    }
     val spin by infinite.animateFloat(
         0f, 360f,
-        infiniteRepeatable(tween(if (state == VoiceOrbState.Processing) 4200 else 14000, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(tween(spinDuration, easing = LinearEasing), RepeatMode.Restart),
         label = "spin"
     )
     val pulse by infinite.animateFloat(
         0.92f, 1.08f,
         infiniteRepeatable(tween(when (state) {
-            VoiceOrbState.Listening -> 700
-            VoiceOrbState.Speaking -> 900
-            VoiceOrbState.Error -> 500
+            VoiceOrbState.Listening -> 680
+            VoiceOrbState.Processing -> 820
+            VoiceOrbState.Responding -> 760
+            VoiceOrbState.Speaking -> 880
+            VoiceOrbState.Error -> 480
+            VoiceOrbState.Muted -> 2200
             else -> 1600
         }), RepeatMode.Reverse),
         label = "pulse"
@@ -60,38 +78,52 @@ fun HolographicOrb(
         label = "ring"
     )
     val targetIntensity = when (state) {
-        VoiceOrbState.Standby -> 0.35f
-        VoiceOrbState.Listening -> (0.55f + (rmsLevel / 16f).coerceIn(0f, 1f) * 0.45f)
-        VoiceOrbState.Processing -> 0.7f
-        VoiceOrbState.Speaking -> 0.85f
-        VoiceOrbState.Error -> 0.9f
+        VoiceOrbState.Idle, VoiceOrbState.Standby -> 0.42f
+        VoiceOrbState.Listening -> (0.58f + (rmsLevel / 16f).coerceIn(0f, 1f) * 0.42f)
+        VoiceOrbState.Processing -> 0.76f
+        VoiceOrbState.Responding -> 0.84f
+        VoiceOrbState.Speaking -> 0.90f
+        VoiceOrbState.Muted -> 0.25f
+        VoiceOrbState.Error -> 0.92f
     }
     val intensity by animateFloatAsState(targetIntensity, tween(220), label = "intensity")
 
     val coreColor = when (state) {
-        VoiceOrbState.Standby -> JarvisColors.Cyan
+        VoiceOrbState.Idle, VoiceOrbState.Standby -> JarvisColors.Cyan
         VoiceOrbState.Listening -> JarvisColors.CyanGlow
         VoiceOrbState.Processing -> JarvisColors.VioletGlow
+        VoiceOrbState.Responding -> JarvisColors.Responding
         VoiceOrbState.Speaking -> JarvisColors.Speaking
+        VoiceOrbState.Muted -> JarvisColors.Muted
         VoiceOrbState.Error -> JarvisColors.Error
     }
     val secondary = when (state) {
         VoiceOrbState.Processing -> JarvisColors.Violet
+        VoiceOrbState.Responding -> JarvisColors.CyanGlow
         VoiceOrbState.Speaking -> JarvisColors.Cyan
+        VoiceOrbState.Muted -> JarvisColors.TextDim
         VoiceOrbState.Error -> JarvisColors.Warn
         else -> JarvisColors.AuroraMid
     }
 
-    Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .semantics { contentDescription = "JARVIS Holographic Orb (${state.name})" },
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.fillMaxSize()) {
             val cx = this.size.width / 2f
             val cy = this.size.height / 2f
-            val baseR = this.size.minDimension * 0.28f * pulse
-            val rmsBoost = if (state == VoiceOrbState.Listening) (rmsLevel / 16f).coerceIn(0f, 1f) * baseR * 0.35f else 0f
+            val effectivePulse = if (state == VoiceOrbState.Muted) 0.95f else pulse
+            val baseR = this.size.minDimension * 0.28f * effectivePulse
+            val rmsBoost = if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking) {
+                (rmsLevel / 16f).coerceIn(0f, 1f) * baseR * 0.35f
+            } else 0f
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(coreColor.copy(alpha = 0.22f * intensity), Color.Transparent),
+                    colors = listOf(coreColor.copy(alpha = 0.24f * intensity), Color.Transparent),
                     center = Offset(cx, cy),
                     radius = baseR * 2.8f
                 ),
@@ -99,10 +131,11 @@ fun HolographicOrb(
                 center = Offset(cx, cy)
             )
 
-            for (i in 0 until 3) {
+            val ringCount = if (state == VoiceOrbState.Muted) 1 else 3
+            for (i in 0 until ringCount) {
                 val phase = (ringBreath + i * 0.33f) % 1f
                 val ringR = baseR * (1.35f + phase * 1.1f) + rmsBoost * (1f - i * 0.2f)
-                val alpha = (1f - phase) * 0.35f * intensity
+                val alpha = (1f - phase) * 0.36f * intensity
                 drawCircle(
                     color = coreColor.copy(alpha = alpha),
                     radius = ringR,
@@ -114,18 +147,18 @@ fun HolographicOrb(
             rotate(spin, Offset(cx, cy)) {
                 val arcStroke = Stroke(width = 2.4f, cap = StrokeCap.Round)
                 drawArc(
-                    color = coreColor.copy(alpha = 0.55f * intensity),
+                    color = coreColor.copy(alpha = 0.58f * intensity),
                     startAngle = 0f,
-                    sweepAngle = 72f,
+                    sweepAngle = if (state == VoiceOrbState.Responding) 110f else 72f,
                     useCenter = false,
                     topLeft = Offset(cx - baseR * 1.55f, cy - baseR * 1.55f),
                     size = androidx.compose.ui.geometry.Size(baseR * 3.1f, baseR * 3.1f),
                     style = arcStroke
                 )
                 drawArc(
-                    color = secondary.copy(alpha = 0.4f * intensity),
+                    color = secondary.copy(alpha = 0.44f * intensity),
                     startAngle = 140f,
-                    sweepAngle = 50f,
+                    sweepAngle = if (state == VoiceOrbState.Processing) 85f else 50f,
                     useCenter = false,
                     topLeft = Offset(cx - baseR * 1.7f, cy - baseR * 1.7f),
                     size = androidx.compose.ui.geometry.Size(baseR * 3.4f, baseR * 3.4f),
@@ -134,9 +167,9 @@ fun HolographicOrb(
             }
             rotate(-spin * 0.65f, Offset(cx, cy)) {
                 drawArc(
-                    color = JarvisColors.VioletGlow.copy(alpha = 0.3f * intensity),
+                    color = JarvisColors.VioletGlow.copy(alpha = 0.32f * intensity),
                     startAngle = 200f,
-                    sweepAngle = 40f,
+                    sweepAngle = 44f,
                     useCenter = false,
                     topLeft = Offset(cx - baseR * 1.9f, cy - baseR * 1.9f),
                     size = androidx.compose.ui.geometry.Size(baseR * 3.8f, baseR * 3.8f),
@@ -165,7 +198,7 @@ fun HolographicOrb(
                 center = Offset(cx - baseR * 0.22f, cy - baseR * 0.28f)
             )
 
-            if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking) {
+            if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking || state == VoiceOrbState.Responding) {
                 val nodes = 8
                 for (n in 0 until nodes) {
                     val ang = Math.toRadians((n * (360.0 / nodes) + spin * 0.3).toDouble())
@@ -173,11 +206,22 @@ fun HolographicOrb(
                     val nx = cx + cos(ang).toFloat() * dist
                     val ny = cy + sin(ang).toFloat() * dist
                     drawCircle(
-                        color = coreColor.copy(alpha = 0.45f * intensity),
+                        color = coreColor.copy(alpha = 0.48f * intensity),
                         radius = 2.5f + intensity * 2f,
                         center = Offset(nx, ny)
                     )
                 }
+            }
+
+            if (state == VoiceOrbState.Muted) {
+                val slashOffset = baseR * 0.65f
+                drawLine(
+                    color = JarvisColors.Warn.copy(alpha = 0.65f),
+                    start = Offset(cx - slashOffset, cy - slashOffset),
+                    end = Offset(cx + slashOffset, cy + slashOffset),
+                    strokeWidth = 2.2.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
             }
         }
     }
