@@ -5,10 +5,13 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.util.TypedValue
 import android.view.Gravity
 import android.widget.Button
 import android.widget.ImageView
@@ -16,6 +19,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.view.WindowCompat
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -24,10 +28,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Foreground pairing UI: generates a one-time 8-character code, shows a QR
- * bitmap of the payload, counts down the 5-minute TTL, polls redeem status,
- * and lets the user cancel. No silent pairing — the owner must keep this
- * screen open and share the code intentionally.
+ * Foreground pairing UI styled with the JARVIS Dark Futuristic HUD theme:
+ * generates a one-time 8-character code, shows a QR bitmap of the payload,
+ * counts down the 5-minute TTL, polls redeem status, and lets the user cancel.
  */
 class PairingQrActivity : Activity() {
     private val worker = Executors.newSingleThreadExecutor()
@@ -50,54 +53,94 @@ class PairingQrActivity : Activity() {
     private var googleAccessToken: String = ""
     private var supabaseUserId: String = ""
 
+    private fun dp(value: Int): Int =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics).toInt()
+
+    private fun hudSurfaceDrawable(
+        fillColor: Int,
+        strokeColor: Int,
+        cornerDp: Int = 14,
+        strokeWidthDp: Int = 1
+    ): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(cornerDp).toFloat()
+        setColor(fillColor)
+        setStroke(dp(strokeWidthDp).coerceAtLeast(1), strokeColor)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.statusBarColor = Color.parseColor("#040911")
+        window.navigationBarColor = Color.parseColor("#040911")
+
         client = JarvisDeviceClient(this)
         googleAccessToken = intent.getStringExtra(EXTRA_SUPABASE_ACCESS_TOKEN).orEmpty()
         supabaseUserId = intent.getStringExtra(EXTRA_SUPABASE_USER_ID).orEmpty()
 
+        val bgDeep = Color.parseColor("#040911")
+        val cardBg = Color.parseColor("#081421")
+        val buttonBg = Color.parseColor("#0B1E32")
+        val cyan = Color.parseColor("#00E5FF")
+        val cyanBorder = Color.parseColor("#1D5B78")
+        val ice = Color.parseColor("#ECF9FF")
+        val muted = Color.parseColor("#7B9EB2")
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(36, 48, 36, 36)
-            setBackgroundColor(Color.rgb(9, 17, 29))
+            setPadding(dp(18), dp(20), dp(18), dp(28))
+            setBackgroundColor(bgDeep)
         }
 
-        fun title(text: String, size: Float = 18f) = TextView(this).apply {
+        fun title(text: String, size: Float = 18f, isMuted: Boolean = false) = TextView(this).apply {
             this.text = text
-            setTextColor(Color.WHITE)
+            setTextColor(if (isMuted) muted else ice)
             textSize = size
-            setPadding(0, 8, 0, 8)
+            if (!isMuted) typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+            setPadding(0, dp(4), 0, dp(6))
             root.addView(this)
         }
 
-        title("Pairing Desktop JARVIS", 20f)
-        title("Buat kode sekali pakai. Desktop memasukkan kode atau memindai QR. Kode kedaluwarsa dalam 5 menit.", 14f)
+        title("PAIRING DESKTOP J.A.R.V.I.S.", 19f)
+        title("Buat kode sekali pakai. Desktop memasukkan kode atau memindai QR. Kode kedaluwarsa dalam 5 menit.", 13.5f, isMuted = true)
 
         codeView = TextView(this).apply {
             text = "———"
-            setTextColor(Color.rgb(120, 220, 255))
-            textSize = 32f
+            setTextColor(cyan)
+            textSize = 30f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setPadding(0, 24, 0, 8)
-            letterSpacing = 0.25f
+            background = hudSurfaceDrawable(cardBg, cyanBorder, cornerDp = 14)
+            setPadding(dp(16), dp(18), dp(16), dp(18))
+            letterSpacing = 0.22f
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.topMargin = dp(8)
+            lp.bottomMargin = dp(8)
+            layoutParams = lp
             root.addView(this)
         }
 
         countdownView = TextView(this).apply {
             text = "Belum ada sesi aktif"
-            setTextColor(Color.LTGRAY)
-            textSize = 14f
+            setTextColor(muted)
+            textSize = 13f
+            typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
+            setPadding(0, dp(4), 0, dp(10))
             root.addView(this)
         }
 
+        val qrSizePx = (resources.displayMetrics.widthPixels * 0.68f).toInt().coerceIn(dp(200), dp(320))
         qrView = ImageView(this).apply {
             adjustViewBounds = true
-            setPadding(0, 16, 0, 16)
-            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 0f)
-            lp.height = (resources.displayMetrics.widthPixels * 0.7f).toInt().coerceAtMost(720)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            val lp = LinearLayout.LayoutParams(qrSizePx, qrSizePx)
+            lp.gravity = Gravity.CENTER_HORIZONTAL
+            lp.bottomMargin = dp(12)
             layoutParams = lp
-            setBackgroundColor(Color.WHITE)
+            background = hudSurfaceDrawable(Color.parseColor("#0A1A2B"), cyanBorder, cornerDp = 16)
+            contentDescription = "Kode QR Pairing Desktop JARVIS"
             root.addView(this)
         }
 
@@ -107,28 +150,48 @@ class PairingQrActivity : Activity() {
             } else {
                 "Siap membuat kode pairing."
             }
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setPadding(0, 12, 0, 12)
+            setTextColor(ice)
+            textSize = 14f
+            background = hudSurfaceDrawable(cardBg, cyanBorder, cornerDp = 12)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = dp(8)
+            layoutParams = lp
             root.addView(this)
         }
 
         deviceView = TextView(this).apply {
             text = "Perangkat terhubung: —"
-            setTextColor(Color.rgb(180, 255, 180))
-            textSize = 14f
-            setPadding(0, 4, 0, 16)
+            setTextColor(Color.parseColor("#00F59B"))
+            textSize = 13.5f
+            setPadding(dp(4), dp(4), dp(4), dp(14))
             root.addView(this)
         }
 
-        createButton = Button(this).apply {
-            text = "Buat Kode Pairing"
+        fun styledButton(label: String, destructive: Boolean = false): Button = Button(this).apply {
+            text = label
+            isAllCaps = false
+            setTextColor(if (destructive) Color.parseColor("#FF8A96") else ice)
+            textSize = 13.5f
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+            minHeight = dp(48)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = hudSurfaceDrawable(
+                fillColor = if (destructive) Color.parseColor("#230D16") else buttonBg,
+                strokeColor = if (destructive) Color.parseColor("#FF5E6E") else cyanBorder,
+                cornerDp = 12
+            )
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.bottomMargin = dp(8)
+            layoutParams = lp
+        }
+
+        createButton = styledButton("Buat Kode Pairing").apply {
             isEnabled = googleAccessToken.isNotBlank() && supabaseUserId.isNotBlank()
             setOnClickListener { createSession() }
             root.addView(this)
         }
-        copyButton = Button(this).apply {
-            text = "Salin Kode"
+        copyButton = styledButton("Salin Kode").apply {
             isEnabled = false
             setOnClickListener {
                 if (activeCode.isBlank()) return@setOnClickListener
@@ -138,19 +201,21 @@ class PairingQrActivity : Activity() {
             }
             root.addView(this)
         }
-        cancelButton = Button(this).apply {
-            text = "Batalkan Pairing"
+        cancelButton = styledButton("Batalkan Pairing", destructive = true).apply {
             isEnabled = false
             setOnClickListener { cancelSession("Dibatalkan oleh pengguna.") }
             root.addView(this)
         }
-        Button(this).apply {
-            text = "Tutup"
+        styledButton("Tutup").apply {
             setOnClickListener { finish() }
             root.addView(this)
         }
 
-        setContentView(ScrollView(this).apply { addView(root) })
+        setContentView(ScrollView(this).apply {
+            setBackgroundColor(bgDeep)
+            isFillViewport = true
+            addView(root)
+        })
     }
 
     private fun createSession() {
@@ -241,8 +306,12 @@ class PairingQrActivity : Activity() {
                     mainHandler.post {
                         if (cancelled.get()) return@post
                         if (!status.optBoolean("ok")) {
-                            // Session may already be gone after redeem; try listing devices as fallback.
+                            // Transient network error or session status check failed; refresh linked devices
+                            // and continue polling until expiration so a single network hiccup never aborts pairing.
                             refreshLinkedDevice()
+                            if (!cancelled.get() && System.currentTimeMillis() < expiresAtMs) {
+                                mainHandler.postDelayed(this, POLL_MS)
+                            }
                             return@post
                         }
                         val session = status.optJSONObject("session")
@@ -311,6 +380,7 @@ class PairingQrActivity : Activity() {
     }
 
     private fun cancelSession(reason: String) {
+        val codeToCancel = activeCode
         cancelled.set(true)
         stopPolling()
         countdown?.cancel()
@@ -321,7 +391,11 @@ class PairingQrActivity : Activity() {
         cancelButton.isEnabled = false
         copyButton.isEnabled = false
         qrView.setImageBitmap(null)
-        // Server sessions expire by TTL; no remote revoke endpoint required for pending codes.
+        if (codeToCancel.isNotBlank() && supabaseUserId.isNotBlank()) {
+            worker.execute {
+                runCatching { client.cancelPairingSession(codeToCancel, supabaseUserId) }
+            }
+        }
     }
 
     private fun stopPolling() {
