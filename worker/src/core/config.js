@@ -12,10 +12,12 @@ export function readRuntimeConfig(env = {}) {
   if (
     typeof env.PEAPROXY_BASE_URL === "string" &&
     env.PEAPROXY_BASE_URL.startsWith("https://") &&
-    typeof env.PEAPROXY_API_KEY === "string" &&
-    env.PEAPROXY_API_KEY.trim() &&
     typeof env.PEAPROXY_MODEL === "string" &&
-    env.PEAPROXY_MODEL.trim()
+    env.PEAPROXY_MODEL.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_ID === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_ID.trim() &&
+    typeof env.PEAPROXY_ACCESS_CLIENT_SECRET === "string" &&
+    env.PEAPROXY_ACCESS_CLIENT_SECRET.trim()
   ) aiProviders.push("peaproxy");
 
   return {
