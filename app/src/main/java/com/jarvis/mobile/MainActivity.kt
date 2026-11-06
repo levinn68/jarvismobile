@@ -3374,13 +3374,13 @@ private fun JarvisScreen(
                             Spacer(Modifier.height(8.dp))
                             Text(
                                 text = "J A R V I S",
-                                color = Cyan,
-                                fontSize = 15.sp,
+                                color = Ice,
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 4.sp
                             )
                             Text(
-                                text = "PERSONAL INTELLIGENCE INTERFACE",
+                                text = "HOLOGRAPHIC INTELLIGENCE SYSTEM  /  01",
                                 color = TextMuted,
                                 fontSize = 9.sp,
                                 letterSpacing = 1.6.sp,
@@ -3430,14 +3430,38 @@ private fun JarvisScreen(
                                 }
                             }
 
-                            // Center Multi-Ring Holographic Arc Reactor
+                            // Primary holographic projection chamber.
+                            // The reactor remains the visual anchor; telemetry is kept secondary.
                             Box(
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(if (compact) 186.dp else 238.dp)
+                                    .height(if (compact) 226.dp else 278.dp)
+                                    .clip(RoundedCornerShape(26.dp))
+                                    .background(
+                                        Brush.radialGradient(
+                                            colors = listOf(Color(0x3320BFE8), Color(0x160B3047), Color(0x08030B14)),
+                                            radius = 520f
+                                        )
+                                    )
+                                    .border(
+                                        1.dp,
+                                        Brush.verticalGradient(listOf(Color(0x665CEBFF), Color(0x1834A9C8), Color(0x445CEBFF))),
+                                        RoundedCornerShape(26.dp)
+                                    )
                                     .animateContentSize(animationSpec = tween(420)),
                                 contentAlignment = Alignment.Center
                             ) {
+                                Canvas(Modifier.fillMaxSize()) {
+                                    val cx = size.width / 2f
+                                    val cy = size.height / 2f
+                                    val radius = size.minDimension * 0.43f
+                                    drawCircle(Color(0x223CCDEB), radius, Offset(cx, cy), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                                    for (i in 0..3) {
+                                        val y = size.height * (0.18f + i * 0.21f)
+                                        drawLine(Color(0x124EDCF4), Offset(size.width * 0.08f, y), Offset(size.width * 0.92f, y), 0.7.dp.toPx())
+                                    }
+                                    drawLine(Color(0x224EDCF4), Offset(cx, size.height * 0.08f), Offset(cx, size.height * 0.92f), 0.7.dp.toPx())
+                                }
                                 Column(
                                     modifier = Modifier.offset(y = hologramShift.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally
@@ -3459,13 +3483,13 @@ private fun JarvisScreen(
                                              size = if (compact) 176.dp else 212.dp
                                         )
                                         VoiceHudReactor(
-                                            modifier = Modifier.size(if (compact) 172.dp else 208.dp),
+                                            modifier = Modifier.size(if (compact) 190.dp else 228.dp),
                                             phase = phase,
                                             spin = spin,
                                             breathe = breathe
                                         )
                                     }
-                                    Spacer(Modifier.height(8.dp))
+                                    Spacer(Modifier.height(3.dp))
                                     // Horizontal Waveform Visualizer
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(3.dp),
@@ -3518,8 +3542,8 @@ private fun JarvisScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(999.dp))
-                                    .background(Color(0xFF071524))
-                                    .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                                     .background(Brush.horizontalGradient(listOf(Color(0xDD0B2031), Color(0xCC102D40), Color(0xDD081827))))
+                                    .border(1.dp, Cyan.copy(alpha = 0.62f), RoundedCornerShape(999.dp))
                                     .padding(horizontal = 6.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -3727,7 +3751,7 @@ private fun JarvisScreen(
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Box(
                                         Modifier
-                                            .size(if (compact) 64.dp else 74.dp)
+                                             .size(if (compact) 58.dp else 66.dp)
                                             .scale(if (phase == "LISTEN") breathe else 1f)
                                             .clip(CircleShape)
                                             .background(Brush.radialGradient(listOf(Cyan.copy(alpha = 0.45f), Color(0xFF061320))))
