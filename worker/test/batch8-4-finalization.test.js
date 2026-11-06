@@ -49,8 +49,8 @@ test("Batch 8.4 Finalization — Worker /health reports v8.0.0 release telemetry
 });
 
 test("Batch 8.4 Finalization — 40-Screen Master Shell, MANIFEST.json SHA-256 synchronization, and Kotlin AST/Brace integrity", async () => {
-  const mainKtPath = path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/MainActivity.kt");
-  const manifestPath = path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json");
+  const mainKtPath = path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt");
+  const manifestPath = path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json");
   const masterShellPath = path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/ui/JarvisB8MasterShell.kt");
 
   assert.ok(fs.existsSync(masterShellPath), "JarvisB8MasterShell.kt must exist");
