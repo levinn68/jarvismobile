@@ -206,6 +206,16 @@ class DeviceCommandExecutor(private val context: Context) {
         }
     }
 
+    fun recordRejectedApproval(commandId: String, reason: String): JSONObject {
+        val result = JSONObject().put("ok", false).put("approved", false)
+            .put("executed", false).put("rejected", true).put("error", reason.take(240))
+        if (commandId.isNotBlank()) {
+            markHandled(commandId, result)
+            clearPendingApproval(commandId)
+        }
+        return result
+    }
+
     fun clearPendingApproval(commandId: String) {
         if (commandId.isNotBlank()) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(pendingKey(commandId)).apply()
