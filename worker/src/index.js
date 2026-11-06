@@ -113,6 +113,37 @@ function buildContextualCards(answer) {
 }
 
 
+async function handleVoiceProfileUpload(request, env) {
+  const auth = await authenticateSupabaseUserDetailed(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+  if (!env.DEVICE_REGISTRY) return json({ ok: false, error: "Voice profile storage is not configured." }, 503);
+  let body = {};
+  try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
+  const audioBase64 = String(body.audioBase64 || "");
+  if (!audioBase64 || audioBase64.length > 11_200_000) return json({ ok: false, error: "Audio must be WAV and no larger than 8 MB." }, 413);
+  let bytes;
+  try { bytes = Uint8Array.from(atob(audioBase64), (c) => c.charCodeAt(0)); } catch (_) { return json({ ok: false, error: "Invalid audio encoding." }, 400); }
+  if (bytes.length < 32000 || bytes.length > 8 * 1024 * 1024) return json({ ok: false, error: "Reference audio must be 2–30 seconds and no larger than 8 MB." }, 400);
+  const isWav = bytes.length > 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WAVE";
+  if (!isWav) return json({ ok: false, error: "Reference audio must be a WAV file." }, 400);
+  const transcript = boundedString(body.transcript || "", 1200);
+  await env.DEVICE_REGISTRY.put(`voice-profile:v1:${auth.user.id}`, JSON.stringify({
+    audioBase64,
+    transcript,
+    updatedAt: new Date().toISOString(),
+    bytes: bytes.length,
+  }));
+  return json({ ok: true, engine: "VoxCPM2", bytes: bytes.length, transcriptSaved: Boolean(transcript) });
+}
+
+async function handleVoiceProfileDelete(request, env) {
+  const auth = await authenticateSupabaseUserDetailed(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+  if (!env.DEVICE_REGISTRY) return json({ ok: false, error: "Voice profile storage is not configured." }, 503);
+  await env.DEVICE_REGISTRY.delete(`voice-profile:v1:${auth.user.id}`);
+  return json({ ok: true });
+}
+
 async function handleTts(request, env) {
   const auth = await authenticateSupabaseUserDetailed(request, env);
   if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
@@ -121,6 +152,53 @@ async function handleTts(request, env) {
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
   const text = boundedString(body.text || "", 1800);
   if (!text) return json({ ok: false, error: "text is required" }, 400);
+
+  // VoxCPM2 is the preferred engine when a GPU inference service and an
+  // account-owned reference profile are configured. Fish Audio remains fallback.
+  const profileKey = `voice-profile:v1:${auth.user.id}`;
+  const savedProfile = env.DEVICE_REGISTRY
+    ? await env.DEVICE_REGISTRY.get(profileKey, "json").catch(() => null)
+    : null;
+  if (env.VOXCPM_URL && env.VOXCPM_API_KEY && savedProfile?.audioBase64) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+    try {
+      const upstream = await fetch(`${String(env.VOXCPM_URL).replace(/\\/$/, "")}/v1/audio/speech`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.VOXCPM_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          reference_audio_base64: savedProfile.audioBase64,
+          prompt_text: savedProfile.transcript || undefined,
+          style: body.style || undefined,
+          seed: Number.isInteger(body.seed) ? body.seed : 42,
+        }),
+        signal: controller.signal,
+      });
+      if (!upstream.ok) {
+        const detail = (await upstream.text().catch(() => "")).slice(0, 400);
+        return json({ ok: false, error: `VoxCPM2 returned HTTP ${upstream.status}: ${detail}` }, upstream.status >= 500 ? 502 : upstream.status);
+      }
+      return new Response(await upstream.arrayBuffer(), {
+        status: 200,
+        headers: {
+          ...CORS,
+          "Content-Type": "audio/wav",
+          "Cache-Control": "no-store",
+          "X-Jarvis-Voice-Engine": "VoxCPM2",
+        },
+      });
+    } catch (error) {
+      const message = error?.name === "AbortError" ? "VoxCPM2 inference timed out." : String(error?.message || error).slice(0, 200);
+      return json({ ok: false, error: message }, 502);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   const { language, voiceId } = fishVoiceConfig(env, text);
   const referenceId = voiceId || "c7b2977d49894310866a70e6412afe10";
   const controller = new AbortController();
@@ -272,6 +350,12 @@ export default {
       return handleChat(request, env);
     }
 
+    if (url.pathname === "/v1/voice-profile" && request.method === "PUT") {
+      return handleVoiceProfileUpload(request, env);
+    }
+    if (url.pathname === "/v1/voice-profile" && request.method === "DELETE") {
+      return handleVoiceProfileDelete(request, env);
+    }
     if (url.pathname === "/v1/tts" && request.method === "POST") {
       return handleTts(request, env);
     }
