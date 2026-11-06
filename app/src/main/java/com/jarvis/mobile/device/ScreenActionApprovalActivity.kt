@@ -2,7 +2,11 @@ package com.jarvis.mobile.device
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Toast
 import org.json.JSONObject
 
@@ -11,13 +15,18 @@ import org.json.JSONObject
  *
  * Approval is only recorded when the user taps a dialog button on this device.
  * Remote flags such as userConfirmed are ignored. Rejected commands are
- * acknowledged as failed and never passed to the Accessibility executor.
+ * cached in DeviceCommandExecutor deduplication storage and acknowledged as
+ * failed so they are never re-prompted or passed to the Accessibility executor.
  */
 class ScreenActionApprovalActivity : Activity() {
     private var finished = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        window?.setBackgroundDrawable(ColorDrawable(Color.parseColor("#B3040911")))
+        window?.decorView?.filterTouchesWhenObscured = true
+
         val raw = intent.getStringExtra(EXTRA_COMMAND)
         val command = try {
             raw?.let(::JSONObject)
@@ -40,17 +49,16 @@ class ScreenActionApprovalActivity : Activity() {
             return
         }
 
+        val executor = DeviceCommandExecutor(this)
         if (isExpired(command)) {
-            DeviceCommandExecutor(this).clearPendingApproval(commandId)
-            acknowledge(
-                commandId,
-                JSONObject()
-                    .put("ok", false)
-                    .put("approved", false)
-                    .put("executed", false)
-                    .put("expired", true)
-                    .put("error", "Command kedaluwarsa atau memiliki timestamp tidak valid sebelum pengguna menyetujui.")
-            )
+            val expiredResult = JSONObject()
+                .put("ok", false)
+                .put("approved", false)
+                .put("executed", false)
+                .put("expired", true)
+                .put("error", "Command kedaluwarsa atau memiliki timestamp tidak valid sebelum pengguna menyetujui.")
+            executor.clearPendingApproval(commandId)
+            acknowledge(commandId, expiredResult)
             Toast.makeText(this, "Perintah kedaluwarsa atau timestamp tidak valid.", Toast.LENGTH_SHORT).show()
             finish()
             return
@@ -74,26 +82,19 @@ class ScreenActionApprovalActivity : Activity() {
             else -> "JARVIS meminta tindakan layar: $action"
         }
 
-        AlertDialog.Builder(this)
-            .setTitle("Izinkan tindakan JARVIS?")
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("KONFIRMASI KEAMANAN J.A.R.V.I.S.")
             .setMessage(
                 "$description\n\n" +
-                    "Tindakan hanya dijalankan pada perangkat ini setelah kamu memilih Izinkan.\n" +
+                    "Tindakan hanya dijalankan pada perangkat ini setelah kamu memilih Izinkan sekali.\n" +
                     "Pilih Tolak untuk membatalkan tanpa mengeksekusi apa pun."
             )
             .setCancelable(true)
             .setNegativeButton("Tolak") { _, _ ->
                 if (finished) return@setNegativeButton
                 finished = true
-                DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
-                acknowledge(
-                    commandId,
-                    JSONObject()
-                        .put("ok", false)
-                        .put("approved", false)
-                        .put("executed", false)
-                        .put("error", "Rejected by device user")
-                )
+                val rejected = executor.recordRejectedApproval(commandId, "Rejected by device user")
+                acknowledge(commandId, rejected)
                 Toast.makeText(this, "Tindakan ditolak.", Toast.LENGTH_SHORT).show()
                 finish()
             }
@@ -101,7 +102,7 @@ class ScreenActionApprovalActivity : Activity() {
                 if (finished) return@setPositiveButton
                 finished = true
                 if (isExpired(command)) {
-                    DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
+                    executor.clearPendingApproval(commandId)
                     acknowledge(
                         commandId,
                         JSONObject()
@@ -117,40 +118,42 @@ class ScreenActionApprovalActivity : Activity() {
                 }
                 // Mark local approval only. Remote userConfirmed is never accepted as authority.
                 command.put(DeviceCommandExecutor.LOCAL_APPROVAL_MARKER, true)
-                val result = try {
-                    DeviceCommandExecutor(this).executeApproved(command)
-                } catch (error: Exception) {
-                    DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
-                    JSONObject()
-                        .put("ok", false)
-                        .put("approved", true)
-                        .put("executed", false)
-                        .put("error", error.message ?: "Screen action failed")
-                }
-                acknowledge(commandId, result)
-                val ok = result.optBoolean("ok") && result.optBoolean("executed", result.optBoolean("ok"))
-                Toast.makeText(
-                    this,
-                    if (ok) "Tindakan berhasil dijalankan." else "Tindakan gagal: ${result.optString("error", "unknown")}",
-                    Toast.LENGTH_LONG
-                ).show()
-                finish()
+                Thread {
+                    val result = try {
+                        executor.executeApproved(command)
+                    } catch (error: Exception) {
+                        executor.clearPendingApproval(commandId)
+                        JSONObject()
+                            .put("ok", false)
+                            .put("approved", true)
+                            .put("executed", false)
+                            .put("error", error.message ?: "Screen action failed")
+                    }
+                    acknowledge(commandId, result)
+                    val ok = result.optBoolean("ok") && result.optBoolean("executed", result.optBoolean("ok"))
+                    runOnUiThread {
+                        Toast.makeText(
+                            this@ScreenActionApprovalActivity,
+                            if (ok) "Tindakan berhasil dijalankan." else "Tindakan gagal: ${result.optString("error", "unknown")}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        finish()
+                    }
+                }.start()
             }
             .setOnCancelListener {
                 if (finished) return@setOnCancelListener
                 finished = true
-                DeviceCommandExecutor(this@ScreenActionApprovalActivity).clearPendingApproval(commandId)
-                acknowledge(
-                    commandId,
-                    JSONObject()
-                        .put("ok", false)
-                        .put("approved", false)
-                        .put("executed", false)
-                        .put("error", "Approval dismissed by device user")
-                )
+                val dismissed = executor.recordRejectedApproval(commandId, "Approval dismissed by device user")
+                acknowledge(commandId, dismissed)
                 finish()
             }
             .show()
+
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(Color.parseColor("#00E5FF"))
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE)?.setTextColor(Color.parseColor("#FF5E6E"))
+        dialog.window?.decorView?.filterTouchesWhenObscured = true
+        (dialog.window?.decorView as? ViewGroup)?.filterTouchesWhenObscured = true
     }
 
     /**
@@ -165,9 +168,15 @@ class ScreenActionApprovalActivity : Activity() {
         if (commandId.isBlank()) return
         Thread {
             try {
-                JarvisDeviceClient(this).use { it.acknowledge(commandId, result) }
+                JarvisDeviceClient(this).use { client ->
+                    try {
+                        client.acknowledge(commandId, result)
+                    } catch (_: Exception) {
+                        client.enqueuePendingAck(commandId, result)
+                    }
+                }
             } catch (_: Exception) {
-                // Best-effort; queue TTL will eventually expire the command.
+                // Saved in executor dedupe cache and pending ACK queue for next poll cycle.
             }
         }.start()
     }
