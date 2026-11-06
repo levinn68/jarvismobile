@@ -3455,10 +3455,11 @@ private fun JarvisScreen(
                                         HolographicOrb(
                                             state = orbState,
                                             rmsLevel = rmsLevel,
-                                            size = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 134.dp else if (compact) 152.dp else 188.dp
+                                            // Keep the hologram prominent while response content appears below.
+                                             size = if (compact) 176.dp else 212.dp
                                         )
                                         VoiceHudReactor(
-                                            modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 130.dp else if (compact) 148.dp else 184.dp),
+                                            modifier = Modifier.size(if (compact) 172.dp else 208.dp),
                                             phase = phase,
                                             spin = spin,
                                             breathe = breathe
