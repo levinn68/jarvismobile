@@ -9,8 +9,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /** Account-scoped enrollment and per-device command transport. */
-class JarvisDeviceClient(context: Context, private val baseUrl: String = "https://jarvis-api.alvinorasya1304.workers.dev") : AutoCloseable {
-    private val vault = DeviceCredentialVault(context)
+class JarvisDeviceClient(context: Context, private val baseUrl: String = DEFAULT_WORKER_BASE_URL) : AutoCloseable {
+    private val appContext = context.applicationContext
+    private val vault = DeviceCredentialVault(appContext)
     private val io = Executors.newSingleThreadExecutor()
 
     fun createOrRestoreAccountWithSupabase(accessToken: String): JSONObject {
@@ -91,6 +92,32 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
         return rawRequest("POST", "/v1/device/command", body, accountToken)
     }
 
+    fun enqueuePendingAck(commandId: String, result: JSONObject) {
+        if (commandId.isBlank()) return
+        val prefs = appContext.getSharedPreferences("jarvis_pending_device_acks", Context.MODE_PRIVATE)
+        val queue = try { JSONArray(prefs.getString("items", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+        val kept = (0 until queue.length()).mapNotNull { queue.optJSONObject(it) }
+            .filterNot { it.optString("commandId") == commandId }.takeLast(99)
+        val next = JSONArray()
+        kept.forEach { next.put(it) }
+        next.put(JSONObject().put("commandId", commandId).put("result", JSONObject(result.toString())))
+        prefs.edit().putString("items", next.toString()).apply()
+    }
+
+    private fun flushPendingAcks() {
+        val prefs = appContext.getSharedPreferences("jarvis_pending_device_acks", Context.MODE_PRIVATE)
+        val raw = prefs.getString("items", null) ?: return
+        val queue = try { JSONArray(raw) } catch (_: Exception) { prefs.edit().remove("items").apply(); return }
+        val remaining = JSONArray()
+        for (i in 0 until queue.length()) {
+            val item = queue.optJSONObject(i) ?: continue
+            try { acknowledge(item.optString("commandId"), item.optJSONObject("result") ?: JSONObject()) }
+            catch (_: Exception) { remaining.put(item) }
+        }
+        if (remaining.length() == 0) prefs.edit().remove("items").apply()
+        else prefs.edit().putString("items", remaining.toString()).apply()
+    }
+
     fun configure(deviceId: String, token: String) {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(token.isNotBlank()) { "Device token is required" }
@@ -121,6 +148,7 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
     fun pollOnce(executor: DeviceCommandExecutor, onResult: (String) -> Unit = {}) {
         if (!isConfigured()) return
         io.execute {
+            flushPendingAcks()
             var pendingApprovals = 0
             var acknowledgementFailures = 0
             try {
@@ -183,6 +211,15 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = "https:
             return result
         } finally {
             connection.disconnect()
+        }
+    }
+
+    companion object {
+        const val DEFAULT_WORKER_BASE_URL = "https://jarvis-api.alvinorasya1304.workers.dev"
+        fun resolveWorkerBaseUrl(context: Context): String {
+            val configured = context.applicationContext.getSharedPreferences("jarvis_runtime_config", Context.MODE_PRIVATE)
+                .getString("worker_base_url", null)?.trim()?.trimEnd('/')
+            return configured?.takeIf { it.startsWith("https://") } ?: DEFAULT_WORKER_BASE_URL
         }
     }
 
