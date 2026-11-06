@@ -3,6 +3,7 @@ package com.jarvis.mobile
 import com.jarvis.mobile.device.JarvisDeviceClient
 import com.jarvis.mobile.device.JarvisDeviceSyncService
 import com.jarvis.mobile.device.DeviceSetupActivity
+import com.jarvis.mobile.ui.JarvisB8MasterShell
 import android.Manifest
 import android.content.Intent
 import android.media.AudioManager
@@ -644,6 +645,40 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
+            var showB8MasterSuite by remember {
+                mutableStateOf(prefs.getBoolean("show_b8_master_suite", false))
+            }
+            if (showB8MasterSuite) {
+                JarvisB8MasterShell(
+                    userEmail = accountEmail.value,
+                    userName = accountName.value,
+                    liveVoiceStatus = voiceStatus.value,
+                    liveRecognizedText = voiceText.value,
+                    liveRmsLevel = liveRms.value,
+                    savedConversations = conversationsState.value,
+                    accessTokenProvider = {
+                        runCatching { supabaseClient.currentAccessToken() }.getOrDefault("")
+                    },
+                    onSendLiveChatPrompt = { promptText, callback ->
+                        askGemini(promptText, emptyList()) { payload ->
+                            if (accountEmail.value != null) saveChatTurn(promptText, payload.answer)
+                            callback(payload.answer, payload.isError)
+                        }
+                    },
+                    onStartListening = { startListening() },
+                    onStopSpeaking = { stopSpeaking(resumeListeningIfActive = voiceModeEnabled) },
+                    onSpeakText = { speak(it) },
+                    onRefreshConversations = { refreshHistory() },
+                    onOpenSavedConversation = { id -> openConversation(id) },
+                    onReturnToClassicHud = {
+                        prefs.edit().putBoolean("show_b8_master_suite", false).apply()
+                        showB8MasterSuite = false
+                    },
+                    onTriggerGoogleSignIn = { signInGoogle() },
+                    onTriggerSignOut = { signOutGoogle() }
+                )
+            } else {
+                Box(Modifier.fillMaxSize()) {
             JarvisScreen(
                 recognizedText = voiceText.value,
                 status = voiceStatus.value,
@@ -743,6 +778,28 @@ class MainActivity : ComponentActivity() {
                 onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) },
                 onUploadVoiceProfile = { uri, transcript, callback -> uploadVoiceProfile(uri, transcript, callback) }
             )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 10.dp, end = 12.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xDD081726))
+                            .border(1.dp, Color(0x9935E3FF), RoundedCornerShape(10.dp))
+                            .clickable {
+                                prefs.edit().putBoolean("show_b8_master_suite", true).apply()
+                                showB8MasterSuite = true
+                            }
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            "B8 SUITE ✦",
+                            color = Color(0xFF58DCEC),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -785,10 +842,19 @@ class MainActivity : ComponentActivity() {
                             historyJson.put(JSONObject().put("role", role).put("content", text.take(4000)))
                         }
                     }
+                    // Forward user-selected B8 model, tier and account to the Worker.
+                    // These are non-secret selection identifiers only; provider API keys stay server-side.
+                    val b8Prefs = getSharedPreferences("jarvis_b8_independent_providers", MODE_PRIVATE)
+                    val selectedModelId = b8Prefs.getString("selected_model_id", null)?.takeIf { it.isNotBlank() }
+                    val selectedTier = b8Prefs.getString("selected_tier", null)?.takeIf { it.isNotBlank() }
+                    val selectedAccountId = b8Prefs.getString("selected_account_id", null)?.takeIf { it.isNotBlank() }
                     val body = JSONObject()
                         .put("message", prompt)
                         .put("clientRequestId", clientRequestId)
                         .put("history", historyJson)
+                    if (selectedModelId != null) body.put("model", selectedModelId)
+                    if (selectedTier != null) body.put("modelTier", selectedTier)
+                    if (selectedAccountId != null) body.put("accountId", selectedAccountId)
                     connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
                 val code = connection.responseCode
                 val stream = if (code in 200..299) connection.inputStream else connection.errorStream
