@@ -606,7 +606,7 @@ export async function saveProviderConfiguration(kv, userId, input = {}, env = {}
     ? boundedString(input.modelsEndpoint, 240)
     : existing.modelsEndpoint ||
       (input.endpoint && isCustomProvider
-        ? input.endpoint.replace(/\\/chat\\/completions\\/?$/, "/models")
+        ? input.endpoint.replace(/\/chat\/completions\/?$/, "/models")
         : spec.modelsEndpoint);
   if (isCustomProvider) {
     nextEndpoint = assertCustomEndpoint(nextEndpoint, "endpoint");
