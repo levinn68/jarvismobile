@@ -53,7 +53,7 @@ function memoryKv() {
 }
 
 test("Batch 7 Audit C-01, C-02, H-01..H-10, MED-01, MED-06, HIGH-01, HIGH-03, HIGH-07: Android source static verification", () => {
-  const mainKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
+  const mainKt = fs.readFileSync(path.join(REPO_ROOT, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
   const accKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/JarvisAccessibilityService.kt"), "utf8");
   const approvalKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/ScreenActionApprovalActivity.kt"), "utf8");
   const syncKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/JarvisDeviceSyncService.kt"), "utf8");
