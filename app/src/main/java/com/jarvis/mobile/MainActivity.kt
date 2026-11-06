@@ -259,75 +259,6 @@ private fun defaultVisualFallbackFor(
     }.take(MAX_VISUAL_CARDS)
 }
 
-private class ClapPatternDetector(
-    private val handler: Handler,
-    private val onDetected: (Int) -> Unit
-) {
-    private var baseline = 0f
-    private var previous = 0f
-    private var initialized = false
-    private var firstClapAt = 0L
-    private var lastSpikeAt = 0L
-    private var lastTriggeredAt = 0L
-    private var pendingCount = 0
-    private var pendingSingle: Runnable? = null
-
-    fun onRms(rmsDb: Float) {
-        if (!rmsDb.isFinite()) return
-        val now = SystemClock.elapsedRealtime()
-        val level = rmsDb.coerceIn(0f, 20f)
-        if (!initialized) {
-            baseline = level
-            previous = level
-            initialized = true
-            return
-        }
-
-        val jump = level - previous
-        if (pendingCount == 0 && level < baseline + 4f) {
-            baseline = baseline * 0.96f + level * 0.04f
-        }
-        previous = level
-
-        val threshold = maxOf(7.5f, baseline + 6f)
-        val isSharpTransient = level >= threshold && jump >= 3.5f
-        if (!isSharpTransient || now - lastSpikeAt < 180L || now - lastTriggeredAt < 1100L) return
-        lastSpikeAt = now
-
-        if (pendingCount == 1 && now - firstClapAt in 140L..650L) {
-            pendingSingle?.let(handler::removeCallbacks)
-            pendingSingle = null
-            pendingCount = 0
-            lastTriggeredAt = now
-            onDetected(2)
-            return
-        }
-
-        pendingSingle?.let(handler::removeCallbacks)
-        pendingCount = 1
-        firstClapAt = now
-        val task = Runnable {
-            if (pendingCount == 1) {
-                pendingCount = 0
-                pendingSingle = null
-                lastTriggeredAt = SystemClock.elapsedRealtime()
-                onDetected(1)
-            }
-        }
-        pendingSingle = task
-        handler.postDelayed(task, 650L)
-    }
-
-    fun reset() {
-        pendingSingle?.let(handler::removeCallbacks)
-        pendingSingle = null
-        pendingCount = 0
-        initialized = false
-        previous = 0f
-        baseline = 0f
-        lastSpikeAt = 0L
-    }
-}
 
 private fun detectEnglishContent(text: String): Boolean {
     val q = text.lowercase(Locale.ROOT)
@@ -628,12 +559,6 @@ class MainActivity : ComponentActivity() {
     private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
     private val liveRms = mutableStateOf(2f)
     private var permissionAsked = false
-    @Volatile private var clapActivationInProgress = false
-    private val clapDetector by lazy {
-        ClapPatternDetector(handler) { count ->
-            // Wake activation is intentionally voice-keyword only: "Jarvis, open".
-        }
-    }
     @Volatile private var geminiSpeechInProgress = false
     @Volatile private var recognitionActive = false
     @Volatile private var recognitionStartPending = false
@@ -1063,7 +988,6 @@ class MainActivity : ComponentActivity() {
         recognitionStartPending = false
         suppressRecognizerCallbacks = true
         recognizer?.cancel()
-        clapDetector.reset()
         tts?.stop()
         voiceStatus.value = "JARVIS SPEAKING"
         Thread {
@@ -1239,7 +1163,7 @@ class MainActivity : ComponentActivity() {
                 override fun onError(error: Int) {
                     recognitionActive = false
                     recognitionStartPending = false
-                    if (suppressRecognizerCallbacks || geminiSpeechInProgress || clapActivationInProgress) return
+                    if (suppressRecognizerCallbacks || geminiSpeechInProgress) return
                     if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
                         voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
                         return
