@@ -192,6 +192,41 @@ fun HolographicOrb(
                 center = Offset(cx, cy)
             )
 
+            // Fine latitude / longitude mesh gives the core a projected,
+            // translucent hologram surface instead of a solid glowing sphere.
+            rotate(spin * 0.42f, Offset(cx, cy)) {
+                for (latitude in -2..2) {
+                    val yOffset = latitude * baseR * 0.27f
+                    val widthFactor = kotlin.math.sqrt(
+                        (1f - (yOffset * yOffset) / (baseR * baseR)).coerceAtLeast(0.12f)
+                    )
+                    drawOval(
+                        color = Color(0xFFB8F7FF).copy(alpha = 0.20f * intensity),
+                        topLeft = Offset(
+                            cx - baseR * 0.92f * widthFactor,
+                            cy + yOffset - baseR * 0.16f * widthFactor
+                        ),
+                        size = androidx.compose.ui.geometry.Size(
+                            baseR * 1.84f * widthFactor,
+                            baseR * 0.32f * widthFactor
+                        ),
+                        style = Stroke(width = 0.8.dp.toPx())
+                    )
+                }
+                for (longitude in -2..2) {
+                    val xScale = 0.22f + kotlin.math.abs(longitude) * 0.18f
+                    drawOval(
+                        color = Color(0xFF8DEEFF).copy(alpha = 0.15f * intensity),
+                        topLeft = Offset(cx - baseR * xScale, cy - baseR * 0.96f),
+                        size = androidx.compose.ui.geometry.Size(
+                            baseR * xScale * 2f,
+                            baseR * 1.92f
+                        ),
+                        style = Stroke(width = 0.8.dp.toPx())
+                    )
+                }
+            }
+
             drawCircle(
                 color = Color.White.copy(alpha = 0.35f * intensity),
                 radius = baseR * 0.28f,
