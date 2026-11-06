@@ -147,7 +147,6 @@ async function handleVoiceProfileDelete(request, env) {
 async function handleTts(request, env) {
   const auth = await authenticateSupabaseUserDetailed(request, env);
   if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
-  if (!env.FISH_API_KEY) return json({ ok: false, error: "Fish Audio is not configured." }, 503);
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
   const text = boundedString(body.text || "", 1800);
@@ -198,6 +197,8 @@ async function handleTts(request, env) {
       clearTimeout(timeout);
     }
   }
+
+  if (!env.FISH_API_KEY) return json({ ok: false, error: "No voice engine is configured. Configure VoxCPM2 with a saved profile or set FISH_API_KEY." }, 503);
 
   const { language, voiceId } = fishVoiceConfig(env, text);
   const referenceId = voiceId || "c7b2977d49894310866a70e6412afe10";
