@@ -126,6 +126,7 @@ import androidx.lifecycle.lifecycleScope
 import com.jarvis.mobile.account.SupabaseJarvisClient
 import com.jarvis.mobile.ui.VoiceOrbState
 import com.jarvis.mobile.ui.HolographicOrb
+import com.jarvis.mobile.ui.HologramProjectionStage
 import com.jarvis.mobile.ui.JarvisColors
 import com.jarvis.mobile.ui.JarvisUserBubble
 import com.jarvis.mobile.ui.JarvisAssistantBubble
@@ -3607,10 +3608,17 @@ private fun JarvisScreen(
                                         }
                                     }
 
-                                    if (voiceProducts.isNotEmpty()) {
-                                        ProductCarouselCards(voiceProducts.take(MAX_VISUAL_CARDS))
-                                    } else if (voiceImages.isNotEmpty()) {
-                                        VoiceImageCarouselCards(voiceImages.take(MAX_VISUAL_CARDS))
+                                    if (voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) {
+                                        HologramProjectionStage(
+                                            visible = true,
+                                            title = if (voiceProducts.isNotEmpty()) "OBJECT DATA PROJECTION" else "VISUAL REFERENCE PROJECTION"
+                                        ) {
+                                            if (voiceProducts.isNotEmpty()) {
+                                                ProductCarouselCards(voiceProducts.take(MAX_VISUAL_CARDS))
+                                            } else {
+                                                VoiceImageCarouselCards(voiceImages.take(MAX_VISUAL_CARDS))
+                                            }
+                                        }
                                     }
                                 }
                             }
