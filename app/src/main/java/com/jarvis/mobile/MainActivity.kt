@@ -1029,6 +1029,7 @@ class MainActivity : ComponentActivity() {
                 var accessToken = try { supabaseClient.currentAccessToken() } catch (_: Exception) { "" }
                 if (accessToken.isBlank()) throw IllegalStateException("Supabase session required for Worker TTS")
                 var resolvedAudio: ByteArray? = null
+                var resolvedAudioExtension = "mp3"
                 val workerBaseUrl = JarvisDeviceClient.resolveWorkerBaseUrl(this@MainActivity)
                 for (attempt in 1..2) {
                     if (speechGeneration.get() != gen) return@Thread
@@ -1037,7 +1038,7 @@ class MainActivity : ComponentActivity() {
                     activeTtsConnection.set(connection)
                     connection.requestMethod = "POST"
                     connection.connectTimeout = 20000
-                    connection.readTimeout = 90000
+                    connection.readTimeout = 130000
                     connection.doOutput = true
                     connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                     connection.setRequestProperty("Authorization", "Bearer $accessToken")
@@ -1060,13 +1061,16 @@ class MainActivity : ComponentActivity() {
                         }.orEmpty()
                         throw IllegalStateException("Fish Audio HTTP $code: $detail")
                     }
-                    resolvedAudio = (connection ?: throw IllegalStateException("Fish Audio connection was not initialized")).inputStream.use { it.readBytes() }
+                    val successfulConnection = connection ?: throw IllegalStateException("TTS connection was not initialized")
+                    val contentType = successfulConnection.contentType.orEmpty().lowercase(Locale.ROOT)
+                    resolvedAudioExtension = if (contentType.contains("wav")) "wav" else "mp3"
+                    resolvedAudio = successfulConnection.inputStream.use { it.readBytes() }
                     break
                 }
                 if (speechGeneration.get() != gen) return@Thread
                 val audio = resolvedAudio ?: ByteArray(0)
                 if (audio.isEmpty()) throw IllegalStateException("Fish Audio returned empty audio")
-                val audioFile = File(cacheDir, "jarvis_mcu_voice.mp3")
+                val audioFile = File(cacheDir, "jarvis_mcu_voice.$resolvedAudioExtension")
                 FileOutputStream(audioFile).use { it.write(audio) }
                 handler.post {
                     if (speechGeneration.get() != gen) return@post
