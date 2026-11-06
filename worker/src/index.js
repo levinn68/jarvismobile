@@ -152,7 +152,7 @@ async function handleTts(request, env) {
   const text = boundedString(body.text || "", 1800);
   if (!text) return json({ ok: false, error: "text is required" }, 400);
 
-  if (!env.FISH_API_KEY) return json({ ok: false, error: "No voice engine is configured. Configure VoxCPM2 with a saved profile or set FISH_API_KEY." }, 503);
+  if (!env.FISH_API_KEY) return json({ ok: false, error: "Fish Audio is not configured. Set FISH_API_KEY to enable Jarvis voice." }, 503);
 
   const { language, voiceId } = fishVoiceConfig(env, text);
   const referenceId = voiceId || "612b878b113047d9a770c069c8b4fdfe";
