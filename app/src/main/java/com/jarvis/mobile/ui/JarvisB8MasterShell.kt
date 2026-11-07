@@ -101,7 +101,7 @@ fun JarvisB8MasterShell(
         context.getSharedPreferences("jarvis_b8_independent_providers", Context.MODE_PRIVATE)
     }
 
-    var activeTab by remember { mutableStateOf(JarvisB8NavTab.BERANDA) }
+    var activeTab by remember { mutableStateOf(JarvisB8NavTab.CHAT) }
     var overlayRoute by remember { mutableStateOf(JarvisB8OverlayRoute.NONE) }
     var selectedTier by remember { mutableStateOf(JarvisIntelligenceTier.APEX) }
     var selectedModelId by remember {
@@ -606,68 +606,6 @@ fun JarvisB8MasterShell(
             .fillMaxSize()
             .background(JarvisColors.BackgroundDeep)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(JarvisColors.SurfaceElevated)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
-                        .clickable { onReturnToClassicHud() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("← HUD Klasik", color = JarvisColors.CyanGlow, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(8.dp))
-                        .clickable { overlayRoute = JarvisB8OverlayRoute.ONBOARDING_FLOW }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("Onboarding (1-9)", color = JarvisColors.TextSecondary, fontSize = 11.sp)
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(
-                    "Model (31)" to JarvisB8OverlayRoute.MODEL_SELECTOR,
-                    "Provider (32)" to JarvisB8OverlayRoute.AI_PROVIDERS,
-                    "Akun (33)" to JarvisB8OverlayRoute.MULTI_ACCOUNTS,
-                    "Riwayat (20)" to JarvisB8OverlayRoute.HISTORY_SEARCH
-                ).forEach { (label, route) ->
-                    val active = overlayRoute == route
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (active) JarvisColors.CyanPrimary else JarvisColors.SurfaceCard)
-                            .clickable {
-                                overlayRoute = if (active) JarvisB8OverlayRoute.NONE else route
-                            }
-                            .padding(horizontal = 7.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = label,
-                            color = if (active) Color.Black else JarvisColors.CyanGlow,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-
         Box(modifier = Modifier.weight(1f)) {
             AnimatedContent(
                 targetState = overlayRoute to activeTab,
@@ -982,10 +920,14 @@ fun JarvisB8MasterShell(
         }
 
         JarvisB8BottomNavigationBar(
-            selectedTab = activeTab,
+            selectedTab = if (overlayRoute == JarvisB8OverlayRoute.MODEL_SELECTOR) JarvisB8NavTab.MODELS else activeTab,
             onSelectTab = { tab ->
-                overlayRoute = JarvisB8OverlayRoute.NONE
-                activeTab = tab
+                if (tab == JarvisB8NavTab.MODELS) {
+                    overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR
+                } else {
+                    overlayRoute = JarvisB8OverlayRoute.NONE
+                    activeTab = tab
+                }
             }
         )
     }

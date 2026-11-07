@@ -756,7 +756,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var showB8MasterSuite by remember {
-                mutableStateOf(prefs.getBoolean("show_b8_master_suite", false))
+                mutableStateOf(true)
+            }
+            // B8 is the single supported frontend. Keep the legacy HUD dormant for existing installs.
+            LaunchedEffect(Unit) {
+                prefs.edit().putBoolean("show_b8_master_suite", true).apply()
             }
             if (showB8MasterSuite) {
                 JarvisB8MasterShell(

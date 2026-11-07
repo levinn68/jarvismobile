@@ -5,7 +5,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -29,6 +32,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -711,48 +716,133 @@ fun JarvisB8BottomNavigationBar(
     onSelectTab: (JarvisB8NavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val tabs = listOf(
+        Triple(JarvisB8NavTab.CHAT, Icons.Default.Chat, "Chat"),
+        Triple(JarvisB8NavTab.KOLABORASI, Icons.Default.Hub, "Team"),
+        Triple(JarvisB8NavTab.VOICE, Icons.Default.Mic, "Voice"),
+        Triple(JarvisB8NavTab.MODELS, Icons.Default.Layers, "Models"),
+        Triple(JarvisB8NavTab.PENGATURAN, Icons.Default.MoreHoriz, "More")
+    )
+    val voiceSelected = selectedTab == JarvisB8NavTab.VOICE
+    val voiceScale by animateFloatAsState(
+        targetValue = if (voiceSelected) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+        label = "jarvis_voice_nav_scale"
+    )
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF06111D))
-            .border(1.dp, JarvisColors.Cyan.copy(alpha = 0.32f), RoundedCornerShape(18.dp))
-            .padding(vertical = 6.dp, horizontal = 4.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .navigationBarsPadding()
+            .padding(horizontal = 22.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center
     ) {
-        val items = listOf(
-            JarvisB8NavTab.BERANDA to Icons.Default.Home,
-            JarvisB8NavTab.CHAT to Icons.Default.Chat,
-            JarvisB8NavTab.VOICE to Icons.Default.Mic,
-            JarvisB8NavTab.KOLABORASI to Icons.Default.Hub,
-            JarvisB8NavTab.PENGATURAN to Icons.Default.Settings
-        )
-        items.forEach { (tab, icon) ->
-            val selected = selectedTab == tab
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) Color(0xFF0E2B44) else Color.Transparent)
-                    .clickable { onSelectTab(tab) }
-                    .padding(vertical = 6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = tab.labelId,
-                    tint = if (selected) JarvisColors.Cyan else JarvisColors.TextMuted,
-                    modifier = Modifier.size(18.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(0.88f)
+                .widthIn(max = 350.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xE62B4052), Color(0xE6101D2B), Color(0xE60A1420))
+                    )
                 )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = tab.labelId,
-                    color = if (selected) JarvisColors.Ice else JarvisColors.TextMuted,
-                    fontSize = 10.sp,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1
+                .border(
+                    1.dp,
+                    Brush.linearGradient(
+                        listOf(Color(0x88D8F5FF), Color(0x5549DDF5), Color(0x336D8DAD))
+                    ),
+                    CircleShape
                 )
+                .padding(horizontal = 7.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            tabs.forEach { (tab, icon, label) ->
+                val selected = selectedTab == tab
+                if (tab == JarvisB8NavTab.VOICE) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .clickable { onSelectTab(tab) }
+                            .padding(vertical = 0.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .scale(voiceScale)
+                                .shadow(12.dp, CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        if (selected)
+                                            listOf(Color(0xFFB7F7FF), Color(0xFF39DDF5), Color(0xFF0785B5))
+                                        else
+                                            listOf(Color(0xFF426D82), Color(0xFF193C52), Color(0xFF102638))
+                                    ),
+                                    CircleShape
+                                )
+                                .border(
+                                    1.2.dp,
+                                    Color(0xCCDAFAFF),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(48.dp)
+                                    .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = "Voice",
+                                    tint = if (selected) Color(0xFF042330) else Color(0xFFD7F6FF),
+                                    modifier = Modifier.size(25.dp)
+                                )
+                            }
+                        }
+                        Text(
+                            text = label,
+                            color = if (selected) JarvisColors.CyanGlow else JarvisColors.TextMuted,
+                            fontSize = 9.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1
+                        )
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .background(
+                                if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+                                CircleShape
+                            )
+                            .clickable { onSelectTab(tab) }
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = if (selected) JarvisColors.CyanGlow else Color(0xFF9CB4C5),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = label,
+                            color = if (selected) JarvisColors.Ice else Color(0xFF9CB4C5),
+                            fontSize = 9.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1
+                        )
+                    }
+                }
             }
         }
     }
