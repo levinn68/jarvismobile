@@ -24,6 +24,8 @@ import {
   testProviderConnection
 } from "../src/ai/multi-account-manager.js";
 
+const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
 
@@ -88,7 +90,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     isDefault: true,
     quotaUsedTokens: 64000,
     quotaLimitTokens: 200000
-  });
+  }, TEST_ENCRYPTION_ENV);
   assert.equal(acc1.apiKey, undefined, "Public account object must never expose raw apiKey");
   assert.equal(acc1.isDefault, true);
 
@@ -101,7 +103,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     isDefault: false,
     quotaUsedTokens: 10000,
     quotaLimitTokens: 200000
-  });
+  }, TEST_ENCRYPTION_ENV);
   assert.equal(acc2.isDefault, false);
 
   // Switch default to Akun Work
@@ -110,9 +112,9 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     provider: "openai",
     label: "Akun Work",
     isDefault: true
-  });
+  }, TEST_ENCRYPTION_ENV);
 
-  const chain1 = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333" });
+  const chain1 = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333", AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" });
   assert.equal(chain1.length, 3);
   assert.equal(chain1[0].accountId, "acc-openai-work");
   assert.equal(chain1[1].accountId, "acc-openai-primary");
@@ -126,7 +128,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     isDefault: true,
     quotaUsedTokens: 200000,
     quotaLimitTokens: 200000
-  });
+  }, TEST_ENCRYPTION_ENV);
   const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333" });
   assert.equal(chainAfterQuota[0].accountId, "acc-openai-primary");
 
@@ -173,7 +175,8 @@ test("Batch 8.1 — Provider Connection Testing & HTTP Endpoints (/v1/models, /v
       SUPABASE_ANON_KEY: "anon-key",
       GEMINI_API_KEY_1: "gem-key-1",
       OPENAI_API_KEY_1: "open-key-1",
-      DEVICE_REGISTRY: kv
+      DEVICE_REGISTRY: kv,
+      AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000"
     };
 
     const modelsHttp = await workerApp.fetch(new Request("https://worker.test/v1/models?category=Kode"), env);
