@@ -247,6 +247,7 @@ test("Batch 8.5.2 — 4 & 5. AES-256-GCM Credential Encryption in KV, User Isola
   const env = {
     DEVICE_AUTH_SECRET: "kms-master-secret-key-2026",
     AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
+    AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
     OPENAI_API_KEY_1: "sk-server-worker-secret-openai-999",
     GEMINI_API_KEY_1: "AIzaSyServerWorkerSecretGemini888"
   };
@@ -454,6 +455,7 @@ test("Batch 8.5.2 — 9. Worker HTTP Endpoints (/v1/providers, /v1/providers/con
   const env = {
     DEVICE_REGISTRY: kv,
     DEVICE_AUTH_SECRET: "b8-5-2-http-secret-key",
+    AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
     AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_ANON_KEY: "anon-key"
