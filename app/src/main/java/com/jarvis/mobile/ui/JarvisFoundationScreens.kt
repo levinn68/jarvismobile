@@ -719,7 +719,7 @@ fun JarvisB8BottomNavigationBar(
         Triple(JarvisB8NavTab.CHAT, Icons.Default.Chat, "Chat"),
         Triple(JarvisB8NavTab.KOLABORASI, Icons.Default.Hub, "Team"),
         Triple(JarvisB8NavTab.VOICE, Icons.Default.Mic, "Voice"),
-        Triple(JarvisB8NavTab.MODELS, Icons.Default.Layers, "Models"),
+        Triple(JarvisB8NavTab.BERANDA, Icons.Default.Layers, "Models"),
         Triple(JarvisB8NavTab.PENGATURAN, Icons.Default.MoreHoriz, "More")
     )
     val voiceSelected = selectedTab == JarvisB8NavTab.VOICE

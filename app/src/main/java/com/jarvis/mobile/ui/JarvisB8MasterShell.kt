@@ -621,7 +621,7 @@ fun JarvisB8MasterShell(
                             onGoogleLoginClick = onTriggerGoogleSignIn,
                             onGuestContinueClick = {
                                 overlayRoute = JarvisB8OverlayRoute.NONE
-                                activeTab = JarvisB8NavTab.BERANDA
+                                activeTab = JarvisB8NavTab.CHAT
                             },
                             onFlowCompleted = {
                                 overlayRoute = JarvisB8OverlayRoute.NONE
@@ -920,9 +920,9 @@ fun JarvisB8MasterShell(
         }
 
         JarvisB8BottomNavigationBar(
-            selectedTab = if (overlayRoute == JarvisB8OverlayRoute.MODEL_SELECTOR) JarvisB8NavTab.MODELS else activeTab,
+            selectedTab = if (overlayRoute == JarvisB8OverlayRoute.MODEL_SELECTOR) JarvisB8NavTab.BERANDA else activeTab,
             onSelectTab = { tab ->
-                if (tab == JarvisB8NavTab.MODELS) {
+                if (tab == JarvisB8NavTab.BERANDA) {
                     overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR
                 } else {
                     overlayRoute = JarvisB8OverlayRoute.NONE

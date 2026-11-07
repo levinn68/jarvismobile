@@ -151,11 +151,10 @@ object JarvisMotion {
 }
 
 enum class JarvisB8NavTab(val route: String, val labelId: String) {
-    BERANDA("BERANDA", "Beranda"), // Retained for legacy route compatibility; not shown in primary navigation.
+    BERANDA("BERANDA", "Beranda"), // Legacy route; reused as the Models navigation selection while its selector is open.
     CHAT("CHAT", "Chat"),
     KOLABORASI("KOLABORASI", "Kolaborasi"),
     VOICE("VOICE", "Voice"),
-    MODELS("MODELS", "Models"),
     PENGATURAN("PENGATURAN", "More")
 }
 
