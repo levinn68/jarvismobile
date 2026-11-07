@@ -586,7 +586,7 @@ async function callGemini(env, prompt, system, keyValue, history = [], modelOver
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: payloadBody,
-    }}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
+    }, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   if (response.status === 404 && PROVIDERS.gemini.fallbackModel && primaryModel !== PROVIDERS.gemini.fallbackModel) {
     response = await safeFetchWithDnsRebindingGuard(
       `https://generativelanguage.googleapis.com/v1beta/models/${PROVIDERS.gemini.fallbackModel}:generateContent?key=${encodeURIComponent(keyValue)}`,
