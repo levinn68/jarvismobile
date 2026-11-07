@@ -715,11 +715,11 @@ fun JarvisB8BottomNavigationBar(
     onSelectTab: (JarvisB8NavTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Three primary destinations only: Chat, central Voice, and More.
+// Team remains reachable from Chat; Models remains an in-context selector.
     val tabs = listOf(
         Triple(JarvisB8NavTab.CHAT, Icons.Default.Chat, "Chat"),
-        Triple(JarvisB8NavTab.KOLABORASI, Icons.Default.Hub, "Team"),
         Triple(JarvisB8NavTab.VOICE, Icons.Default.Mic, "Voice"),
-        Triple(JarvisB8NavTab.BERANDA, Icons.Default.Layers, "Models"),
         Triple(JarvisB8NavTab.PENGATURAN, Icons.Default.MoreHoriz, "More")
     )
     val voiceSelected = selectedTab == JarvisB8NavTab.VOICE
