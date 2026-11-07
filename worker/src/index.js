@@ -286,7 +286,7 @@ async function serpApiSearch(env, engine, query, options = {}) {
       method: "GET",
       headers: { Accept: "application/json" },
       signal: controller.signal,
-    });
+    }, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || data.error) {
       throw new Error(data.error || `SerpApi HTTP ${response.status}`);
@@ -586,8 +586,7 @@ async function callGemini(env, prompt, system, keyValue, history = [], modelOver
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: payloadBody,
-    }
-  );
+    }}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   if (response.status === 404 && PROVIDERS.gemini.fallbackModel && primaryModel !== PROVIDERS.gemini.fallbackModel) {
     response = await safeFetchWithDnsRebindingGuard(
       `https://generativelanguage.googleapis.com/v1beta/models/${PROVIDERS.gemini.fallbackModel}:generateContent?key=${encodeURIComponent(keyValue)}`,
@@ -595,8 +594,7 @@ async function callGemini(env, prompt, system, keyValue, history = [], modelOver
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payloadBody,
-      }
-    );
+      }}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   }
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
@@ -655,8 +653,7 @@ async function callAnthropic(env, prompt, system, keyNameOrValue, history = [], 
       max_tokens: 2200,
       system,
       messages,
-    }),
-  });
+    })}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
     let errMsg = "anthropic request failed";
@@ -710,8 +707,7 @@ async function callOpenAICompatible(provider, env, prompt, system, keyNameOrValu
       temperature: 0.55,
       max_tokens: 2200,
       messages,
-    }),
-  });
+    })}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
     let errMsg = `${provider} request failed`;
@@ -1839,7 +1835,7 @@ export default {
               latency: "balanced",
             }),
             signal: controller.signal,
-          });
+          }, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
         } finally {
           clearTimeout(timer);
         }

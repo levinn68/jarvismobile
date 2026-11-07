@@ -33,9 +33,14 @@ const TRUSTED_PUBLIC_PROVIDERS = new Set([
   "serpapi.com"
 ]);
 
-export function isTrustedProviderHostname(hostname) {
+export function isTrustedProviderHostname(hostname, env = {}) {
   const host = String(hostname || "").toLowerCase().trim().replace(/^\[|\]$/g, "");
-  return TRUSTED_PUBLIC_PROVIDERS.has(host);
+  if (TRUSTED_PUBLIC_PROVIDERS.has(host)) return true;
+  const configured = String(env?.JARVIS_OUTBOUND_HOST_ALLOWLIST || "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  return configured.includes(host);
 }
 
 
@@ -390,7 +395,7 @@ export async function safeFetchWithDnsRebindingGuard(rawUrl, init = {}, options 
   }
 
   const hostname = endpointValidation.hostname;
-  if (!hostname || (!isTrustedProviderHostname(hostname) && options.allowUntrustedHost !== true)) {
+  if (!hostname || (!isTrustedProviderHostname(hostname, options.env) && options.allowUntrustedHost !== true)) {
     const error = new Error("Outbound host is not in the configured provider allowlist; custom endpoints are disabled until connection-pinned egress is available.");
     error.status = 403;
     error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;
@@ -406,18 +411,20 @@ export async function safeFetchWithDnsRebindingGuard(rawUrl, init = {}, options 
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new Error("No valid fetch implementation available");
 
-  // Worker fetch resolves its own socket destination. Production therefore accepts
-  // only fixed official provider hostnames; arbitrary custom hosts are rejected above.
-  // Test-only untrusted-host calls still exercise the DNS flip detector.
-  if (!isTrustedProviderHostname(hostname)) {
+  // Worker fetch resolves its own socket destination. Built-in provider hostnames
+  // are trusted by fixed allowlist. Admin-allowlisted custom hosts are DNS-checked,
+  // but remain an explicit trust decision because Worker fetch does not pin sockets.
+  if (!TRUSTED_PUBLIC_PROVIDERS.has(hostname)) {
     const liveCheckIps = await resolveHostAddresses(hostname, options);
-    if (!Array.isArray(liveCheckIps) || liveCheckIps.length === 0) {
+    const allowMockDns = options.allowUnresolvedMock === true ||
+      options.env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true";
+    if ((!Array.isArray(liveCheckIps) || liveCheckIps.length === 0) && !allowMockDns) {
       const error = new Error(`Outbound DNS validation failed for '${hostname}' (fail closed).`);
       error.status = 403;
       error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;
       throw error;
     }
-    if (liveCheckIps.some((ip) => isBlockedIp(ip))) {
+    if (Array.isArray(liveCheckIps) && liveCheckIps.some((ip) => isBlockedIp(ip))) {
       const error = new Error(`DNS Rebinding detected! Host '${hostname}' resolved to blocked IP during connection attempt.`);
       error.status = 403;
       error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;

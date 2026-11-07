@@ -154,7 +154,7 @@ export function requestOriginAllowed(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return allowed.length === 0 || allowed.includes(origin);
+  return allowed.length > 0 && allowed.includes(origin);
 }
 
 export function corsHeadersForRequest(request, env) {
@@ -163,10 +163,8 @@ export function corsHeadersForRequest(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  let allowOrigin = "*";
-  if (allowed.length > 0) {
-    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
-  }
+  let allowOrigin = origin ? "null" : "*";
+  if (origin && allowed.includes(origin)) allowOrigin = origin;
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
