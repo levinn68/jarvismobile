@@ -90,7 +90,7 @@ test("Batch 8.3 — MCP Integration: JSON-RPC 2.0 envelope, 5 built-in servers, 
     id: "mcp_docker",
     name: "Docker MCP",
     transport: "http_jsonrpc",
-    endpoint: "https://localhost:9001/mcp",
+    endpoint: "https://mcp.docker.com/mcp",
     enabled: true
   });
   assert.equal(customSrv.name, "Docker MCP");

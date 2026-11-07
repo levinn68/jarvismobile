@@ -303,7 +303,7 @@ test("R2-003 [DNS Rebinding Defense]: Detects dynamic DNS flip to internal IP at
       safeFetchWithDnsRebindingGuard(
         "https://dynamic-rebind.target.com/v1/complete",
         { method: "POST" },
-        { dnsResolver: rebindingResolver, fetchImpl: mockFetch }
+        { dnsResolver: rebindingResolver, fetchImpl: mockFetch, allowUntrustedHost: true }
       ),
     /DNS Rebinding detected! Host 'dynamic-rebind.target.com' resolved to blocked IP/
   );
