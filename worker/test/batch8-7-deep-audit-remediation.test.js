@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import worker from "../src/index.js";
+import { createTaskOrchestrator } from "../src/core/task-orchestrator.js";
 import { validateCommand } from "../src/device/protocol.js";
 import {
   enqueueDeviceCommand,
@@ -279,4 +280,14 @@ test("Batch 8.7 — 3. Android Vault Thread-Safety, Bounded HTTP Reads, Coroutin
   assert.match(wranglerToml, /JARVIS_ENV = "production"/, "wrangler.toml default vars must set JARVIS_ENV = production");
   assert.match(wranglerToml, /\[env\.staging\]/, "wrangler.toml must define [env.staging]");
   assert.match(wranglerToml, /\[env\.development\]/, "wrangler.toml must define [env.development]");
+});
+
+
+test("task orchestration fails closed when no authorizer is configured", async () => {
+  let invoked = false;
+  const orchestrator = createTaskOrchestrator({ handlers: { sensitive: async () => { invoked = true; return "ran"; } } });
+  const result = await orchestrator.run({ type: "sensitive", payload: {} });
+  assert.equal(result.status, "blocked");
+  assert.equal(result.ok, false);
+  assert.equal(invoked, false);
 });
