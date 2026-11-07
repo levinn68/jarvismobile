@@ -127,7 +127,7 @@ export async function decryptCredentialFromKv(recordOrEnvelope, { env = {}, user
     const aad = textEncoder.encode(`${String(userId)}:${normProvider}`);
     const candidates = Number(envelope.v) >= 2
       ? [resolveMasterEncryptionSecret(env)]
-      : [env?.AI_CREDENTIAL_ENCRYPTION_KEY, env?.LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY]
+      : [env?.AI_CREDENTIAL_ENCRYPTION_KEY, env?.LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY, env?.CREDENTIAL_ENCRYPTION_SECRET, env?.DEVICE_AUTH_SECRET]
           .filter((value) => typeof value === "string" && value.trim().length >= 32);
     if (!candidates.length) {
       throw new Error("Credential decryption key is not configured. Set AI_CREDENTIAL_ENCRYPTION_KEY and, for legacy v1 records, LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY.");
