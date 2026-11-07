@@ -1,5 +1,5 @@
 import { redactSecrets } from "../utils.js";
-import { isBlockedIp, isBlockedHostname } from "../security/ssrf-guard.js";
+import { isBlockedIp, isBlockedHostname, safeFetchWithDnsRebindingGuard } from "../security/ssrf-guard.js";
 
 function resolveKv(envOrKv) {
   if (!envOrKv) return null;
@@ -263,10 +263,98 @@ export async function executeMcpTool(envOrKv, userId, payload = {}) {
     };
   }
 
+  // Never report a local placeholder as a successful remote MCP execution.
+  // stdio/SSE need their own session/bridge adapters and are deliberately fail-closed here.
+  if (server.transport !== "http_jsonrpc") {
+    const err = new Error(`MCP transport '${server.transport}' belum memiliki adapter eksekusi aktif untuk server '${server.name}'.`);
+    err.status = 501;
+    err.code = "MCP_TRANSPORT_NOT_IMPLEMENTED";
+    throw err;
+  }
+
+  let endpoint;
+  try {
+    endpoint = new URL(server.endpoint);
+  } catch {
+    const err = new Error("MCP server endpoint is invalid.");
+    err.status = 400;
+    throw err;
+  }
+  if (endpoint.protocol !== "https:") {
+    const err = new Error("MCP HTTP JSON-RPC endpoint must use HTTPS.");
+    err.status = 400;
+    throw err;
+  }
+
   const rpcEnvelope = buildJsonRpcRequest("tools/call", {
     name: tool.name,
-    arguments: payload.arguments || {}
-  });
+    arguments: payload.arguments && typeof payload.arguments === "object" ? payload.arguments : {}
+  }, globalThis.crypto?.randomUUID?.() || Date.now());
+
+  const env = envOrKv && typeof envOrKv === "object" ? envOrKv : {};
+  const fetchImpl = typeof env.MCP_FETCH === "function" ? env.MCP_FETCH : globalThis.fetch;
+  let response;
+  try {
+    response = await safeFetchWithDnsRebindingGuard(endpoint.toString(), {
+      method: "POST",
+      headers: {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(rpcEnvelope),
+      signal: AbortSignal.timeout(15000)
+    }, {
+      env,
+      fetchImpl
+    });
+  } catch (cause) {
+    const err = new Error(`MCP server request failed: ${String(cause?.message || cause).slice(0, 180)}`);
+    err.status = cause?.status || 502;
+    err.code = cause?.code || "MCP_TRANSPORT_ERROR";
+    throw err;
+  }
+
+  if (!response?.ok) {
+    const err = new Error(`MCP server returned HTTP ${response?.status || 502}.`);
+    err.status = 502;
+    err.code = "MCP_HTTP_ERROR";
+    throw err;
+  }
+
+  const contentType = String(response.headers?.get?.("content-type") || "").toLowerCase();
+  if (contentType.includes("text/event-stream")) {
+    const err = new Error("MCP server returned SSE; the SSE session adapter is not implemented.");
+    err.status = 501;
+    err.code = "MCP_SSE_NOT_IMPLEMENTED";
+    throw err;
+  }
+
+  let remoteResponse;
+  try {
+    remoteResponse = await response.json();
+  } catch {
+    const err = new Error("MCP server returned an invalid JSON response.");
+    err.status = 502;
+    err.code = "MCP_INVALID_JSON";
+    throw err;
+  }
+
+  if (
+    !remoteResponse ||
+    remoteResponse.jsonrpc !== "2.0" ||
+    String(remoteResponse.id) !== String(rpcEnvelope.id)
+  ) {
+    const err = new Error("MCP server returned a malformed or mismatched JSON-RPC response.");
+    err.status = 502;
+    err.code = "MCP_INVALID_JSONRPC";
+    throw err;
+  }
+  if (remoteResponse.error) {
+    const err = new Error(String(remoteResponse.error.message || "MCP server reported a JSON-RPC error").slice(0, 240));
+    err.status = 502;
+    err.code = "MCP_REMOTE_ERROR";
+    throw err;
+  }
 
   const auditRecord = {
     executionId: `mcp_exec_${Date.now().toString(36)}`,
@@ -296,14 +384,6 @@ export async function executeMcpTool(envOrKv, userId, payload = {}) {
     ok: true,
     requiresApproval: false,
     execution: auditRecord,
-    jsonrpcResponse: {
-      jsonrpc: "2.0",
-      id: rpcEnvelope.id,
-      result: {
-        toolName: tool.name,
-        output: `[MCP:${server.name}] Perintah '${tool.name}' berhasil dijalankan.`,
-        data: payload.arguments || {}
-      }
-    }
+    jsonrpcResponse: remoteResponse
   };
 }

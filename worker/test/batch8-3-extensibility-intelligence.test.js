@@ -74,16 +74,39 @@ test("Batch 8.3 — MCP Integration: JSON-RPC 2.0 envelope, 5 built-in servers, 
   assert.equal(writeUnapproved.ok, false);
   assert.equal(writeUnapproved.requiresApproval, true);
 
-  // Write tool with userApproved: true -> succeeds & writes audit log with redacted secrets
-  const writeApproved = await executeMcpTool(kv, userId, {
-    serverId: "mcp_filesystem",
-    toolName: "fs.write_file",
-    arguments: { path: "config.env", secret: "Bearer eyJhbGciOiJIUzI1NiJ9.secret" },
-    userApproved: true
+  // stdio_bridge has no connected desktop adapter in this Worker: it must not fake success.
+  await assert.rejects(
+    () => executeMcpTool(kv, userId, {
+      serverId: "mcp_filesystem",
+      toolName: "fs.write_file",
+      arguments: { path: "config.env", secret: "Bearer eyJhbGciOiJIUzI1NiJ9.secret" },
+      userApproved: true
+    }),
+    (error) => error.status === 501 && error.code === "MCP_TRANSPORT_NOT_IMPLEMENTED"
+  );
+
+  // HTTP JSON-RPC must call the remote server and return its actual response.
+  let capturedRequest;
+  const mcpEnv = {
+    DEVICE_REGISTRY: kv,
+    MCP_FETCH: async (url, init) => {
+      capturedRequest = { url: String(url), body: JSON.parse(init.body) };
+      return new Response(JSON.stringify({
+        jsonrpc: "2.0",
+        id: capturedRequest.body.id,
+        result: { content: [{ type: "text", text: "repository search completed" }] }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+  };
+  const remoteResult = await executeMcpTool(mcpEnv, userId, {
+    serverId: "mcp_github",
+    toolName: "github.search_repositories",
+    arguments: { query: "jarvis" }
   });
-  assert.equal(writeApproved.ok, true);
-  assert.equal(writeApproved.jsonrpcResponse.jsonrpc, "2.0");
-  assert.equal(writeApproved.execution.argumentsSummary.includes("eyJhbGciOiJIUzI1NiJ9"), false);
+  assert.equal(remoteResult.ok, true);
+  assert.equal(remoteResult.jsonrpcResponse.result.content[0].text, "repository search completed");
+  assert.equal(capturedRequest.body.method, "tools/call");
+  assert.equal(capturedRequest.body.params.name, "github.search_repositories");
 
   // Add custom MCP server
   const customSrv = await saveMcpServer(kv, userId, {
