@@ -57,16 +57,15 @@ function base64ToBytes(b64) {
 }
 
 function resolveMasterEncryptionSecret(env = {}) {
-  return String(
-    env?.AI_CREDENTIAL_ENCRYPTION_KEY ||
-      env?.CREDENTIAL_ENCRYPTION_SECRET ||
-      env?.DEVICE_AUTH_SECRET ||
-      "jarvis-worker-b8-5-2-kms-default-master-secret-key"
-  );
+  const secret = String(env?.AI_CREDENTIAL_ENCRYPTION_KEY || "").trim();
+  if (secret.length < 32) {
+    throw new Error("AI_CREDENTIAL_ENCRYPTION_KEY must be configured as a dedicated secret of at least 32 characters.");
+  }
+  return secret;
 }
 
-async function deriveCredentialAesKey(env, userId, provider) {
-  const masterSecret = resolveMasterEncryptionSecret(env);
+async function deriveCredentialAesKey(env, userId, provider, secretOverride = "") {
+  const masterSecret = String(secretOverride || resolveMasterEncryptionSecret(env));
   const baseKey = await webCrypto.subtle.importKey(
     "raw",
     textEncoder.encode(masterSecret),
@@ -107,7 +106,8 @@ export async function encryptCredentialForKv(plainApiKey, { env = {}, userId = "
   return {
     alg: "AES-256-GCM",
     kdf: "HKDF-SHA256",
-    v: 1,
+    v: 2,
+    keyVersion: "2",
     iv: bytesToBase64(iv),
     ciphertext: bytesToBase64(new Uint8Array(cipherBuf))
   };
@@ -122,16 +122,31 @@ export async function decryptCredentialFromKv(recordOrEnvelope, { env = {}, user
   const envelope = recordOrEnvelope.encryptedApiKey || recordOrEnvelope;
   if (envelope && envelope.alg === "AES-256-GCM" && envelope.iv && envelope.ciphertext) {
     const normProvider = String(provider || recordOrEnvelope.provider || "").trim().toLowerCase();
-    const aesKey = await deriveCredentialAesKey(env, userId, normProvider);
     const iv = base64ToBytes(envelope.iv);
     const ciphertext = base64ToBytes(envelope.ciphertext);
     const aad = textEncoder.encode(`${String(userId)}:${normProvider}`);
-    const plainBuf = await webCrypto.subtle.decrypt(
-      { name: "AES-GCM", iv, additionalData: aad },
-      aesKey,
-      ciphertext
-    );
-    return textDecoder.decode(plainBuf);
+    const candidates = Number(envelope.v) >= 2
+      ? [resolveMasterEncryptionSecret(env)]
+      : [env?.AI_CREDENTIAL_ENCRYPTION_KEY, env?.LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY]
+          .filter((value) => typeof value === "string" && value.trim().length >= 32);
+    if (!candidates.length) {
+      throw new Error("Credential decryption key is not configured. Set AI_CREDENTIAL_ENCRYPTION_KEY and, for legacy v1 records, LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY.");
+    }
+    let lastError;
+    for (const candidate of candidates) {
+      try {
+        const aesKey = await deriveCredentialAesKey(env, userId, normProvider, candidate);
+        const plainBuf = await webCrypto.subtle.decrypt(
+          { name: "AES-GCM", iv, additionalData: aad },
+          aesKey,
+          ciphertext
+        );
+        return textDecoder.decode(plainBuf);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error("Stored provider credential could not be decrypted with the configured key versions.");
   }
   // Legacy fallback only if an older in-memory object had plaintext apiKey
   if (typeof recordOrEnvelope.apiKey === "string" && recordOrEnvelope.apiKey.trim()) {
@@ -482,6 +497,35 @@ export function maskEmailOrLabel(identifier = "") {
   const [local, domain] = clean.split("@");
   if (!local || !domain) return clean;
   return (local.slice(0, 2) + "***@" + domain).slice(0, 80);
+}
+
+function validateProviderEndpoint(rawEndpoint) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawEndpoint || ""));
+  } catch (_) {
+    throw new Error("Provider endpoint must be a valid HTTPS URL.");
+  }
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.username ||
+    parsed.password ||
+    (parsed.port && parsed.port !== "443") ||
+    !hostname ||
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".internal") ||
+    hostname.endsWith(".test") ||
+    hostname.endsWith(".example") ||
+    hostname.endsWith(".invalid") ||
+    /^[0-9.]+$/.test(hostname) ||
+    hostname.includes(":")
+  ) {
+    throw new Error("Provider endpoint is not allowed. Use a public HTTPS hostname without credentials or a custom port.");
+  }
+  return parsed.toString().replace(/\/$/, "");
 }
 
 function accountStoreKey(userId) {
@@ -1257,11 +1301,12 @@ export async function testProviderConnection({
     };
   }
 
-  const modelsEndpoint =
+  const modelsEndpoint = validateProviderEndpoint(
     (customEndpoint && customEndpoint.replace(/\/chat\/completions\/?$/, "/models")) ||
     matchedStoredAccount?.customEndpoint?.replace(/\/chat\/completions\/?$/, "/models") ||
     userCfg?.modelsEndpoint ||
-    spec.modelsEndpoint;
+    spec.modelsEndpoint
+  );
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -1272,7 +1317,8 @@ export async function testProviderConnection({
     if (cleanProvider === "gemini") {
       response = await fetchImpl(
         `${modelsEndpoint}?key=${encodeURIComponent(effectiveKey)}`,
-        { method: "GET", headers: { Accept: "application/json" }, signal: controller.signal }
+        { method: "GET", headers: { Accept: "application/json" }, redirect: "manual",
+            signal: controller.signal }
       );
     } else if (cleanProvider === "anthropic") {
       response = await fetchImpl(modelsEndpoint, {
@@ -1282,7 +1328,8 @@ export async function testProviderConnection({
           "anthropic-version": "2023-06-01",
           Accept: "application/json"
         },
-        signal: controller.signal
+        redirect: "manual",
+            signal: controller.signal
       });
     } else {
       response = await fetchImpl(modelsEndpoint, {
@@ -1291,7 +1338,8 @@ export async function testProviderConnection({
           Authorization: `Bearer ${effectiveKey}`,
           Accept: "application/json"
         },
-        signal: controller.signal
+        redirect: "manual",
+            signal: controller.signal
       });
     }
 
@@ -1517,7 +1565,7 @@ export async function invokeProviderCompletion({
 
   for (let idx = 0; idx < chain.length; idx++) {
     const cred = chain[idx];
-    const targetEndpoint = cred.customEndpoint || userCfg?.endpoint || spec.endpoint;
+    const targetEndpoint = validateProviderEndpoint(cred.customEndpoint || userCfg?.endpoint || spec.endpoint);
 
     if (signal?.aborted) {
       const abortErr = new Error("Request cancelled by caller");
@@ -1556,6 +1604,7 @@ export async function invokeProviderCompletion({
               contents,
               generationConfig: { temperature, maxOutputTokens: maxTokens }
             }),
+            redirect: "manual",
             signal: controller.signal
           });
         } else if (normalizedProvider === "anthropic") {
@@ -1577,6 +1626,7 @@ export async function invokeProviderCompletion({
               temperature,
               messages
             }),
+            redirect: "manual",
             signal: controller.signal
           });
         } else {
@@ -1599,6 +1649,7 @@ export async function invokeProviderCompletion({
               max_tokens: maxTokens,
               messages
             }),
+            redirect: "manual",
             signal: controller.signal
           });
         }
