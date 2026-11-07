@@ -38,7 +38,6 @@ object JarvisColors {
     val Ok = Color(0xFF00F59B)
     val Warn = Color(0xFFFFC56A)
     val Error = Color(0xFFFF5E6E)
-    val Danger = Error
     val Listening = Color(0xFF00E5FF)
     val Thinking = Color(0xFFB26BFF)
     val Responding = Color(0xFF38D4FF)

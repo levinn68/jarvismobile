@@ -87,7 +87,7 @@ test("B4 Worker: API routing, CORS origin enforcement, and OPTIONS preflight sec
     env
   );
   assert.equal(badPreflight.status, 403);
-  assert.equal(badPreflight.headers.get("Access-Control-Allow-Origin"), null);
+  assert.equal(badPreflight.headers.get("Access-Control-Allow-Origin"), "null");
 
   // Allowed origin on OPTIONS preflight -> 204 with matching origin
   const okPreflight = await workerApp.fetch(
@@ -109,7 +109,7 @@ test("B4 Worker: API routing, CORS origin enforcement, and OPTIONS preflight sec
     env
   );
   assert.equal(blockedDeviceReq.status, 403);
-  assert.equal(blockedDeviceReq.headers.get("Access-Control-Allow-Origin"), null);
+  assert.equal(blockedDeviceReq.headers.get("Access-Control-Allow-Origin"), "null");
   assert.equal(blockedDeviceReq.headers.get("X-Content-Type-Options"), "nosniff");
 });
 

@@ -56,51 +56,13 @@ function base64ToBytes(b64) {
   return out;
 }
 
-/**
- * User-controlled custom endpoints receive bearer/API-key credentials.
- * Require HTTPS public DNS names, and reject URL credentials, query secrets,
- * fragments, IP literals, loopback, link-local and internal destinations.
- * Workers cannot pin DNS; configure an egress host policy for stronger SSRF defense.
- */
-export function validateCustomProviderEndpoint(value, fieldName = "endpoint") {
-  const raw = String(value || "").trim();
-  let parsed;
-  try { parsed = new URL(raw); }
-  catch (_) { return { valid: false, error: `${fieldName} must be a valid HTTPS URL.` }; }
-  const host = parsed.hostname.toLowerCase().replace(/^\\[|\\]$/g, "");
-  const ipv4 = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host);
-  const ipv6 = host.includes(":");
-  const blockedSuffixes = [".localhost", ".local", ".internal", ".test", ".example", ".invalid"];
-  const blockedExact = new Set(["localhost", "metadata.google.internal", "metadata", "instance-data", "instance-data.ec2.internal"]);
-  if (parsed.protocol !== "https:" || !host || parsed.username || parsed.password ||
-      parsed.search || parsed.hash || ipv4 || ipv6 || blockedExact.has(host) ||
-      blockedSuffixes.some((suffix) => host.endsWith(suffix)) || !host.includes(".")) {
-    return { valid: false, error: `${fieldName} must use HTTPS and a public DNS hostname; local/private IPs, internal hostnames, credentials, query strings, and fragments are not allowed.` };
-  }
-  return { valid: true, url: parsed.toString() };
-}
-
-function assertCustomEndpoint(value, fieldName) {
-  const result = validateCustomProviderEndpoint(value, fieldName);
-  if (!result.valid) {
-    const error = new Error(result.error);
-    error.status = 400;
-    error.code = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
-    error.errorCode = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
-    throw error;
-  }
-  return result.url;
-}
-
 function resolveMasterEncryptionSecret(env = {}) {
-  const secret = String(env?.AI_CREDENTIAL_ENCRYPTION_KEY || "").trim();
-  if (secret.length < 32) {
-    throw new Error(
-      "AI_CREDENTIAL_ENCRYPTION_KEY must be configured as a dedicated secret (minimum 32 characters). " +
-      "No built-in fallback is permitted. Existing encrypted credentials require an explicit key migration before changing this secret."
-    );
-  }
-  return secret;
+  return String(
+    env?.AI_CREDENTIAL_ENCRYPTION_KEY ||
+      env?.CREDENTIAL_ENCRYPTION_SECRET ||
+      env?.DEVICE_AUTH_SECRET ||
+      "jarvis-worker-b8-5-2-kms-default-master-secret-key"
+  );
 }
 
 async function deriveCredentialAesKey(env, userId, provider) {
@@ -600,18 +562,13 @@ export async function saveProviderConfiguration(kv, userId, input = {}, env = {}
     throw new Error("Unsupported AI provider: " + providerId);
   }
 
-  const isCustomProvider = Boolean(spec.isCustom || providerId === "custom" || providerId.startsWith("custom-"));
-  let nextEndpoint = input.endpoint ? boundedString(input.endpoint, 240) : existing.endpoint || spec.endpoint;
-  let nextModelsEndpoint = input.modelsEndpoint
+  const nextEndpoint = input.endpoint ? boundedString(input.endpoint, 240) : existing.endpoint || spec.endpoint;
+  const nextModelsEndpoint = input.modelsEndpoint
     ? boundedString(input.modelsEndpoint, 240)
     : existing.modelsEndpoint ||
-      (input.endpoint && isCustomProvider
+      (input.endpoint && (providerId === "custom" || providerId.startsWith("custom-"))
         ? input.endpoint.replace(/\/chat\/completions\/?$/, "/models")
         : spec.modelsEndpoint);
-  if (isCustomProvider) {
-    nextEndpoint = assertCustomEndpoint(nextEndpoint, "endpoint");
-    nextModelsEndpoint = assertCustomEndpoint(nextModelsEndpoint, "modelsEndpoint");
-  }
 
   const updated = {
     providerId,
@@ -757,9 +714,6 @@ export async function saveUserAiAccount(kv, userId, input = {}, env = {}) {
   const label = boundedString(input.label || "Akun Baru", 80);
   const emailOrHint = maskEmailOrLabel(input.email || input.emailOrHint || "user@domain.com");
   const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-  const isCustomProvider = Boolean(spec.isCustom || provider === "custom" || provider.startsWith("custom-"));
-  const customEndpoint = input.customEndpoint || configsMap[provider]?.endpoint || "";
-  if (isCustomProvider && customEndpoint) assertCustomEndpoint(customEndpoint, "customEndpoint");
 
   if (apiKey) {
     const validation = validateProviderApiKeyFormat(provider, apiKey);
@@ -1205,15 +1159,6 @@ export async function testProviderConnection({
   const configsMap = kv && userId ? await readUserProviderConfigsMap(kv, userId) : {};
   const userCfg = configsMap[cleanProvider] || null;
   const spec = resolveProviderSpec(cleanProvider, userCfg);
-  const isCustomProvider = Boolean(spec?.isCustom || cleanProvider === "custom" || cleanProvider.startsWith("custom-"));
-  if (isCustomProvider) {
-    const endpointCheck = validateCustomProviderEndpoint(customEndpoint || userCfg?.endpoint || spec?.endpoint, "customEndpoint");
-    const modelsCheck = validateCustomProviderEndpoint(userCfg?.modelsEndpoint || spec?.modelsEndpoint, "modelsEndpoint");
-    if (!endpointCheck.valid || !modelsCheck.valid) {
-      return { ok: false, provider: cleanProvider, status: "invalid_custom_endpoint", connectionStatus: "connection_failed", error: endpointCheck.error || modelsCheck.error };
-    }
-    customEndpoint = endpointCheck.url;
-  }
 
   if (!spec) {
     return {

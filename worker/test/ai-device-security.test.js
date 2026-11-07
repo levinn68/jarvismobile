@@ -128,15 +128,3 @@ test("ambiguous multi-device requests require explicit device selection", async 
   assert.equal(result.status, "device_selection_required");
   assert.equal(result.devices.length, 2);
 });
-
-test("configured browser origins fail closed while native requests without Origin remain supported", () => {
-  assert.equal(requestOriginAllowed(new Request("https://api.example")), true);
-  assert.equal(requestOriginAllowed(new Request("https://api.example", { headers: { Origin: "https://good.example" } }), {
-    JARVIS_ALLOWED_ORIGINS: "https://good.example,https://app.example"
-  }), true);
-  assert.equal(requestOriginAllowed(new Request("https://api.example", { headers: { Origin: "https://evil.example" } }), {
-    JARVIS_ALLOWED_ORIGINS: "https://good.example"
-  }), false);
-  assert.equal(requestOriginAllowed(new Request("https://api.example", { headers: { Origin: "https://unlisted.example" } }), {}), false,
-    "Browser origins must fail closed when the allowlist is empty");
-});

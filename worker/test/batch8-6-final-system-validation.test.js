@@ -46,7 +46,7 @@ test("Batch 8.6 — 1. Kotlin Lexical, Syntax, Enum, and MANIFEST.json Static Co
     }
   }
   walk(ktDir);
-  assert.ok(ktFiles.length >= 30, `Expected at least 30 Kotlin source files, found ${ktFiles.length}`);
+  assert.equal(ktFiles.length, 30, "All 30 Kotlin source files must be present");
 
   // Extract defined Subsystem enum values from JarvisStabilityGuard.kt
   const guardText = fs.readFileSync(
@@ -177,16 +177,17 @@ test("Batch 8.6 — 1. Kotlin Lexical, Syntax, Enum, and MANIFEST.json Static Co
   }
 
   // Verify MainActivity.kt MANIFEST.json synchronization and B8 integration hooks
-  const mainBytes = fs.readFileSync(path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt"));
+  const mainBytes = fs.readFileSync(path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/MainActivity.kt"));
   const mainText = mainBytes.toString("utf8");
   const manifest = JSON.parse(
-    fs.readFileSync(path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json"), "utf8")
+    fs.readFileSync(path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/mainactivity_parts/MANIFEST.json"), "utf8")
   );
-  const actualMainSha = crypto.createHash("sha256").update(mainBytes).digest("hex");
-  assert.ok(Number.isInteger(manifest.raw_size) && manifest.raw_size > 0, "MANIFEST.json raw_size must be a positive integer");
-  assert.ok(Math.abs(manifest.raw_size - mainBytes.length) <= 5, "Archived source extraction may normalize up to five bytes of line-ending/trailing whitespace");
-  assert.match(manifest.raw_sha256, /^[a-f0-9]{64}$/i, "Source manifest must retain a SHA-256 digest");
-  assert.equal(actualMainSha.length, 64, "Archived MainActivity.kt SHA-256 must be computable");
+  assert.equal(manifest.raw_size, mainBytes.length, "MANIFEST.json raw_size must match MainActivity.kt");
+  assert.equal(
+    manifest.raw_sha256,
+    crypto.createHash("sha256").update(mainBytes).digest("hex"),
+    "MANIFEST.json raw_sha256 must match MainActivity.kt"
+  );
   assert.match(mainText, /B8 SUITE ✦/, "MainActivity.kt must provide a switcher into B8 Master Suite");
   assert.match(mainText, /body\.put\("model", selectedModelId\)/, "MainActivity.askGemini must forward selected model to /v1/chat");
   assert.match(mainText, /body\.put\("modelTier", selectedTier\)/, "MainActivity.askGemini must forward selected tier to /v1/chat");
@@ -230,7 +231,6 @@ test("Batch 8.6 — 3. Worker AI Barrel Exports & End-to-End Flow Validation (Pr
     JARVIS_ENV: "development",
     DEVICE_REGISTRY: kv,
     DEVICE_TOKEN_SECRET: "b8-6-validation-secret-key-minimum-32-bytes-long-123456",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_ANON_KEY: "sb_publishable_test_key"
   };

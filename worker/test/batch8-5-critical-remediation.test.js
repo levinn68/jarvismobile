@@ -240,7 +240,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
     email: "fajar@jarvis.id",
     apiKey: "sk-user-custom-account-key-9999",
     isDefault: true
-  }, { AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long" });
+  });
   assert.equal(savedAcc.accountId, "acc-user-openai-custom");
 
   let usedAuthHeader = "";
@@ -270,7 +270,6 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_ANON_KEY: "anon-key",
       OPENAI_API_KEY_1: "sk-server-default-key",
-      AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long",
       FISH_API_KEY: "fish-secret-key",
       DEVICE_REGISTRY: kv
     };
@@ -313,7 +312,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
 });
 
 test("Batch 8.5 Remediation 3 & 4 — Android Fish Audio fallback transparency, Crash Guard, and Zero-Deletion Verification", async () => {
-  const mainKt = fs.readFileSync(path.join(repoRoot, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
+  const mainKt = fs.readFileSync(path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
   const collabKt = fs.readFileSync(
     path.join(repoRoot, "app/src/main/java/com/jarvis/mobile/ui/JarvisCollaborationScreens.kt"),
     "utf8"

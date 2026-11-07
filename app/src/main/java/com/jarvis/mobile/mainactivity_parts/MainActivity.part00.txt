@@ -22,9 +22,8 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import java.io.File
 import java.io.FileOutputStream
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -35,6 +34,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -125,13 +125,17 @@ import kotlinx.coroutines.withContext
 import androidx.lifecycle.lifecycleScope
 import com.jarvis.mobile.account.SupabaseJarvisClient
 import com.jarvis.mobile.ui.VoiceOrbState
+import com.jarvis.mobile.ui.JarvisB8MasterShell
+import com.jarvis.mobile.stability.JarvisStabilityGuard
 import com.jarvis.mobile.ui.HolographicOrb
+import com.jarvis.mobile.ui.JarvisColors
 import com.jarvis.mobile.ui.JarvisUserBubble
 import com.jarvis.mobile.ui.JarvisAssistantBubble
 import com.jarvis.mobile.ui.JarvisChatComposer
 import com.jarvis.mobile.ui.JarvisChatErrorCard
 import com.jarvis.mobile.ui.JarvisThinkingBar
 import com.jarvis.mobile.ui.JarvisConversationChip
+import com.jarvis.mobile.ui.resolveVoiceOrbState
 import com.jarvis.mobile.account.SavedConversation
 import com.jarvis.mobile.account.SavedMessage
 import java.io.BufferedReader
@@ -167,108 +171,90 @@ data class VisualProduct(
 data class ChatResponsePayload(
     val answer: String,
     val products: List<VisualProduct> = emptyList(),
-    val images: List<Pair<String, String>> = emptyList()
+    val images: List<Pair<String, String>> = emptyList(),
+    val isError: Boolean = false
 )
 
-private class ClapPatternDetector(
-    private val handler: Handler,
-    private val onDetected: (Int) -> Unit
-) {
-    private var baseline = 0f
-    private var previous = 0f
-    private var initialized = false
-    private var firstClapAt = 0L
-    private var lastSpikeAt = 0L
-    private var lastTriggeredAt = 0L
-    private var pendingCount = 0
-    private var pendingSingle: Runnable? = null
+private const val MAX_VISUAL_CARDS = 5
 
-    fun onRms(rmsDb: Float) {
-        if (!rmsDb.isFinite()) return
-        val now = SystemClock.elapsedRealtime()
-        val level = rmsDb.coerceIn(0f, 20f)
-        if (!initialized) {
-            baseline = level
-            previous = level
-            initialized = true
-            return
-        }
-
-        val jump = level - previous
-        if (pendingCount == 0 && level < baseline + 4f) {
-            baseline = baseline * 0.96f + level * 0.04f
-        }
-        previous = level
-
-        val threshold = maxOf(7.5f, baseline + 6f)
-        val isSharpTransient = level >= threshold && jump >= 3.5f
-        if (!isSharpTransient || now - lastSpikeAt < 180L || now - lastTriggeredAt < 1100L) return
-        lastSpikeAt = now
-
-        if (pendingCount == 1 && now - firstClapAt in 140L..650L) {
-            pendingSingle?.let(handler::removeCallbacks)
-            pendingSingle = null
-            pendingCount = 0
-            lastTriggeredAt = now
-            onDetected(2)
-            return
-        }
-
-        pendingSingle?.let(handler::removeCallbacks)
-        pendingCount = 1
-        firstClapAt = now
-        val task = Runnable {
-            if (pendingCount == 1) {
-                pendingCount = 0
-                pendingSingle = null
-                lastTriggeredAt = SystemClock.elapsedRealtime()
-                onDetected(1)
-            }
-        }
-        pendingSingle = task
-        handler.postDelayed(task, 650L)
-    }
-
-    fun reset() {
-        pendingSingle?.let(handler::removeCallbacks)
-        pendingSingle = null
-        pendingCount = 0
-        initialized = false
-        previous = 0f
-        baseline = 0f
-        lastSpikeAt = 0L
-    }
+private fun extractInlineMarkdownImages(markdown: String): List<Pair<String, String>> {
+    val matches = Regex("!\\[([^]]*)\\]\\((https://[^ )]+)\\)").findAll(markdown)
+    return matches.mapNotNull { match ->
+        val title = match.groupValues[1].trim().ifBlank { "Referensi Visual JARVIS" }
+        val url = match.groupValues[2].trim()
+        if (url.startsWith("https://")) title to url else null
+    }.distinctBy { it.second }.take(MAX_VISUAL_CARDS).toList()
 }
 
-private fun detectEnglishContent(text: String): Boolean {
-    val q = text.lowercase(Locale.ROOT)
-    val en = listOf("the ", " and ", " what ", " how ", " why ", " please ", " find ", " search ", " explain ", " calculate ", " is ", " are ", " can ").count { q.contains(it) }
-    val id = listOf("yang ", " dan ", " untuk ", " saya ", " kamu ", " tolong ", " carikan ", " jelaskan ", " berapa ", " bagaimana ", " dengan ").count { q.contains(it) }
-    return en > id
+private fun extractConciseVoiceSummary(fullAnswer: String): String {
+    val cleaned = fullAnswer
+        .replace(Regex("```[\\s\\S]*?```"), " ")
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("(?m)^\\s*\\|.*\\|\\s*$"), " ")
+        .replace(Regex("[#*>_`~]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (cleaned.isBlank()) return "Respons visual telah ditampilkan pada layar HUD."
+    val afterConclusion = fullAnswer
+        .substringAfter("KESIMPULAN JARVIS", "")
+        .ifBlank { fullAnswer.substringAfter("JAWABAN AKHIR", "") }
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("[#*>_`~|]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val source = if (afterConclusion.length >= 24) afterConclusion else cleaned
+    val sentences = source.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+    val summary = sentences.take(2).joinToString(" ").ifBlank { source }
+    return if (summary.length > 260) summary.take(257).trimEnd() + "..." else summary
 }
 
-class MainActivity : ComponentActivity() {
-    private lateinit var supabaseClient: SupabaseJarvisClient
-    private val accountEmail = mutableStateOf<String?>(null)
-    private val accountName = mutableStateOf<String?>(null)
-    private val accountBusy = mutableStateOf(false)
-    private val accountStatus = mutableStateOf("")
-    private val conversationsState = mutableStateOf<List<SavedConversation>>(emptyList())
-    private val historyBusy = mutableStateOf(false)
-    private val restoreConversation = mutableStateOf<Pair<String?, List<SavedMessage>>?>(null)
-    private var tts: TextToSpeech? = null
-    private var recognizer: SpeechRecognizer? = null
-    private val handler = Handler(Looper.getMainLooper())
-    private val listeningRestart = Runnable { startListening() }
-    private var audioManager: AudioManager? = null
-    private var audioFocusRequest: AudioFocusRequest? = null
-    private var hasAudioFocus = false
-    private var connectivityManager: ConnectivityManager? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private val voiceStopReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == JarvisVoiceService.ACTION_STOP) {
-                stopVoiceMode()
-            }
-        }
+private fun defaultVisualFallbackFor(
+    query: String,
+    answer: String = "",
+    isError: Boolean = false
+): List<Pair<String, String>> {
+    val inlineFromAnswer = extractInlineMarkdownImages(answer)
+    if (inlineFromAnswer.isNotEmpty() && !isError) {
+        return inlineFromAnswer.take(MAX_VISUAL_CARDS)
     }
+    val q = (query + " " + answer.take(400)).lowercase(Locale.ROOT)
+    return when {
+        isError -> listOf(
+            "Status Diagnostik Sistem JARVIS" to "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80",
+            "Pemulihan Koneksi & Jaringan HUD" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("windows") || q.contains("laptop") || q.contains("pc") || q.contains("komputer") || q.contains("macos") || q.contains("linux") || q.contains("desktop") -> listOf(
+            "Kontrol Perangkat & Sistem Desktop" to "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=900&q=80",
+            "Telemetri Jaringan & Workstation" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("baterai") || q.contains("status") || q.contains("aplikasi") || q.contains("notifikasi") || q.contains("kalender") || q.contains("kontak") || q.contains("layar") || q.contains("android") || q.contains("rog") || q.contains("hp") -> listOf(
+            "Telemetri Perangkat Android" to "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=900&q=80",
+            "Integrasi Sistem JARVIS Mobile" to "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("kode") || q.contains("coding") || q.contains("python") || q.contains("kotlin") || q.contains("javascript") || q.contains("html") || q.contains("css") || q.contains("api") || q.contains("debug") || q.contains("program") -> listOf(
+            "Arsitektur Kode & Engineering" to "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=900&q=80",
+            "Analisis Algoritma & Terminal" to "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("harga") || q.contains("keuangan") || q.contains("anggaran") || q.contains("investasi") || q.contains("saham") || q.contains("crypto") || q.contains("rupiah") || q.contains("biaya") -> listOf(
+            "Analisis Finansial & Anggaran" to "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80",
+            "Strategi Portofolio & Ekonomi" to "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("travel") || q.contains("itinerary") || q.contains("bali") || q.contains("yogya") || q.contains("liburan") || q.contains("hotel") || q.contains("wisata") || q.contains("penerbangan") -> listOf(
+            "Eksplorasi Destinasi & Rute" to "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+            "Perencanaan Perjalanan Terpadu" to "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("game") || q.contains("gaming") || q.contains("film") || q.contains("musik") || q.contains("roblox") || q.contains("esport") -> listOf(
+            "Performa Gaming & Hiburan Digital" to "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=900&q=80",
+            "Ekosistem Audio & Visual" to "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("belajar") || q.contains("materi") || q.contains("surya") || q.contains("sains") || q.contains("fisika") || q.contains("matematika") || q.contains("sejarah") || q.contains("soal") -> listOf(
+            "Eksplorasi Sains & Pengetahuan" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80",
+            "Modul Pembelajaran Terstruktur" to "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=900&q=80"
+        )
+        else -> listOf(
+            "Analisis Visual JARVIS HUD" to "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=900&q=80",
+            "Pusat Pemrosesan AI Council" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80"
+        )
+    }.take(MAX_VISUAL_CARDS)

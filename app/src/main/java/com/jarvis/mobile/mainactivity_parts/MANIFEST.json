@@ -1,14 +1,10 @@
 {
-  "format": "zlib+base64",
-  "raw_size": 194424,
-  "raw_sha256": "ac70b89aa12c88b609502aeb2f42a21f70f07c6ba497fff804f304269c6d0ee4",
-  "parts": [
-    {"name": "MainActivity.zlib.b64.part00", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part01", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part02", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part03", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part04", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part05", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part06", "size": 2072}
-  ]
+  "format": "canonical-source",
+  "canonical_file": "app/src/main/java/com/jarvis/mobile/MainActivity.kt",
+  "raw_size": 242852,
+  "raw_sha256": "be3e027f7a457765e80bf2b91f9deb76090bcb252b907c4315c9961010393797",
+  "preview_part": {
+    "name": "MainActivity.part00.txt",
+    "size": 13416
+  }
 }

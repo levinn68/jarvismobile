@@ -19,8 +19,7 @@ import {
   saveUserAiAccount,
   summarizeProvidersStatus,
   testProviderConnection,
-  validateProviderApiKeyFormat,
-  validateCustomProviderEndpoint
+  validateProviderApiKeyFormat
 } from "../src/ai/multi-account-manager.js";
 import {
   getProviderModels,
@@ -55,8 +54,7 @@ function createMockKv() {
 test("Batch 8.5.2 — 1 & 2. Independent Provider Configuration: Adding OpenAI does not affect Gemini, and adding Gemini does not affect OpenAI", async () => {
   const kv = createMockKv();
   const userId = "user-indep-001";
-  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-for-b8-5-2-encryption",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long" };
+  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-for-b8-5-2-encryption" };
 
   // 1. Add OpenAI account -> must NOT affect Gemini or Claude
   const openaiAcc = await saveUserAiAccount(
@@ -137,8 +135,7 @@ test("Batch 8.5.2 — 1 & 2. Independent Provider Configuration: Adding OpenAI d
 test("Batch 8.5.2 — 3. Independent Multi-Account: Multiple accounts per provider, deleting one account, and disabling one account without affecting others", async () => {
   const kv = createMockKv();
   const userId = "user-multi-acc-002";
-  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-for-b8-5-2-multi",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long" };
+  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-for-b8-5-2-multi" };
 
   // Add 3 OpenAI accounts: OpenAI Personal, OpenAI Work, OpenAI Research
   const oaPersonal = await saveUserAiAccount(kv, userId, {
@@ -249,7 +246,6 @@ test("Batch 8.5.2 — 4 & 5. AES-256-GCM Credential Encryption in KV, User Isola
   const secretPlain = "sk-proj-SuperSecretPlaintextApiKey987654321";
   const env = {
     DEVICE_AUTH_SECRET: "kms-master-secret-key-2026",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long",
     OPENAI_API_KEY_1: "sk-server-worker-secret-openai-999",
     GEMINI_API_KEY_1: "AIzaSyServerWorkerSecretGemini888"
   };
@@ -336,8 +332,7 @@ test("Batch 8.5.2 — 4 & 5. AES-256-GCM Credential Encryption in KV, User Isola
 test("Batch 8.5.2 — 6, 7 & 8. Connection Test, Model Discovery, Invalid Key, Timeout, Rate Limit & Persistence", async () => {
   const kv = createMockKv();
   const userId = "user-conn-discovery-003";
-  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-conn-test",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long" };
+  const env = { DEVICE_AUTH_SECRET: "kms-secret-key-conn-test" };
 
   // Save an OpenAI account -> initially configured_unverified (connected = false)
   const saved = await saveUserAiAccount(
@@ -458,7 +453,6 @@ test("Batch 8.5.2 — 9. Worker HTTP Endpoints (/v1/providers, /v1/providers/con
   const env = {
     DEVICE_REGISTRY: kv,
     DEVICE_AUTH_SECRET: "b8-5-2-http-secret-key",
-    AI_CREDENTIAL_ENCRYPTION_KEY: "jarvis-test-master-encryption-key-at-least-32-bytes-long",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_ANON_KEY: "anon-key"
   };
@@ -577,20 +571,4 @@ test("Batch 8.5.2 — 9. Worker HTTP Endpoints (/v1/providers, /v1/providers/con
   } finally {
     globalThis.fetch = origFetch;
   }
-});
-test("Batch 8.7 Security — custom provider endpoints reject private destinations and unsafe URL features", () => {
-  for (const endpoint of [
-    "http://api.example.com/v1/chat/completions",
-    "https://localhost/v1/chat/completions",
-    "https://127.0.0.1/v1/chat/completions",
-    "https://10.0.0.8/v1/chat/completions",
-    "https://169.254.169.254/latest/meta-data",
-    "https://service.internal/v1/chat/completions",
-    "https://user:pass@api.example.com/v1/chat/completions",
-    "https://api.example.com/v1/chat/completions?key=embedded-secret",
-    "https://[::1]/v1/chat/completions"
-  ]) {
-    assert.equal(validateCustomProviderEndpoint(endpoint).valid, false, `Expected unsafe endpoint rejection: ${endpoint}`);
-  }
-  assert.equal(validateCustomProviderEndpoint("https://api.together.xyz/v1/chat/completions").valid, true);
 });

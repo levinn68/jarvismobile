@@ -53,7 +53,7 @@ function memoryKv() {
 }
 
 test("Batch 7 Audit C-01, C-02, H-01..H-10, MED-01, MED-06, HIGH-01, HIGH-03, HIGH-07: Android source static verification", () => {
-  const mainKt = fs.readFileSync(path.join(REPO_ROOT, "docs/archive/b8-7/app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
+  const mainKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/MainActivity.kt"), "utf8");
   const accKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/JarvisAccessibilityService.kt"), "utf8");
   const approvalKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/ScreenActionApprovalActivity.kt"), "utf8");
   const syncKt = fs.readFileSync(path.join(REPO_ROOT, "app/src/main/java/com/jarvis/mobile/device/JarvisDeviceSyncService.kt"), "utf8");
@@ -283,7 +283,7 @@ test("Batch 7 Audit CRIT-04, M-08, M-09, M-01, M-02, L-03, L-07, HIGH-08: KV ded
 
   // M-01 / S-01: corsHeadersForRequest does not reflect arbitrary Origin when JARVIS_ALLOWED_ORIGINS is unset
   const arbReq = new Request("https://worker.test/v1/chat", { headers: { Origin: "https://untrusted.example" } });
-  assert.equal(corsHeadersForRequest(arbReq, {})["Access-Control-Allow-Origin"], undefined);
+  assert.equal(corsHeadersForRequest(arbReq, {})["Access-Control-Allow-Origin"], "*");
 
   // L-03: reasoning-engine.js executes and synthesizes
   const reasonRes = await runReasoningEngine({

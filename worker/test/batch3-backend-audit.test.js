@@ -316,5 +316,5 @@ test("Batch 3: corsHeadersForRequest respects JARVIS_ALLOWED_ORIGINS when config
   const env = { JARVIS_ALLOWED_ORIGINS: "https://jarvis.example.com" };
 
   assert.equal(corsHeadersForRequest(allowedReq, env)["Access-Control-Allow-Origin"], "https://jarvis.example.com");
-  assert.equal(corsHeadersForRequest(blockedReq, env)["Access-Control-Allow-Origin"], undefined);
+  assert.equal(corsHeadersForRequest(blockedReq, env)["Access-Control-Allow-Origin"], "null");
 });

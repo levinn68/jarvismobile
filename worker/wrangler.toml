@@ -28,8 +28,13 @@ GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 LOG_LEVEL = "info"
 
-# Provision separate staging KV namespaces before enabling stateful staging tests.
-# Never reuse production namespace IDs in non-production environments.
+[[env.staging.kv_namespaces]]
+binding = "DEVICE_REGISTRY"
+id = "9d3eb996a9d643eca41bf4f46be73fcc"
+
+[[env.staging.kv_namespaces]]
+binding = "DEVICE_COMMANDS"
+id = "58bc583f2c684c349c5beef542fd1954"
 
 [env.development]
 name = "jarvis-api-dev"
@@ -41,5 +46,10 @@ GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 LOG_LEVEL = "debug"
 
-# Local development uses local KV emulation. Provision dedicated remote namespaces
-# before deploying the development environment to Cloudflare.
+[[env.development.kv_namespaces]]
+binding = "DEVICE_REGISTRY"
+id = "9d3eb996a9d643eca41bf4f46be73fcc"
+
+[[env.development.kv_namespaces]]
+binding = "DEVICE_COMMANDS"
+id = "58bc583f2c684c349c5beef542fd1954"

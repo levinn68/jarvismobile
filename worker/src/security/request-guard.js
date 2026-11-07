@@ -96,28 +96,33 @@ export async function enforceAccountRateLimit(kv, scope, userId, limit, nowMs = 
   return { allowed: true, remaining: Math.max(0, limit - current - 1) };
 }
 
-function allowedBrowserOrigins(env = {}) {
-  return String(env?.JARVIS_ALLOWED_ORIGINS || "")
-    .split(",").map((item) => item.trim()).filter(Boolean);
+export function requestOriginAllowed(request, env) {
+  const origin = request?.headers?.get?.("Origin");
+  if (!origin) return true;
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return allowed.length === 0 || allowed.includes(origin);
 }
 
-export function requestOriginAllowed(request, env = {}) {
+export function corsHeadersForRequest(request, env) {
   const origin = request?.headers?.get?.("Origin");
-  if (!origin) return true; // Native clients still require JWT/device authentication.
-  return allowedBrowserOrigins(env).includes(origin);
-}
-
-export function corsHeadersForRequest(request, env = {}) {
-  const origin = request?.headers?.get?.("Origin");
-  const allowed = allowedBrowserOrigins(env);
-  const headers = {
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  let allowOrigin = "*";
+  if (allowed.length > 0) {
+    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
+  }
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id, X-Jarvis-Device-Token, X-Idempotency-Key",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
-  if (origin && allowed.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
-  return headers;
 }
 
 const PROMPT_INJECTION_PATTERNS = [

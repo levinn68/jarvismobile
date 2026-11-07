@@ -32,7 +32,6 @@ import {
   resolveAccountCredentialsChain,
   recordAccountTokenUsage,
   summarizeProvidersStatus,
-  validateCustomProviderEndpoint,
   testProviderConnection
 } from "./ai/multi-account-manager.js";
 import {
@@ -83,7 +82,11 @@ import {
   validateProviderJsonResponse
 } from "./utils.js";
 
-
+const DEFAULT_CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id, X-Jarvis-Device-Token, X-Idempotency-Key"
+};
 
 export const keyRotator = createKeyRotator({ cooldownMs: 30000, maxFailures: 3 });
 const voiceVisualState = createVoiceVisualState();
@@ -136,11 +139,7 @@ const ENDPOINTS = {
 };
 
 const json = (data, status = 200, request = null, env = null) =>
-  jsonResponse(data, status, request || env ? corsHeadersForRequest(request, env) : {
-    "Access-Control-Allow-Methods": "POST, OPTIONS, GET, PUT, DELETE",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id, X-Jarvis-Device-Token, X-Idempotency-Key",
-    "Vary": "Origin"
-  });
+  jsonResponse(data, status, request || env ? corsHeadersForRequest(request, env) : DEFAULT_CORS);
 
 export const safeHttpUrl = (value) => {
   try {
@@ -592,17 +591,8 @@ async function callAnthropic(env, prompt, system, keyNameOrValue, history = [], 
   const model = (cleanOverride && cleanOverride.startsWith("claude-"))
     ? cleanOverride
     : (PROVIDERS.anthropic?.model || "claude-3-5-sonnet-latest");
-  const endpointCheck = endpointOverride
-    ? validateCustomProviderEndpoint(endpointOverride, "customEndpoint")
-    : { valid: true, url: ENDPOINTS.anthropic };
-  if (!endpointCheck.valid) {
-    const error = new Error(endpointCheck.error);
-    error.status = 400;
-    throw error;
-  }
-  const response = await fetch(endpointCheck.url, {
+  const response = await fetch(endpointOverride || ENDPOINTS.anthropic, {
     method: "POST",
-    redirect: "manual",
     headers: {
       "x-api-key": effectiveKey,
       "anthropic-version": "2023-06-01",
@@ -649,18 +639,9 @@ async function callOpenAICompatible(provider, env, prompt, system, keyNameOrValu
     ...history.map((item) => ({ role: item.role, content: item.content })),
     { role: "user", content: prompt },
   ];
-  const endpointCheck = endpointOverride
-    ? validateCustomProviderEndpoint(endpointOverride, "customEndpoint")
-    : { valid: true, url: ENDPOINTS[provider] || ENDPOINTS.openai };
-  if (!endpointCheck.valid) {
-    const error = new Error(endpointCheck.error);
-    error.status = 400;
-    throw error;
-  }
-  const targetEndpoint = endpointCheck.url;
+  const targetEndpoint = endpointOverride || ENDPOINTS[provider] || ENDPOINTS.openai;
   const response = await fetch(targetEndpoint, {
     method: "POST",
-    redirect: "manual",
     headers: {
       Authorization: `Bearer ${effectiveBearer}`,
       "Content-Type": "application/json",

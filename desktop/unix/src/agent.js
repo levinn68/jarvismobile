@@ -788,8 +788,7 @@ export async function listApplications(options = {}) {
               name: visibleName,
               bundleId: plistMeta.bundleId || undefined,
               targetPath: realFull
-            };
-            appIndex.set(appId, appEntry);
+            };            appIndex.set(appId, appEntry);
             if (plistMeta.bundleId) {
               bundleIndex.set(plistMeta.bundleId.toLowerCase(), appEntry);
             }
@@ -913,7 +912,8 @@ export async function launchAppByName(appName, options = {}) {
   const matches = apps.filter((app) => app.name.trim().toLocaleLowerCase() === wantedLower);
   if (matches.length !== 1) {
     return {
-      ok: false,      error: matches.length
+      ok: false,
+      error: matches.length
         ? "More than one installed app has that exact name. Use apps.list and choose a specific entry."
         : "No installed app matched that exact name. Refresh apps.list and check the visible name.",
       matches: matches.map((app) => ({ appId: app.appId, name: app.name }))
