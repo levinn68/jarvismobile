@@ -36,3 +36,5 @@ Preferences are user-approved presentation settings, not inferred sensitive trai
 ## Verification
 
 Run `npm test --prefix worker`. Tests cover normalization, invalid-value rejection, merge behavior, prompt generation, per-user isolation, persistence, and reset.
+
+Profile changes are available on the feature branch and are not deployed until the reviewed change is merged and the Worker deployment workflow completes.
