@@ -574,3 +574,22 @@ test("Batch 8.5.2 — 9. Worker HTTP Endpoints (/v1/providers, /v1/providers/con
     globalThis.fetch = origFetch;
   }
 });
+
+
+test("Legacy v1 credentials can be decrypted with the old device secret during migration", async () => {
+  const legacySecret = "legacy-device-auth-master-secret-for-migration-000000000000000000";
+  const userId = "user-legacy-migration";
+  const envelope = await encryptCredentialForKv("legacy-provider-key", {
+    env: { AI_CREDENTIAL_ENCRYPTION_KEY: legacySecret },
+    userId,
+    provider: "openai"
+  });
+  envelope.v = 1;
+  delete envelope.keyVersion;
+  const decrypted = await decryptCredentialFromKv(envelope, {
+    env: { DEVICE_AUTH_SECRET: legacySecret },
+    userId,
+    provider: "openai"
+  });
+  assert.equal(decrypted, "legacy-provider-key");
+});
