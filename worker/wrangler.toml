@@ -3,10 +3,12 @@ main = "src/index.js"
 compatibility_date = "2026-10-31"
 
 [vars]
+JARVIS_ENV = "production"
 FISH_VOICE_ID = "612b878b113047d9a770c069c8b4fdfe"
 FISH_MODEL = "s2.1-pro-free"
 GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
+LOG_LEVEL = "info"
 
 [[kv_namespaces]]
 binding = "DEVICE_REGISTRY"
@@ -15,3 +17,43 @@ id = "9d3eb996a9d643eca41bf4f46be73fcc"
 [[kv_namespaces]]
 binding = "DEVICE_COMMANDS"
 id = "58bc583f2c684c349c5beef542fd1954"
+
+[env.staging]
+name = "jarvis-api-staging"
+[env.staging.vars]
+JARVIS_ENV = "staging"
+FISH_VOICE_ID = "612b878b113047d9a770c069c8b4fdfe"
+FISH_MODEL = "s2.1-pro-free"
+GEMINI_MODEL = "gemini-2.5-flash"
+SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
+LOG_LEVEL = "info"
+
+[[env.staging.kv_namespaces]]
+binding = "DEVICE_REGISTRY"
+id = "b4d13cd42df94a2e9033a1bcf703ef85"
+preview_id = "b4d13cd42df94a2e9033a1bcf703ef85"
+
+[[env.staging.kv_namespaces]]
+binding = "DEVICE_COMMANDS"
+id = "e9253ea96195428d8556f5616b70bc71"
+preview_id = "e9253ea96195428d8556f5616b70bc71"
+
+[env.development]
+name = "jarvis-api-dev"
+[env.development.vars]
+JARVIS_ENV = "development"
+FISH_VOICE_ID = "612b878b113047d9a770c069c8b4fdfe"
+FISH_MODEL = "s2.1-pro-free"
+GEMINI_MODEL = "gemini-2.5-flash"
+SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
+LOG_LEVEL = "debug"
+
+[[env.development.kv_namespaces]]
+binding = "DEVICE_REGISTRY"
+id = "6f3700b5700346739b4b4bc0a67dc57f"
+preview_id = "6f3700b5700346739b4b4bc0a67dc57f"
+
+[[env.development.kv_namespaces]]
+binding = "DEVICE_COMMANDS"
+id = "c1f1b038f0784e39a8c29c3bd774cb88"
+preview_id = "c1f1b038f0784e39a8c29c3bd774cb88"

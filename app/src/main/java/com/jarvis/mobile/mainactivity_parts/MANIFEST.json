@@ -1,14 +1,20 @@
 {
-  "format": "zlib+base64",
-  "raw_size": 194424,
-  "raw_sha256": "ac70b89aa12c88b609502aeb2f42a21f70f07c6ba497fff804f304269c6d0ee4",
-  "parts": [
-    {"name": "MainActivity.zlib.b64.part00", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part01", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part02", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part03", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part04", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part05", "size": 7500},
-    {"name": "MainActivity.zlib.b64.part06", "size": 2072}
+  "target": "app/src/main/java/com/jarvis/mobile/MainActivity.kt",
+  "format": "canonical-source",
+  "raw_size": 243277,
+  "raw_sha256": "858d6fb68e90c981785c0b00803ca5d7d08c85de15963b8e50332eac256c5259",
+  "preview_part": {
+    "name": "MainActivity.part00.txt",
+    "size": 14709,
+    "sha256": "2a9857bb705a540bfc1e86a2da6034b14aab0ecc60c5a88ea16015332ee3093a",
+    "note": "First 300 lines of MainActivity.kt; full source lives directly at target."
+  },
+  "markers": [
+    "requestMicFocus",
+    "clientRequestId",
+    "registerConnectivityFlush",
+    "HolographicOrb",
+    "JarvisChatComposer",
+    "JarvisUserBubble"
   ]
 }
