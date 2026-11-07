@@ -30,11 +30,11 @@ LOG_LEVEL = "info"
 
 [[env.staging.kv_namespaces]]
 binding = "DEVICE_REGISTRY"
-id = "9d3eb996a9d643eca41bf4f46be73fcc"
+id = "b4d13cd42df94a2e9033a1bcf703ef85"
 
 [[env.staging.kv_namespaces]]
 binding = "DEVICE_COMMANDS"
-id = "58bc583f2c684c349c5beef542fd1954"
+id = "e9253ea96195428d8556f5616b70bc71"
 
 [env.development]
 name = "jarvis-api-dev"
@@ -48,8 +48,8 @@ LOG_LEVEL = "debug"
 
 [[env.development.kv_namespaces]]
 binding = "DEVICE_REGISTRY"
-id = "9d3eb996a9d643eca41bf4f46be73fcc"
+id = "6f3700b5700346739b4b4bc0a67dc57f"
 
 [[env.development.kv_namespaces]]
 binding = "DEVICE_COMMANDS"
-id = "58bc583f2c684c349c5beef542fd1954"
+id = "c1f1b038f0784e39a8c29c3bd774cb88"
