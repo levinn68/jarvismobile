@@ -189,6 +189,7 @@ export async function redeemPairingSession({
   let registeredDeviceId = null;
   let coordinatorCommitted = false;
   let sessionStateValid = false;
+  let session;
 
   try {
     const key = sessionKey(normalized);
@@ -198,7 +199,6 @@ export async function redeemPairingSession({
       throw new Error("Pairing code is invalid or expired");
     }
 
-    let session;
     try {
       session = JSON.parse(raw);
     } catch (_) {
