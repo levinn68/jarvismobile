@@ -149,6 +149,7 @@ export async function redeemPairingSession({
   saveDevice,
   issueDeviceToken,
   tokenSecret,
+  rollbackDevice = null,
   nowMs = Date.now(),
   env = {},
   pairingCoordinator = null
@@ -185,6 +186,8 @@ export async function redeemPairingSession({
     coordinator.rollback({ ...payload, ...leasePayload });
 
   let deviceRegistered = false;
+  let registeredDeviceId = null;
+  let coordinatorCommitted = false;
   let sessionStateValid = false;
 
   try {
@@ -252,18 +255,13 @@ export async function redeemPairingSession({
     });
 
     deviceRegistered = true;
+    registeredDeviceId = device.deviceId;
 
     const token = await issueDeviceToken(device.deviceId, tokenSecret, 2592000, {
       ...(typeof device?.tokenVersion === "number" ? { tv: device.tokenVersion } : {})
     });
 
-    // One-time use: mark redeemed in KV and shrink TTL.
-    session.status = "redeemed";
-    session.redeemedAt = new Date(nowMs).toISOString();
-    session.redeemedDeviceId = device.deviceId;
-    await kv.put(key, JSON.stringify(session), { expirationTtl: 60 });
-
-    // 2. Commit the distributed lock transition to REDEEMED
+    // Commit the fenced lease before marking the KV session redeemed.
     const commitResult = await coordinator.commit({
       code: normalized,
       deviceId: device.deviceId,
@@ -271,8 +269,19 @@ export async function redeemPairingSession({
       nowMs
     });
     if (!commitResult.ok) {
+      if (typeof rollbackDevice === "function") {
+        await rollbackDevice(device.deviceId, session.accountId).catch(() => {});
+        deviceRegistered = false;
+      }
       throw new Error(commitResult.error || "Pairing lease expired before commit");
     }
+    coordinatorCommitted = true;
+
+    // Durable Object state is authoritative for single-use redemption.
+    session.status = "redeemed";
+    session.redeemedAt = new Date(nowMs).toISOString();
+    session.redeemedDeviceId = device.deviceId;
+    await kv.put(key, JSON.stringify(session), { expirationTtl: 60 }).catch(() => {});
 
     return {
       ok: true,
@@ -284,7 +293,10 @@ export async function redeemPairingSession({
   } catch (error) {
     // If device registration did not complete, roll back distributed coordinator
     // so recovery or legitimate retry is possible without leaving session in corrupt state
-    if (!deviceRegistered) {
+    if (!coordinatorCommitted) {
+      if (deviceRegistered && registeredDeviceId && typeof rollbackDevice === "function") {
+        await rollbackDevice(registeredDeviceId, session?.accountId).catch(() => {});
+      }
       await rollbackCoordinator({
         code: normalized,
         isAttemptFailed: sessionStateValid,

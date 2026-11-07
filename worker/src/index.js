@@ -1415,7 +1415,7 @@ async function requireAiAccess(request, env, scope, limit) {
     };
   }
   const user = authResult.user;
-  const rate = await enforceAccountRateLimit(env.DEVICE_REGISTRY, scope, user.id, limit);
+  const rate = await enforceAccountRateLimit(env, scope, user.id, limit);
   if (!rate.allowed) {
     if (rate.reason === "rate_limit_storage_unavailable") {
       return {

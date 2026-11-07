@@ -192,7 +192,8 @@ export async function handleDeviceRequest(request, env, url) {
       const session = await createPairingSession({
         kv: env.DEVICE_REGISTRY,
         accountId: accountClaims.sub,
-        deviceHint: body?.deviceHint || {}
+        deviceHint: body?.deviceHint || {},
+        env
       });
       return json({ ok: true, ...session }, 201);
     } catch (e) {
@@ -213,6 +214,7 @@ export async function handleDeviceRequest(request, env, url) {
     }
     try {
       const body = await readBody(request);
+      let previousDevice = null;
       const result = await redeemPairingSession({
         kv: env.DEVICE_REGISTRY,
         code: body.code,
@@ -220,9 +222,13 @@ export async function handleDeviceRequest(request, env, url) {
         env,
         pairingCoordinator: env.PAIRING_COORDINATOR,
         saveDevice: async (input) => {
-          const existing = input?.deviceId ? await getDevice(env.DEVICE_REGISTRY, String(input.deviceId).trim()) : null;
-          const nextTokenVersion = (existing?.tokenVersion || 0) + 1;
+          previousDevice = input?.deviceId ? await getDevice(env.DEVICE_REGISTRY, String(input.deviceId).trim()) : null;
+          const nextTokenVersion = (previousDevice?.tokenVersion || 0) + 1;
           return saveDevice(env.DEVICE_REGISTRY, { ...input, tokenVersion: nextTokenVersion });
+        },
+        rollbackDevice: async (deviceId, accountId) => {
+          if (previousDevice) return saveDevice(env.DEVICE_REGISTRY, previousDevice);
+          return removeDevice(env.DEVICE_REGISTRY, deviceId, accountId);
         },
         issueDeviceToken: (deviceId, secret, ttl = 2592000, extraClaims = {}) =>
           issueDeviceToken(deviceId, secret, ttl, extraClaims),
