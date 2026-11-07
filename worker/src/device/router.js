@@ -83,7 +83,7 @@ export async function handleDeviceRequest(request, env, url) {
 
     try {
       const userId = authResult.user.id;
-      const rate = await enforceAccountRateLimit(env.DEVICE_REGISTRY, "accounts_google", userId, 30);
+      const rate = await enforceAccountRateLimit(env, "accounts_google", userId, 30);
       if (!rate.allowed) {
         return json({ ok: false, error: "Rate limit exceeded.", retryAfter: rate.retryAfter || 60 }, 429);
       }
@@ -207,7 +207,7 @@ export async function handleDeviceRequest(request, env, url) {
     const clientIp = clientIpFromRequest(request);
     const rateSubject = clientIp !== "anonymous" ? clientIp : "anon-fallback";
     const rateLimit = clientIp !== "anonymous" ? 20 : 30;
-    const ipRate = await enforceAccountRateLimit(env.DEVICE_REGISTRY, "pair_redeem_ip", rateSubject, rateLimit);
+    const ipRate = await enforceAccountRateLimit(env, "pair_redeem_ip", rateSubject, rateLimit);
     if (!ipRate.allowed) {
       return json({ ok: false, error: "Too many pairing redeem attempts. Try again shortly.", retryAfter: ipRate.retryAfter || 60 }, 429);
     }
@@ -217,6 +217,8 @@ export async function handleDeviceRequest(request, env, url) {
         kv: env.DEVICE_REGISTRY,
         code: body.code,
         deviceInput: body,
+        env,
+        pairingCoordinator: env.PAIRING_COORDINATOR,
         saveDevice: async (input) => {
           const existing = input?.deviceId ? await getDevice(env.DEVICE_REGISTRY, String(input.deviceId).trim()) : null;
           const nextTokenVersion = (existing?.tokenVersion || 0) + 1;

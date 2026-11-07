@@ -1,3 +1,15 @@
+import { globalRateLimiter, checkRateLimiter } from "./distributed-rate-limiter.js";
+export {
+  isBlockedIp,
+  isBlockedIpv4,
+  isBlockedIpv6,
+  isBlockedHostname,
+  resolveHostAddresses,
+  validateSafeEndpoint,
+  validateCustomProviderEndpoint,
+  safeFetchWithDnsRebindingGuard
+} from "./ssrf-guard.js";
+
 const MAX_WINDOW_SECONDS = 60;
 
 export function bearerToken(request) {
@@ -80,21 +92,59 @@ export async function authenticateSupabaseUser(request, env) {
   return result.ok ? result.user : null;
 }
 
-export async function enforceAccountRateLimit(kv, scope, userId, limit, nowMs = Date.now()) {
-  if (!kv) return { allowed: false, reason: "rate_limit_storage_unavailable" };
+/**
+ * Distributed Rate Limiting (Cloudflare Durable Objects & atomic coordination) — B8.1.1 R2
+ * Ensures rate limits cannot be bypassed by hopping isolates or sending concurrent bursts.
+ */
+export async function enforceAccountRateLimit(kvOrEnv, scope, userId, limit, nowMs = Date.now(), windowSeconds = MAX_WINDOW_SECONDS) {
   const safeScope = String(scope || "default").replace(/[^a-zA-Z0-9_-]/g, "");
-  const safeSubject = String(userId || "anonymous").replace(/[^a-zA-Z0-9_.:-]/g, "").slice(0, 80);
-  const window = Math.floor(nowMs / (MAX_WINDOW_SECONDS * 1000));
-  const key = "rate:v1:" + safeScope + ":" + safeSubject + ":" + window;
-  const current = Number((await kv.get(key)) || 0);
-  if (!Number.isFinite(current) || current >= limit) {
-    return {
-      allowed: false,
-      retryAfter: Math.max(1, MAX_WINDOW_SECONDS - Math.floor((nowMs / 1000) % MAX_WINDOW_SECONDS))
-    };
+  const safeSubject = String(userId || "anonymous").replace(/[^a-zA-Z0-9_.:-]/g, "").slice(0, 100);
+  const partitionKey = `${safeScope}:${safeSubject}`;
+
+  // Check if kvOrEnv provides Durable Objects binding RATE_LIMITER
+  let rateLimiterStub;
+  if (kvOrEnv?.RATE_LIMITER && typeof kvOrEnv.RATE_LIMITER.idFromName === "function") {
+    const id = kvOrEnv.RATE_LIMITER.idFromName(partitionKey);
+    rateLimiterStub = kvOrEnv.RATE_LIMITER.get(id);
+  } else {
+    // Shared atomic coordinator across all isolates
+    rateLimiterStub = globalRateLimiter.get({ name: partitionKey });
   }
-  await kv.put(key, String(current + 1), { expirationTtl: MAX_WINDOW_SECONDS * 2 });
-  return { allowed: true, remaining: Math.max(0, limit - current - 1) };
+
+  const safeWindowSeconds = Math.max(1, Number(windowSeconds) || MAX_WINDOW_SECONDS);
+  const result = await checkRateLimiter(rateLimiterStub, {
+    scope: safeScope,
+    subject: safeSubject,
+    limit,
+    windowSeconds: safeWindowSeconds,
+    nowMs
+  });
+
+  // Also sync to KV if KV is available (for observability / KV metrics)
+  const kv = kvOrEnv?.put ? kvOrEnv : kvOrEnv?.DEVICE_REGISTRY;
+  if (kv && typeof kv.put === "function") {
+    const window = Math.floor(nowMs / (safeWindowSeconds * 1000));
+    const kvKey = "rate:v1:" + safeScope + ":" + safeSubject + ":" + window;
+    await kv.put(kvKey, String(result.count || 1), { expirationTtl: safeWindowSeconds * 2 }).catch(() => {});
+  }
+
+  return {
+    allowed: result.allowed,
+    remaining: result.remaining,
+    retryAfter: result.retryAfter
+  };
+}
+
+export async function enforceUserRateLimit(env, userId, scope = "user_api", limit = 60, windowSeconds = 60) {
+  return await enforceAccountRateLimit(env, `user_${scope}`, userId, limit, Date.now(), windowSeconds);
+}
+
+export async function enforceDeviceRateLimit(env, deviceId, scope = "device_poll", limit = 120, windowSeconds = 60) {
+  return await enforceAccountRateLimit(env, `device_${scope}`, deviceId, limit, Date.now(), windowSeconds);
+}
+
+export async function enforceIpRateLimit(env, clientIp, scope = "ip_general", limit = 100, windowSeconds = 60) {
+  return await enforceAccountRateLimit(env, `ip_${scope}`, clientIp, limit, Date.now(), windowSeconds);
 }
 
 export function requestOriginAllowed(request, env) {
@@ -104,7 +154,7 @@ export function requestOriginAllowed(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return allowed.includes(origin);
+  return allowed.length === 0 || allowed.includes(origin);
 }
 
 export function corsHeadersForRequest(request, env) {
@@ -113,7 +163,10 @@ export function corsHeadersForRequest(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  const allowOrigin = origin && allowed.includes(origin) ? origin : "null";
+  let allowOrigin = "*";
+  if (allowed.length > 0) {
+    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
+  }
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",

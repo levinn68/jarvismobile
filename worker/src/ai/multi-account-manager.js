@@ -1,22 +1,35 @@
 import { boundedString, redactSecrets, webCrypto } from "../utils.js";
 import { getProviderModels } from "./model-registry.js";
+import {
+  isBlockedIp,
+  isBlockedHostname,
+  validateSafeEndpoint,
+  validateCustomProviderEndpoint,
+  safeFetchWithDnsRebindingGuard
+} from "../security/ssrf-guard.js";
+
+export {
+  isBlockedIp,
+  isBlockedHostname,
+  validateSafeEndpoint,
+  validateCustomProviderEndpoint,
+  safeFetchWithDnsRebindingGuard
+};
 
 /**
- * J.A.R.V.I.S. B8.1 / B8.5.1 / B8.5.2 — Independent AI Provider & Multi-Account Manager.
+ * J.A.R.V.I.S. B8.1 / B8.5.1 / B8.5.2 / B8.1.1 — Independent AI Provider & Multi-Account Manager.
  *
- * Key Capabilities in Batch 8.5.2:
+ * Key Capabilities:
  * 1. Independent Per-Provider Configuration (OpenAI, Google Gemini, Anthropic Claude, DeepSeek,
  *    Groq, OpenRouter, Meta, and Custom OpenAI-compatible endpoints) with official API docs URLs,
  *    provider-specific endpoints, auth configuration, model catalog, default model, and enable/disable state.
  * 2. Cross-Provider API Key Validation: prevents using an OpenAI key for Gemini/Claude, a Gemini key for
  *    OpenAI/Claude, an Anthropic key for OpenAI/Gemini, etc.
  * 3. AES-256-GCM + HKDF-SHA256 Credential Encryption in DEVICE_REGISTRY KV: raw API keys are NEVER stored
- *    in plaintext in KV JSON records and are bound cryptographically to (userId, provider).
- * 4. Strict Provider & Account Isolation: separates user-managed provider accounts from server-managed
- *    Worker secrets; Worker secrets never appear as personal user accounts.
- * 5. Truthful Connection & Model Discovery Lifecycle: saving an API key sets status to "configured_unverified"
- *    (connected = false); only a successful live testProviderConnection transitions status to "working_live"
- *    (connected = true) and discovers live models for that provider.
+ *    in plaintext in KV JSON records, honor DEVICE_TOKEN_SECRET, and are bound cryptographically to (userId, provider).
+ * 4. Strict Provider & Account Isolation + Per-User Async Serialization Lock: prevents concurrent
+ *    Read-Modify-Write lost updates when multiple agents record token usage in parallel.
+ * 5. SSRF-Safe Custom Endpoint Validation: enforces HTTPS and blocks loopback, private network, and cloud metadata IPs.
  */
 
 export const MOCK_PROVIDER_ENABLED_DEFAULT = false;
@@ -38,6 +51,29 @@ const FAKE_CREDENTIAL_PATTERN =
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+// Per-user async mutex queue to prevent concurrent KV Read-Modify-Write lost updates
+const userAccountLocks = new Map();
+
+async function withUserAccountLock(userId, fn) {
+  const key = String(userId || "default");
+  const prev = userAccountLocks.get(key) || Promise.resolve();
+  let release;
+  const next = new Promise((resolve) => {
+    release = resolve;
+  });
+  const chained = prev.then(() => next, () => next);
+  userAccountLocks.set(key, chained);
+  try {
+    await prev.catch(() => {});
+    return await fn();
+  } finally {
+    release();
+    if (userAccountLocks.get(key) === chained) {
+      userAccountLocks.delete(key);
+    }
+  }
+}
+
 function bytesToBase64(bytes) {
   let binary = "";
   const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -56,19 +92,33 @@ function base64ToBytes(b64) {
   return out;
 }
 
-function resolveMasterEncryptionSecret(env = {}) {
-  const secret = String(env?.AI_CREDENTIAL_ENCRYPTION_KEY || "").trim();
-  if (secret.length < 32) {
-    throw new Error("AI_CREDENTIAL_ENCRYPTION_KEY must be configured as a dedicated secret of at least 32 characters.");
+export function resolveMasterEncryptionSecret(env = {}) {
+  const secret = [
+    env?.AI_CREDENTIAL_ENCRYPTION_KEY,
+    env?.CREDENTIAL_ENCRYPTION_SECRET,
+    env?.DEVICE_TOKEN_SECRET,
+    env?.DEVICE_AUTH_SECRET
+  ].find((value) => typeof value === "string" && value.trim());
+
+  if (!secret) {
+    throw new Error("CREDENTIAL_ENCRYPTION_SECRET_MISSING: configure AI_CREDENTIAL_ENCRYPTION_KEY or DEVICE_TOKEN_SECRET.");
   }
-  return secret;
+  return secret.trim();
 }
 
-async function deriveCredentialAesKey(env, userId, provider, secretOverride = "") {
-  const masterSecret = String(secretOverride || resolveMasterEncryptionSecret(env));
+function resolveCandidateEncryptionSecrets(env = {}) {
+  return [...new Set([
+    env?.AI_CREDENTIAL_ENCRYPTION_KEY,
+    env?.CREDENTIAL_ENCRYPTION_SECRET,
+    env?.DEVICE_TOKEN_SECRET,
+    env?.DEVICE_AUTH_SECRET
+  ].filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim()))];
+}
+
+async function deriveCredentialAesKeyWithSecret(masterSecret, userId, provider) {
   const baseKey = await webCrypto.subtle.importKey(
     "raw",
-    textEncoder.encode(masterSecret),
+    textEncoder.encode(String(masterSecret)),
     "HKDF",
     false,
     ["deriveKey"]
@@ -86,6 +136,15 @@ async function deriveCredentialAesKey(env, userId, provider, secretOverride = ""
     ["encrypt", "decrypt"]
   );
 }
+
+async function deriveCredentialAesKey(env, userId, provider) {
+  return deriveCredentialAesKeyWithSecret(resolveMasterEncryptionSecret(env), userId, provider);
+}
+
+/**
+ * Validates that a custom provider endpoint is a safe external HTTPS URL (SSRF protection).
+ */
+// validateCustomProviderEndpoint delegated to ../security/ssrf-guard.js
 
 /**
  * Batch 8.5.2 Section 5 — Encrypts an API key using AES-256-GCM with HKDF-SHA256 per-(userId, provider) key
@@ -106,8 +165,7 @@ export async function encryptCredentialForKv(plainApiKey, { env = {}, userId = "
   return {
     alg: "AES-256-GCM",
     kdf: "HKDF-SHA256",
-    v: 2,
-    keyVersion: "2",
+    v: 1,
     iv: bytesToBase64(iv),
     ciphertext: bytesToBase64(new Uint8Array(cipherBuf))
   };
@@ -125,25 +183,23 @@ export async function decryptCredentialFromKv(recordOrEnvelope, { env = {}, user
     const iv = base64ToBytes(envelope.iv);
     const ciphertext = base64ToBytes(envelope.ciphertext);
     const aad = textEncoder.encode(`${String(userId)}:${normProvider}`);
-    const candidates = Number(envelope.v) >= 2
-      ? [resolveMasterEncryptionSecret(env)]
-      : [env?.AI_CREDENTIAL_ENCRYPTION_KEY, env?.LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY, env?.CREDENTIAL_ENCRYPTION_SECRET, env?.DEVICE_AUTH_SECRET]
-          .filter((value) => typeof value === "string" && value.trim().length >= 32);
-    if (!candidates.length) {
-      throw new Error("Credential decryption key is not configured. Set AI_CREDENTIAL_ENCRYPTION_KEY and, for legacy v1 records, LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY.");
-    }
-    for (const candidate of candidates) {
+    const candidateSecrets = resolveCandidateEncryptionSecrets(env);
+    if (candidateSecrets.length === 0) throw new Error("CREDENTIAL_ENCRYPTION_SECRET_MISSING");
+    let lastErr = null;
+    for (const secret of candidateSecrets) {
       try {
-        const aesKey = await deriveCredentialAesKey(env, userId, normProvider, candidate);
+        const aesKey = await deriveCredentialAesKeyWithSecret(secret, userId, normProvider);
         const plainBuf = await webCrypto.subtle.decrypt(
           { name: "AES-GCM", iv, additionalData: aad },
           aesKey,
           ciphertext
         );
         return textDecoder.decode(plainBuf);
-      } catch (_) {}
+      } catch (err) {
+        lastErr = err;
+      }
     }
-    throw new Error("Stored provider credential could not be decrypted with the configured key versions.");
+    throw lastErr || new Error("Failed to decrypt credential from KV");
   }
   // Legacy fallback only if an older in-memory object had plaintext apiKey
   if (typeof recordOrEnvelope.apiKey === "string" && recordOrEnvelope.apiKey.trim()) {
@@ -172,6 +228,7 @@ export function validateProviderApiKeyFormat(provider, rawKey = "") {
   const cleanKey = String(rawKey || "").trim();
   if (!cleanKey) {
     return {
+      ok: false,
       valid: false,
       errorCode: PROVIDER_ERROR_CODES.PROVIDER_CREDENTIAL_MISSING,
       reason: `API key is required for provider '${cleanProvider}'.`
@@ -179,6 +236,7 @@ export function validateProviderApiKeyFormat(provider, rawKey = "") {
   }
   if (isFakeOrPlaceholderCredential(cleanKey)) {
     return {
+      ok: false,
       valid: false,
       errorCode: PROVIDER_ERROR_CODES.PROVIDER_AUTH_FAILED,
       reason: `Rejected fake or placeholder credential for provider '${cleanProvider}'.`
@@ -186,6 +244,7 @@ export function validateProviderApiKeyFormat(provider, rawKey = "") {
   }
   if (cleanKey.length < 8) {
     return {
+      ok: false,
       valid: false,
       errorCode: PROVIDER_ERROR_CODES.PROVIDER_AUTH_FAILED,
       reason: `API key for '${cleanProvider}' is too short to be a valid credential.`
@@ -252,7 +311,7 @@ export function validateProviderApiKeyFormat(provider, rawKey = "") {
 }
 
 /**
- * Batch 8.5.1 Section 4.1 — Production Provider Simulator Isolation Guard.
+ * Batch 8.5.1 Section 4.1 — Production & Staging Provider Simulator Isolation Guard.
  */
 export function resolveExecutionEnvironment(env = {}, options = {}) {
   const rawEnv = String(
@@ -262,11 +321,16 @@ export function resolveExecutionEnvironment(env = {}, options = {}) {
     .toLowerCase();
 
   const knownNonProd = rawEnv === "test" || rawEnv === "development";
-  const isValidEnv = rawEnv === "production" || knownNonProd;
+  const isProdOrStaging = rawEnv === "production" || rawEnv === "staging";
+  const isValidEnv = isProdOrStaging || knownNonProd;
   const effectiveEnv = isValidEnv ? rawEnv : "production";
-  const isProduction = effectiveEnv === "production";
+  const isProduction = effectiveEnv === "production" || effectiveEnv === "staging";
 
-  const rawMockFlag = options?.mockProviderEnabled ?? env?.MOCK_PROVIDER_ENABLED ?? MOCK_PROVIDER_ENABLED_DEFAULT;
+  const rawMockFlag =
+    options?.mockProviderEnabled ??
+    env?.MOCK_PROVIDER_ENABLED ??
+    env?.JARVIS_ALLOW_MOCK_PROVIDERS ??
+    MOCK_PROVIDER_ENABLED_DEFAULT;
   const requestedMock =
     rawMockFlag === true ||
     String(rawMockFlag).trim().toLowerCase() === "true" ||
@@ -384,7 +448,7 @@ export const PROVIDER_CATALOG = Object.freeze({
     endpoint: "https://api.openai.com/v1/chat/completions",
     modelsEndpoint: "https://api.openai.com/v1/models",
     envKeys: ["OPENAI_API_KEY_1", "OPENAI_API_KEY_2", "OPENAI_API_KEY_3"],
-    defaultModel: "gpt-4.1-mini",
+    defaultModel: "gpt-4o",
     supportedModels: ["gpt-4o", "gpt-4.1-mini", "o3-mini"]
   },
   anthropic: {
@@ -396,7 +460,7 @@ export const PROVIDER_CATALOG = Object.freeze({
     docsUrl: "https://docs.anthropic.com/en/api/getting-started",
     endpoint: "https://api.anthropic.com/v1/messages",
     modelsEndpoint: "https://api.anthropic.com/v1/models",
-    envKeys: ["ANTHROPIC_API_KEY_1", "ANTHROPIC_API_KEY_2"],
+    envKeys: ["ANTHROPIC_API_KEY_1", "ANTHROPIC_API_KEY_2", "ANTHROPIC_API_KEY_3"],
     defaultModel: "claude-3-5-sonnet-latest",
     supportedModels: ["claude-3-5-sonnet", "claude-3-5-haiku"]
   },
@@ -423,8 +487,8 @@ export const PROVIDER_CATALOG = Object.freeze({
     endpoint: "https://api.groq.com/openai/v1/chat/completions",
     modelsEndpoint: "https://api.groq.com/openai/v1/models",
     envKeys: ["GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"],
-    defaultModel: "openai/gpt-oss-120b",
-    supportedModels: ["llama-3.3-70b", "openai/gpt-oss-120b"]
+    defaultModel: "llama-3.3-70b-versatile",
+    supportedModels: ["llama-3.3-70b", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
   },
   deepseek: {
     id: "deepseek",
@@ -449,8 +513,8 @@ export const PROVIDER_CATALOG = Object.freeze({
     endpoint: "https://api.groq.com/openai/v1/chat/completions",
     modelsEndpoint: "https://api.groq.com/openai/v1/models",
     envKeys: ["GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3"],
-    defaultModel: "openai/gpt-oss-120b",
-    supportedModels: ["openai/gpt-oss-120b", "llama-3.3-70b-versatile"]
+    defaultModel: "llama-3.3-70b-versatile",
+    supportedModels: ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"]
   },
   openrouter: {
     id: "openrouter",
@@ -462,8 +526,8 @@ export const PROVIDER_CATALOG = Object.freeze({
     endpoint: "https://openrouter.ai/api/v1/chat/completions",
     modelsEndpoint: "https://openrouter.ai/api/v1/models",
     envKeys: ["OPENROUTER_API_KEY_1", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3"],
-    defaultModel: "openai/gpt-4.1-mini",
-    supportedModels: ["qwen-2.5-72b", "openai/gpt-4.1-mini"]
+    defaultModel: "qwen/qwen-2.5-72b-instruct",
+    supportedModels: ["qwen-2.5-72b", "qwen/qwen-2.5-72b-instruct", "openai/gpt-4.1-mini"]
   },
   custom: {
     id: "custom",
@@ -494,17 +558,6 @@ export function maskEmailOrLabel(identifier = "") {
   const [local, domain] = clean.split("@");
   if (!local || !domain) return clean;
   return (local.slice(0, 2) + "***@" + domain).slice(0, 80);
-}
-
-function validateProviderEndpoint(rawEndpoint) {
-  let parsed;
-  try { parsed = new URL(String(rawEndpoint || "")); }
-  catch (_) { throw new Error("Provider endpoint must be a valid HTTPS URL."); }
-  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
-  if (parsed.protocol !== "https:" || parsed.username || parsed.password || (parsed.port && parsed.port !== "443") || !hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".example") || hostname.endsWith(".invalid") || /^[0-9.]+$/.test(hostname) || hostname.includes(":")) {
-    throw new Error("Provider endpoint is not allowed. Use a public HTTPS hostname without credentials or a custom port.");
-  }
-  return parsed.toString().replace(/\/$/, "");
 }
 
 function accountStoreKey(userId) {
@@ -575,44 +628,69 @@ export async function saveProviderConfiguration(kv, userId, input = {}, env = {}
   if (!providerId) {
     throw new Error("providerId is required");
   }
-  const configsMap = await readUserProviderConfigsMap(kv, userId);
-  const existing = configsMap[providerId] || {};
-  const spec = resolveProviderSpec(providerId, {
-    ...existing,
-    isCustom: Boolean(input.isCustom || providerId === "custom" || providerId.startsWith("custom-"))
-  });
-  if (!spec) {
-    throw new Error("Unsupported AI provider: " + providerId);
+
+  if (input.endpoint) {
+    const check = validateCustomProviderEndpoint(input.endpoint);
+    if (!check.valid) {
+      const err = new Error(check.reason);
+      err.status = 400;
+      err.code = check.errorCode;
+      err.errorCode = check.errorCode;
+      throw err;
+    }
+  }
+  if (input.modelsEndpoint) {
+    const check = validateCustomProviderEndpoint(input.modelsEndpoint);
+    if (!check.valid) {
+      const err = new Error(check.reason);
+      err.status = 400;
+      err.code = check.errorCode;
+      err.errorCode = check.errorCode;
+      throw err;
+    }
   }
 
-  const nextEndpoint = input.endpoint ? boundedString(input.endpoint, 240) : existing.endpoint || spec.endpoint;
-  const nextModelsEndpoint = input.modelsEndpoint
-    ? boundedString(input.modelsEndpoint, 240)
-    : existing.modelsEndpoint ||
-      (input.endpoint && (providerId === "custom" || providerId.startsWith("custom-"))
-        ? input.endpoint.replace(/\/chat\/completions\/?$/, "/models")
-        : spec.modelsEndpoint);
+  const updated = await withUserAccountLock(userId, async () => {
+    const configsMap = await readUserProviderConfigsMap(kv, userId);
+    const existing = configsMap[providerId] || {};
+    const spec = resolveProviderSpec(providerId, {
+      ...existing,
+      isCustom: Boolean(input.isCustom || providerId === "custom" || providerId.startsWith("custom-"))
+    });
+    if (!spec) {
+      throw new Error("Unsupported AI provider: " + providerId);
+    }
 
-  const updated = {
-    providerId,
-    name: boundedString(input.name || existing.name || spec.name, 80),
-    endpoint: nextEndpoint,
-    modelsEndpoint: nextModelsEndpoint,
-    authType: boundedString(input.authType || existing.authType || spec.authType, 60),
-    docsUrl: boundedString(input.docsUrl || existing.docsUrl || spec.docsUrl, 240),
-    defaultModel: boundedString(input.defaultModel || existing.defaultModel || spec.defaultModel, 100),
-    enabled: input.enabled !== undefined ? Boolean(input.enabled) : existing.enabled !== false,
-    isCustom: Boolean(spec.isCustom || providerId === "custom" || providerId.startsWith("custom-")),
-    discoveredModels: Array.isArray(input.discoveredModels)
-      ? input.discoveredModels.slice(0, 100)
-      : existing.discoveredModels || [],
-    lastConnectionTest: input.lastConnectionTest !== undefined ? input.lastConnectionTest : existing.lastConnectionTest || null,
-    errorStatus: input.errorStatus !== undefined ? input.errorStatus : existing.errorStatus || null,
-    updatedAt: new Date().toISOString()
-  };
+    const nextEndpoint = input.endpoint ? boundedString(input.endpoint, 240) : existing.endpoint || spec.endpoint;
+    const nextModelsEndpoint = input.modelsEndpoint
+      ? boundedString(input.modelsEndpoint, 240)
+      : existing.modelsEndpoint ||
+        (input.endpoint && (providerId === "custom" || providerId.startsWith("custom-"))
+          ? input.endpoint.replace(/\/chat\/completions\/?$/, "/models")
+          : spec.modelsEndpoint);
 
-  configsMap[providerId] = updated;
-  await writeUserProviderConfigsMap(kv, userId, configsMap);
+    const record = {
+      providerId,
+      name: boundedString(input.name || existing.name || spec.name, 80),
+      endpoint: nextEndpoint,
+      modelsEndpoint: nextModelsEndpoint,
+      authType: boundedString(input.authType || existing.authType || spec.authType, 60),
+      docsUrl: boundedString(input.docsUrl || existing.docsUrl || spec.docsUrl, 240),
+      defaultModel: boundedString(input.defaultModel || existing.defaultModel || spec.defaultModel, 100),
+      enabled: input.enabled !== undefined ? Boolean(input.enabled) : existing.enabled !== false,
+      isCustom: Boolean(spec.isCustom || providerId === "custom" || providerId.startsWith("custom-")),
+      discoveredModels: Array.isArray(input.discoveredModels)
+        ? input.discoveredModels.slice(0, 100)
+        : existing.discoveredModels || [],
+      lastConnectionTest: input.lastConnectionTest !== undefined ? input.lastConnectionTest : existing.lastConnectionTest || null,
+      errorStatus: input.errorStatus !== undefined ? input.errorStatus : existing.errorStatus || null,
+      updatedAt: new Date().toISOString()
+    };
+
+    configsMap[providerId] = record;
+    await writeUserProviderConfigsMap(kv, userId, configsMap);
+    return record;
+  });
 
   // If the caller also provided an API key / account during provider configuration, save it as an independent account for this provider
   let savedAccount = null;
@@ -626,7 +704,7 @@ export async function saveProviderConfiguration(kv, userId, input = {}, env = {}
         label: input.accountLabel || input.label || `${updated.name} Main`,
         email: input.email || input.emailOrHint || `${providerId}@user.jarvis`,
         apiKey: input.apiKey.trim(),
-        customEndpoint: nextEndpoint,
+        customEndpoint: updated.endpoint,
         defaultModel: updated.defaultModel,
         isDefault: input.isDefault !== undefined ? Boolean(input.isDefault) : undefined
       },
@@ -717,169 +795,181 @@ export async function listUserAiAccounts(kv, userId, env = {}, options = {}) {
 /**
  * Batch 8.5.2 Section 2, 3, 5 — Saves or updates an independent user AI account for a specific provider.
  * - Validates provider-specific API key format (cannot use OpenAI key for Gemini/Claude, etc.).
+ * - Validates customEndpoint against SSRF.
  * - Encrypts API key with AES-256-GCM before writing to DEVICE_REGISTRY KV (never stores raw apiKey in KV).
- * - Does NOT immediately mark status as "working_live" / connected just because an API key was entered;
- *   sets status to "configured_unverified" until testProviderConnection succeeds.
+ * - Serializes per-user KV writes via withUserAccountLock.
  */
 export async function saveUserAiAccount(kv, userId, input = {}, env = {}) {
   if (!kv) throw new Error("DEVICE_REGISTRY KV is required to store AI accounts");
   if (!userId) throw new Error("Authenticated userId is required");
 
   const provider = boundedString(input.provider || "", 40).toLowerCase();
-  const configsMap = await readUserProviderConfigsMap(kv, userId);
-  const spec = resolveProviderSpec(provider, {
-    ...(configsMap[provider] || {}),
-    isCustom: Boolean(input.isCustom || provider === "custom" || provider.startsWith("custom-"))
-  });
-  if (!spec) {
-    throw new Error("Unsupported AI provider: " + provider);
-  }
-
-  const label = boundedString(input.label || "Akun Baru", 80);
-  const emailOrHint = maskEmailOrLabel(input.email || input.emailOrHint || "user@domain.com");
-  const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
-
-  if (apiKey) {
-    const validation = validateProviderApiKeyFormat(provider, apiKey);
-    if (!validation.valid) {
-      const err = new Error(validation.reason);
+  if (input.customEndpoint) {
+    const epCheck = validateCustomProviderEndpoint(input.customEndpoint);
+    if (!epCheck.valid) {
+      const err = new Error(epCheck.reason);
       err.status = 400;
-      err.code = validation.errorCode;
-      err.errorCode = validation.errorCode;
+      err.code = epCheck.errorCode;
+      err.errorCode = epCheck.errorCode;
       throw err;
     }
   }
 
-  const raw = await kv.get(accountStoreKey(userId));
-  const list = raw ? JSON.parse(raw) : [];
-  const accountId = boundedString(
-    input.accountId || `acc-${provider}-${webCrypto.randomUUID().slice(0, 8)}`,
-    80
-  );
-  const existingIdx = list.findIndex((item) => item.accountId === accountId);
-  const existingRecord = existingIdx >= 0 ? list[existingIdx] : null;
-
-  if (existingRecord && existingRecord.provider !== provider) {
-    const mismatchErr = new Error(
-      `Account '${accountId}' belongs to provider '${existingRecord.provider}' and cannot be reassigned to '${provider}'.`
-    );
-    mismatchErr.status = 400;
-    mismatchErr.code = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
-    mismatchErr.errorCode = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
-    throw mismatchErr;
-  }
-
-  let encryptedApiKey = existingRecord?.encryptedApiKey || null;
-  if (apiKey) {
-    encryptedApiKey = await encryptCredentialForKv(apiKey, { env, userId, provider });
-  } else if (!encryptedApiKey && existingRecord?.apiKey) {
-    // Migrate any legacy plaintext record to AES-256-GCM encrypted envelope automatically
-    encryptedApiKey = await encryptCredentialForKv(existingRecord.apiKey, { env, userId, provider });
-  }
-
-  const isDefault =
-    input.isDefault !== undefined
-      ? Boolean(input.isDefault)
-      : existingRecord
-        ? Boolean(existingRecord.isDefault)
-        : !list.some((item) => item.provider === provider && item.enabled !== false);
-
-  // Setting isDefault on this account ONLY affects accounts of the SAME provider
-  if (isDefault) {
-    for (const item of list) {
-      if (item.provider === provider) item.isDefault = false;
+  return withUserAccountLock(userId, async () => {
+    const configsMap = await readUserProviderConfigsMap(kv, userId);
+    const spec = resolveProviderSpec(provider, {
+      ...(configsMap[provider] || {}),
+      isCustom: Boolean(input.isCustom || provider === "custom" || provider.startsWith("custom-"))
+    });
+    if (!spec) {
+      throw new Error("Unsupported AI provider: " + provider);
     }
-  }
 
-  // If a new API key was entered (and not explicitly marked verified by testProviderConnection),
-  // status is strictly "configured_unverified" — never automatically "working_live"!
-  const keyChanged = Boolean(apiKey);
-  const nextStatus = input.connectionVerified === true
-    ? "working_live"
-    : keyChanged
-      ? "configured_unverified"
-      : existingRecord?.status || (encryptedApiKey ? "configured_unverified" : "ui_configured_only");
+    const label = boundedString(input.label || "Akun Baru", 80);
+    const emailOrHint = maskEmailOrLabel(input.email || input.emailOrHint || "user@domain.com");
+    const apiKey = typeof input.apiKey === "string" ? input.apiKey.trim() : "";
 
-  const nextConnectionVerified =
-    input.connectionVerified !== undefined
-      ? Boolean(input.connectionVerified)
+    if (apiKey) {
+      const validation = validateProviderApiKeyFormat(provider, apiKey);
+      if (!validation.valid) {
+        const err = new Error(validation.reason);
+        err.status = 400;
+        err.code = validation.errorCode;
+        err.errorCode = validation.errorCode;
+        throw err;
+      }
+    }
+
+    const raw = await kv.get(accountStoreKey(userId));
+    const list = raw ? JSON.parse(raw) : [];
+    const accountId = boundedString(
+      input.accountId || `acc-${provider}-${webCrypto.randomUUID().slice(0, 8)}`,
+      80
+    );
+    const existingIdx = list.findIndex((item) => item.accountId === accountId);
+    const existingRecord = existingIdx >= 0 ? list[existingIdx] : null;
+
+    if (existingRecord && existingRecord.provider !== provider) {
+      const mismatchErr = new Error(
+        `Account '${accountId}' belongs to provider '${existingRecord.provider}' and cannot be reassigned to '${provider}'.`
+      );
+      mismatchErr.status = 400;
+      mismatchErr.code = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
+      mismatchErr.errorCode = PROVIDER_ERROR_CODES.PROVIDER_ERROR;
+      throw mismatchErr;
+    }
+
+    let encryptedApiKey = existingRecord?.encryptedApiKey || null;
+    if (apiKey) {
+      encryptedApiKey = await encryptCredentialForKv(apiKey, { env, userId, provider });
+    } else if (!encryptedApiKey && existingRecord?.apiKey) {
+      // Migrate any legacy plaintext record to AES-256-GCM encrypted envelope automatically
+      encryptedApiKey = await encryptCredentialForKv(existingRecord.apiKey, { env, userId, provider });
+    }
+
+    const isDefault =
+      input.isDefault !== undefined
+        ? Boolean(input.isDefault)
+        : existingRecord
+          ? Boolean(existingRecord.isDefault)
+          : !list.some((item) => item.provider === provider && item.enabled !== false);
+
+    // Setting isDefault on this account ONLY affects accounts of the SAME provider
+    if (isDefault) {
+      for (const item of list) {
+        if (item.provider === provider) item.isDefault = false;
+      }
+    }
+
+    const keyChanged = Boolean(apiKey);
+    const nextStatus = input.connectionVerified === true
+      ? "working_live"
       : keyChanged
-        ? false
-        : Boolean(existingRecord?.connectionVerified);
+        ? "configured_unverified"
+        : existingRecord?.status || (encryptedApiKey ? "configured_unverified" : "ui_configured_only");
 
-  const record = {
-    accountId,
-    provider,
-    label,
-    emailOrHint,
-    maskedKey: apiKey
-      ? maskSecretValue(apiKey)
-      : existingRecord?.maskedKey || (encryptedApiKey ? "sk***" : ""),
-    encryptedApiKey,
-    enabled: input.enabled !== undefined ? Boolean(input.enabled) : existingRecord ? existingRecord.enabled !== false : true,
-    isDefault,
-    customEndpoint: input.customEndpoint
-      ? boundedString(input.customEndpoint, 240)
-      : existingRecord?.customEndpoint || undefined,
-    defaultModel: input.defaultModel
-      ? boundedString(input.defaultModel, 100)
-      : existingRecord?.defaultModel || undefined,
-    quotaUsedTokens: Math.max(0, Number(input.quotaUsedTokens ?? existingRecord?.quotaUsedTokens ?? 0)),
-    quotaLimitTokens: Math.max(1000, Number(input.quotaLimitTokens ?? existingRecord?.quotaLimitTokens ?? 200000)),
-    status: nextStatus,
-    connectionVerified: nextConnectionVerified,
-    lastTestedAt: input.lastTestedAt !== undefined ? input.lastTestedAt : existingRecord?.lastTestedAt || null,
-    errorStatus: input.errorStatus !== undefined ? input.errorStatus : (keyChanged ? null : existingRecord?.errorStatus || null),
-    discoveredModels: Array.isArray(input.discoveredModels)
-      ? input.discoveredModels
-      : existingRecord?.discoveredModels || [],
-    updatedAt: new Date().toISOString()
-  };
+    const nextConnectionVerified =
+      input.connectionVerified !== undefined
+        ? Boolean(input.connectionVerified)
+        : keyChanged
+          ? false
+          : Boolean(existingRecord?.connectionVerified);
 
-  if (existingIdx >= 0) {
-    list[existingIdx] = record;
-  } else {
-    list.push(record);
-  }
+    const record = {
+      accountId,
+      provider,
+      label,
+      emailOrHint,
+      maskedKey: apiKey
+        ? maskSecretValue(apiKey)
+        : existingRecord?.maskedKey || (encryptedApiKey ? "sk***" : ""),
+      encryptedApiKey,
+      enabled: input.enabled !== undefined ? Boolean(input.enabled) : existingRecord ? existingRecord.enabled !== false : true,
+      isDefault,
+      customEndpoint: input.customEndpoint
+        ? boundedString(input.customEndpoint, 240)
+        : existingRecord?.customEndpoint || undefined,
+      defaultModel: input.defaultModel
+        ? boundedString(input.defaultModel, 100)
+        : existingRecord?.defaultModel || undefined,
+      quotaUsedTokens: Math.max(0, Number(input.quotaUsedTokens ?? existingRecord?.quotaUsedTokens ?? 0)),
+      quotaLimitTokens: Math.max(1000, Number(input.quotaLimitTokens ?? existingRecord?.quotaLimitTokens ?? 200000)),
+      status: nextStatus,
+      connectionVerified: nextConnectionVerified,
+      lastTestedAt: input.lastTestedAt !== undefined ? input.lastTestedAt : existingRecord?.lastTestedAt || null,
+      errorStatus: input.errorStatus !== undefined ? input.errorStatus : (keyChanged ? null : existingRecord?.errorStatus || null),
+      discoveredModels: Array.isArray(input.discoveredModels)
+        ? input.discoveredModels
+        : existingRecord?.discoveredModels || [],
+      updatedAt: new Date().toISOString()
+    };
 
-  await kv.put(accountStoreKey(userId), JSON.stringify(list.slice(0, 100)), {
-    expirationTtl: 86400 * 90
+    if (existingIdx >= 0) {
+      list[existingIdx] = record;
+    } else {
+      list.push(record);
+    }
+
+    await kv.put(accountStoreKey(userId), JSON.stringify(list.slice(0, 100)), {
+      expirationTtl: 86400 * 90
+    });
+
+    const { encryptedApiKey: _hiddenEnc, apiKey: _hiddenPlain, ...publicRecord } = record;
+    return {
+      ...publicRecord,
+      hasEncryptedKey: Boolean(record.encryptedApiKey?.ciphertext),
+      encryptionAlgorithm: record.encryptedApiKey?.alg || "none"
+    };
   });
-
-  const { encryptedApiKey: _hiddenEnc, apiKey: _hiddenPlain, ...publicRecord } = record;
-  return {
-    ...publicRecord,
-    hasEncryptedKey: Boolean(record.encryptedApiKey?.ciphertext),
-    encryptionAlgorithm: record.encryptedApiKey?.alg || "none"
-  };
 }
 
 export async function removeUserAiAccount(kv, userId, accountId, options = {}) {
   if (!kv || !userId || !accountId) return false;
-  const raw = await kv.get(accountStoreKey(userId));
-  if (!raw) return false;
-  const list = JSON.parse(raw);
-  const targetIdx = list.findIndex((item) => item.accountId === accountId);
-  if (targetIdx < 0) return false;
+  return withUserAccountLock(userId, async () => {
+    const raw = await kv.get(accountStoreKey(userId));
+    if (!raw) return false;
+    const list = JSON.parse(raw);
+    const targetIdx = list.findIndex((item) => item.accountId === accountId);
+    if (targetIdx < 0) return false;
 
-  const removedItem = list[targetIdx];
-  if (options?.provider && removedItem.provider !== String(options.provider).toLowerCase()) {
-    return false;
-  }
-
-  const filtered = list.filter((item) => item.accountId !== accountId);
-  // If the removed account was default for its provider, promote the first remaining enabled account of that same provider
-  if (removedItem.isDefault) {
-    const nextCandidate = filtered.find(
-      (item) => item.provider === removedItem.provider && item.enabled !== false
-    );
-    if (nextCandidate) {
-      nextCandidate.isDefault = true;
+    const removedItem = list[targetIdx];
+    if (options?.provider && removedItem.provider !== String(options.provider).toLowerCase()) {
+      return false;
     }
-  }
 
-  await kv.put(accountStoreKey(userId), JSON.stringify(filtered), { expirationTtl: 86400 * 90 });
-  return true;
+    const filtered = list.filter((item) => item.accountId !== accountId);
+    if (removedItem.isDefault) {
+      const nextCandidate = filtered.find(
+        (item) => item.provider === removedItem.provider && item.enabled !== false
+      );
+      if (nextCandidate) {
+        nextCandidate.isDefault = true;
+      }
+    }
+
+    await kv.put(accountStoreKey(userId), JSON.stringify(filtered), { expirationTtl: 86400 * 90 });
+    return true;
+  });
 }
 
 /**
@@ -951,7 +1041,9 @@ export async function resolveAccountCredentialsChain(kv, userId, provider, env =
       const matching = list
         .filter(
           (a) =>
-            (a.provider === rawProvider || a.provider === normalizedProvider) &&
+            (a.provider === rawProvider ||
+              a.provider === normalizedProvider ||
+              (normalizedProvider === "groq" && a.provider === "meta")) &&
             a.enabled !== false &&
             (a.encryptedApiKey?.ciphertext || a.apiKey)
         )
@@ -1027,7 +1119,6 @@ export async function summarizeProvidersStatus(kv, userId, env = {}) {
   const serverCredentials = listServerManagedCredentials(env);
   const serverByProvider = new Map(serverCredentials.map((s) => [s.provider, s]));
 
-  // Combine canonical providers + any custom providers configured by the user
   const allProviderIds = new Set([
     ...Object.keys(PROVIDER_CATALOG),
     ...Object.keys(configsMap),
@@ -1060,9 +1151,6 @@ export async function summarizeProvidersStatus(kv, userId, env = {}) {
     const serverInfo = serverByProvider.get(providerId) || null;
     const serverCredentialConfigured = Boolean(serverInfo && serverInfo.slotCount > 0);
 
-    // If the user has added accounts for this provider, `connected` is strictly true ONLY if
-    // at least one enabled user account passed live connection testing (never just because an API key was saved!).
-    // If no user account exists yet, server fallback is reported if configured and not disabled.
     const connected =
       !providerDisabled &&
       (providerUserAccounts.length > 0
@@ -1117,7 +1205,6 @@ export async function summarizeProvidersStatus(kv, userId, env = {}) {
       userConnected: hasVerifiedLiveUserAccount,
       connectionStatus,
       integrationState,
-      // Strictly count user-managed accounts (never mixing server Worker secrets into accountCount!)
       accountCount: providerUserAccounts.length,
       activeAccountCount: activeUserAccounts.length,
       defaultAccountId: defaultAccount?.accountId || null,
@@ -1166,8 +1253,6 @@ export function parseDiscoveredModelsPayload(providerId, data, fallbackModels = 
 
 /**
  * Batch 8.5.2 Section 2, 3, 7 — Live Connection Test & Model Discovery per Provider / per Account.
- * Can test a raw `apiKey` OR decrypt and test an existing saved `accountId` from KV.
- * Updates the account & provider status in KV to "working_live" on success or "connection_failed" on error.
  */
 export async function testProviderConnection({
   kv = null,
@@ -1180,6 +1265,21 @@ export async function testProviderConnection({
   fetchImpl = globalThis.fetch
 } = {}) {
   const cleanProvider = String(provider || "").trim().toLowerCase();
+  if (customEndpoint) {
+    const epCheck = validateCustomProviderEndpoint(customEndpoint);
+    if (!epCheck.valid) {
+      return {
+        ok: false,
+        provider: cleanProvider,
+        accountId: accountId || undefined,
+        connectionStatus: "connection_failed",
+        integrationState: "connection_failed",
+        errorCode: epCheck.errorCode,
+        error: epCheck.reason
+      };
+    }
+  }
+
   const configsMap = kv && userId ? await readUserProviderConfigsMap(kv, userId) : {};
   const userCfg = configsMap[cleanProvider] || null;
   const spec = resolveProviderSpec(cleanProvider, userCfg);
@@ -1195,7 +1295,6 @@ export async function testProviderConnection({
     };
   }
 
-  // Resolve effective API key: explicit apiKey -> decrypted key from accountId -> decrypted default user account -> server env key
   let effectiveKey = typeof apiKey === "string" ? apiKey.trim() : "";
   let targetAccountId = String(accountId || "").trim();
   let storedAccountsList = [];
@@ -1262,12 +1361,14 @@ export async function testProviderConnection({
       timestamp: new Date().toISOString()
     };
     if (kv && userId && matchedStoredAccount) {
-      matchedStoredAccount.status = "connection_failed";
-      matchedStoredAccount.connectionVerified = false;
-      matchedStoredAccount.lastTestedAt = errorStatus.timestamp;
-      matchedStoredAccount.errorStatus = errorStatus;
-      await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
-        expirationTtl: 86400 * 90
+      await withUserAccountLock(userId, async () => {
+        matchedStoredAccount.status = "connection_failed";
+        matchedStoredAccount.connectionVerified = false;
+        matchedStoredAccount.lastTestedAt = errorStatus.timestamp;
+        matchedStoredAccount.errorStatus = errorStatus;
+        await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
+          expirationTtl: 86400 * 90
+        });
       });
     }
     return {
@@ -1281,12 +1382,11 @@ export async function testProviderConnection({
     };
   }
 
-  const modelsEndpoint = validateProviderEndpoint(
+  const modelsEndpoint =
     (customEndpoint && customEndpoint.replace(/\/chat\/completions\/?$/, "/models")) ||
     matchedStoredAccount?.customEndpoint?.replace(/\/chat\/completions\/?$/, "/models") ||
     userCfg?.modelsEndpoint ||
-    spec.modelsEndpoint
-  );
+    spec.modelsEndpoint;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8000);
@@ -1297,8 +1397,7 @@ export async function testProviderConnection({
     if (cleanProvider === "gemini") {
       response = await fetchImpl(
         `${modelsEndpoint}?key=${encodeURIComponent(effectiveKey)}`,
-        { method: "GET", headers: { Accept: "application/json" }, redirect: "manual",
-            signal: controller.signal }
+        { method: "GET", headers: { Accept: "application/json" }, signal: controller.signal }
       );
     } else if (cleanProvider === "anthropic") {
       response = await fetchImpl(modelsEndpoint, {
@@ -1308,8 +1407,7 @@ export async function testProviderConnection({
           "anthropic-version": "2023-06-01",
           Accept: "application/json"
         },
-        redirect: "manual",
-            signal: controller.signal
+        signal: controller.signal
       });
     } else {
       response = await fetchImpl(modelsEndpoint, {
@@ -1318,8 +1416,7 @@ export async function testProviderConnection({
           Authorization: `Bearer ${effectiveKey}`,
           Accept: "application/json"
         },
-        redirect: "manual",
-            signal: controller.signal
+        signal: controller.signal
       });
     }
 
@@ -1332,21 +1429,23 @@ export async function testProviderConnection({
       const errorStatus = { errorCode, httpStatus: response.status, errorMessage: errText, timestamp: testedAt };
 
       if (kv && userId) {
-        if (matchedStoredAccount) {
-          matchedStoredAccount.status = "connection_failed";
-          matchedStoredAccount.connectionVerified = false;
-          matchedStoredAccount.lastTestedAt = testedAt;
-          matchedStoredAccount.errorStatus = errorStatus;
-          await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
-            expirationTtl: 86400 * 90
-          });
-        }
-        configsMap[cleanProvider] = {
-          ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name }),
-          lastConnectionTest: { ok: false, testedAt, httpStatus: response.status, latencyMs, errorCode },
-          errorStatus
-        };
-        await writeUserProviderConfigsMap(kv, userId, configsMap);
+        await withUserAccountLock(userId, async () => {
+          if (matchedStoredAccount) {
+            matchedStoredAccount.status = "connection_failed";
+            matchedStoredAccount.connectionVerified = false;
+            matchedStoredAccount.lastTestedAt = testedAt;
+            matchedStoredAccount.errorStatus = errorStatus;
+            await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
+              expirationTtl: 86400 * 90
+            });
+          }
+          configsMap[cleanProvider] = {
+            ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name }),
+            lastConnectionTest: { ok: false, testedAt, httpStatus: response.status, latencyMs, errorCode },
+            errorStatus
+          };
+          await writeUserProviderConfigsMap(kv, userId, configsMap);
+        });
       }
 
       return {
@@ -1376,39 +1475,40 @@ export async function testProviderConnection({
       discoveredModels: discoveredModelIds
     });
 
-    // Optional quota extraction if provider headers report token limits
     const headerLimit = Number(response.headers?.get?.("x-ratelimit-limit-tokens") || 0);
     const headerRemaining = Number(response.headers?.get?.("x-ratelimit-remaining-tokens") || 0);
 
     if (kv && userId) {
-      if (matchedStoredAccount) {
-        matchedStoredAccount.status = "working_live";
-        matchedStoredAccount.connectionVerified = true;
-        matchedStoredAccount.lastTestedAt = testedAt;
-        matchedStoredAccount.errorStatus = null;
-        matchedStoredAccount.discoveredModels = discoveredModelIds;
-        if (headerLimit > 0) {
-          matchedStoredAccount.quotaLimitTokens = headerLimit;
-          matchedStoredAccount.quotaUsedTokens = Math.max(0, headerLimit - headerRemaining);
+      await withUserAccountLock(userId, async () => {
+        if (matchedStoredAccount) {
+          matchedStoredAccount.status = "working_live";
+          matchedStoredAccount.connectionVerified = true;
+          matchedStoredAccount.lastTestedAt = testedAt;
+          matchedStoredAccount.errorStatus = null;
+          matchedStoredAccount.discoveredModels = discoveredModelIds;
+          if (headerLimit > 0) {
+            matchedStoredAccount.quotaLimitTokens = headerLimit;
+            matchedStoredAccount.quotaUsedTokens = Math.max(0, headerLimit - headerRemaining);
+          }
+          await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
+            expirationTtl: 86400 * 90
+          });
         }
-        await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
-          expirationTtl: 86400 * 90
-        });
-      }
-      configsMap[cleanProvider] = {
-        ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name, enabled: true }),
-        discoveredModels: discoveredModelIds,
-        lastConnectionTest: {
-          ok: true,
-          testedAt,
-          httpStatus: response.status,
-          latencyMs,
-          discoveredModelsCount: discoveredModelIds.length
-        },
-        errorStatus: null,
-        updatedAt: testedAt
-      };
-      await writeUserProviderConfigsMap(kv, userId, configsMap);
+        configsMap[cleanProvider] = {
+          ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name, enabled: true }),
+          discoveredModels: discoveredModelIds,
+          lastConnectionTest: {
+            ok: true,
+            testedAt,
+            httpStatus: response.status,
+            latencyMs,
+            discoveredModelsCount: discoveredModelIds.length
+          },
+          errorStatus: null,
+          updatedAt: testedAt
+        };
+        await writeUserProviderConfigsMap(kv, userId, configsMap);
+      });
     }
 
     return {
@@ -1429,21 +1529,23 @@ export async function testProviderConnection({
     const errorStatus = { errorCode, errorMessage: errText, timestamp: testedAt };
 
     if (kv && userId) {
-      if (matchedStoredAccount) {
-        matchedStoredAccount.status = "connection_failed";
-        matchedStoredAccount.connectionVerified = false;
-        matchedStoredAccount.lastTestedAt = testedAt;
-        matchedStoredAccount.errorStatus = errorStatus;
-        await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
-          expirationTtl: 86400 * 90
-        });
-      }
-      configsMap[cleanProvider] = {
-        ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name }),
-        lastConnectionTest: { ok: false, testedAt, errorCode },
-        errorStatus
-      };
-      await writeUserProviderConfigsMap(kv, userId, configsMap);
+      await withUserAccountLock(userId, async () => {
+        if (matchedStoredAccount) {
+          matchedStoredAccount.status = "connection_failed";
+          matchedStoredAccount.connectionVerified = false;
+          matchedStoredAccount.lastTestedAt = testedAt;
+          matchedStoredAccount.errorStatus = errorStatus;
+          await kv.put(accountStoreKey(userId), JSON.stringify(storedAccountsList), {
+            expirationTtl: 86400 * 90
+          });
+        }
+        configsMap[cleanProvider] = {
+          ...(configsMap[cleanProvider] || { providerId: cleanProvider, name: spec.name }),
+          lastConnectionTest: { ok: false, testedAt, errorCode },
+          errorStatus
+        };
+        await writeUserProviderConfigsMap(kv, userId, configsMap);
+      });
     }
 
     return {
@@ -1461,7 +1563,8 @@ export async function testProviderConnection({
 }
 
 /**
- * Batch 8.5 / 8.5.1 / 8.5.2 — Unified Live Provider Execution Adapter using Independent Multi-Account Chain.
+ * Batch 8.5 / 8.5.1 / 8.5.2 / B8.1.1 — Unified Live Provider Execution Adapter using Independent Multi-Account Chain.
+ * Automatically updates `quotaUsedTokens` when a user-managed account completes a request.
  */
 export async function invokeProviderCompletion({
   kv = null,
@@ -1545,7 +1648,17 @@ export async function invokeProviderCompletion({
 
   for (let idx = 0; idx < chain.length; idx++) {
     const cred = chain[idx];
-    const targetEndpoint = validateProviderEndpoint(cred.customEndpoint || userCfg?.endpoint || spec.endpoint);
+    const targetEndpoint = cred.customEndpoint || userCfg?.endpoint || spec.endpoint;
+    const epValidation = validateCustomProviderEndpoint(targetEndpoint);
+    if (!epValidation.valid) {
+      const epErr = new Error(epValidation.reason);
+      epErr.status = 400;
+      epErr.code = epValidation.errorCode;
+      epErr.errorCode = epValidation.errorCode;
+      epErr.provider = normalizedProvider;
+      epErr.accountId = cred.accountId;
+      throw epErr;
+    }
 
     if (signal?.aborted) {
       const abortErr = new Error("Request cancelled by caller");
@@ -1584,7 +1697,6 @@ export async function invokeProviderCompletion({
               contents,
               generationConfig: { temperature, maxOutputTokens: maxTokens }
             }),
-            redirect: "manual",
             signal: controller.signal
           });
         } else if (normalizedProvider === "anthropic") {
@@ -1606,7 +1718,6 @@ export async function invokeProviderCompletion({
               temperature,
               messages
             }),
-            redirect: "manual",
             signal: controller.signal
           });
         } else {
@@ -1621,7 +1732,7 @@ export async function invokeProviderCompletion({
               Authorization: `Bearer ${cred.apiKey}`,
               "Content-Type": "application/json",
               ...(normalizedProvider === "openrouter"
-                ? { "HTTP-Referer": "https://jarvis-api.workers.dev", "X-Title": "JARVIS Mobile B8.5.2" }
+                ? { "HTTP-Referer": "https://jarvis-api.workers.dev", "X-Title": "JARVIS Mobile B8.1.1" }
                 : {})
             },
             body: JSON.stringify({
@@ -1630,7 +1741,6 @@ export async function invokeProviderCompletion({
               max_tokens: maxTokens,
               messages
             }),
-            redirect: "manual",
             signal: controller.signal
           });
         }
@@ -1712,6 +1822,19 @@ export async function invokeProviderCompletion({
         throw emptyErr;
       }
 
+      const reportedTokens =
+        Number(data?.usage?.total_tokens) ||
+        Number(data?.usageMetadata?.totalTokenCount) ||
+        (Number(data?.usage?.input_tokens || 0) + Number(data?.usage?.output_tokens || 0));
+      const tokensUsed =
+        reportedTokens > 0
+          ? reportedTokens
+          : Math.max(32, Math.ceil((String(prompt || "").length + text.length) / 4));
+
+      if (cred.source === "user_account" && kv && userId && cred.accountId) {
+        await recordAccountTokenUsage(kv, userId, cred.accountId, tokensUsed, env).catch(() => {});
+      }
+
       return {
         ok: true,
         provider: normalizedProvider,
@@ -1719,6 +1842,7 @@ export async function invokeProviderCompletion({
         model: effectiveModel,
         accountId: cred.accountId,
         accountSource: cred.source,
+        tokensUsed,
         latencyMs,
         text: redactSecrets(text)
       };
@@ -1761,24 +1885,27 @@ export async function invokeProviderCompletion({
 }
 
 /**
- * Batch 8.7 — Increments quotaUsedTokens for a specific user AI account after verified completion.
+ * Batch 8.7 / B8.1.1 — Increments quotaUsedTokens for a specific user AI account after verified completion.
+ * Serialized per userId via withUserAccountLock so concurrent agent completions never overwrite each other.
  */
 export async function recordAccountTokenUsage(kv, userId, accountId, tokensUsed = 0, env = {}) {
   if (!kv || !userId || !accountId) return false;
   const delta = Math.max(0, Math.floor(Number(tokensUsed) || 0));
   if (delta <= 0) return false;
-  try {
-    const raw = await kv.get(accountStoreKey(userId));
-    if (!raw) return false;
-    const list = JSON.parse(raw);
-    if (!Array.isArray(list)) return false;
-    const idx = list.findIndex((a) => a.accountId === accountId);
-    if (idx < 0) return false;
-    list[idx].quotaUsedTokens = Math.max(0, Number(list[idx].quotaUsedTokens || 0)) + delta;
-    list[idx].updatedAt = new Date().toISOString();
-    await kv.put(accountStoreKey(userId), JSON.stringify(list), { expirationTtl: 86400 * 180 });
-    return true;
-  } catch (_) {
-    return false;
-  }
+  return withUserAccountLock(userId, async () => {
+    try {
+      const raw = await kv.get(accountStoreKey(userId));
+      if (!raw) return false;
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return false;
+      const idx = list.findIndex((a) => a.accountId === accountId);
+      if (idx < 0) return false;
+      list[idx].quotaUsedTokens = Math.max(0, Number(list[idx].quotaUsedTokens || 0)) + delta;
+      list[idx].updatedAt = new Date().toISOString();
+      await kv.put(accountStoreKey(userId), JSON.stringify(list), { expirationTtl: 86400 * 180 });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
 }

@@ -1,4 +1,18 @@
 import { redactSecrets } from "../utils.js";
+import { isBlockedIp, isBlockedHostname, isTrustedProviderHostname, validateSafeEndpoint } from "../security/ssrf-guard.js";
+
+function isAllowedMcpEndpoint(endpoint) {
+  const value = String(endpoint || "").trim();
+  if (value.startsWith("mcp://")) return true;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" &&
+      !isBlockedHostname(parsed.hostname) &&
+      isTrustedProviderHostname(parsed.hostname);
+  } catch (_) {
+    return false;
+  }
+}
 
 function resolveKv(envOrKv) {
   if (!envOrKv) return null;
@@ -27,79 +41,64 @@ export const BUILTIN_MCP_SERVERS = Object.freeze([
   },
   {
     id: "mcp_github",
-    name: "GitHub MCP",
+    name: "GitHub Developer MCP",
     transport: "http_jsonrpc",
     endpoint: "https://api.githubcopilot.com/mcp",
     status: "active",
     enabled: true,
-    toolsCount: 12,
+    toolsCount: 5,
     permissionTier: "write_requires_approval",
     tools: [
-      { name: "github.list_repos", description: "Daftar repositori pengguna/organisasi", permission: "read_only" },
-      { name: "github.get_file", description: "Baca file dari branch repositori", permission: "read_only" },
-      { name: "github.list_prs", description: "Daftar Pull Request aktif", permission: "read_only" },
-      { name: "github.create_issue", description: "Buat issue baru pada repositori", permission: "write_requires_approval" },
-      { name: "github.create_pr_comment", description: "Tambahkan komentar review pada PR", permission: "write_requires_approval" },
-      { name: "github.search_code", description: "Cari potongan kode lintas repositori", permission: "read_only" },
-      { name: "github.get_commit", description: "Inspeksi diff dan metadata commit", permission: "read_only" },
-      { name: "github.list_branches", description: "Daftar branch pada repositori", permission: "read_only" },
-      { name: "github.list_workflows", description: "Lihat status GitHub Actions", permission: "read_only" },
-      { name: "github.get_issue", description: "Baca detail issue dan diskusi", permission: "read_only" },
-      { name: "github.create_branch", description: "Buat branch baru", permission: "write_requires_approval" },
-      { name: "github.merge_pr", description: "Merge Pull Request setelah verifikasi", permission: "write_requires_approval" }
+      { name: "github.search_repositories", description: "Cari repositori GitHub", permission: "read_only" },
+      { name: "github.get_file_contents", description: "Ambil isi file pada branch tertentu", permission: "read_only" },
+      { name: "github.create_pull_request", description: "Buat PR baru dengan deskripsi terstruktur", permission: "write_requires_approval" },
+      { name: "github.list_issues", description: "Ambil daftar issue proyek", permission: "read_only" },
+      { name: "github.add_issue_comment", description: "Kirim komentar pada issue/PR", permission: "write_requires_approval" }
     ]
   },
   {
     id: "mcp_postgres",
-    name: "PostgreSQL MCP",
-    transport: "http_jsonrpc",
+    name: "PostgreSQL Database MCP",
+    transport: "stdio_bridge",
     endpoint: "mcp://database/postgres-inspector",
     status: "active",
     enabled: true,
-    toolsCount: 8,
-    permissionTier: "read_only",
+    toolsCount: 4,
+    permissionTier: "write_requires_approval",
     tools: [
-      { name: "pg.list_tables", description: "Daftar tabel dalam skema database", permission: "read_only" },
-      { name: "pg.describe_table", description: "Inspeksi kolom, tipe data, dan indeks tabel", permission: "read_only" },
-      { name: "pg.explain_query", description: "Analisis rencana eksekusi query SQL", permission: "read_only" },
-      { name: "pg.select_readonly", description: "Jalankan query SELECT read-only berbatas baris", permission: "read_only" },
-      { name: "pg.list_rls_policies", description: "Audit kebijakan Row-Level Security", permission: "read_only" },
-      { name: "pg.check_indexes", description: "Periksa kesehatan dan penggunaan indeks", permission: "read_only" },
-      { name: "pg.list_functions", description: "Daftar fungsi dan trigger database", permission: "read_only" },
-      { name: "pg.connection_stats", description: "Lihat statistik koneksi aktif", permission: "read_only" }
+      { name: "postgres.list_tables", description: "Daftar seluruh tabel dan skema aktif", permission: "read_only" },
+      { name: "postgres.describe_table", description: "Periksa tipe kolom, index, dan foreign key", permission: "read_only" },
+      { name: "postgres.read_query", description: "Eksekusi query SELECT terbatas read-only", permission: "read_only" },
+      { name: "postgres.apply_migration", description: "Terapkan migrasi DDL dengan persetujuan eksplisit", permission: "write_requires_approval" }
     ]
   },
   {
     id: "mcp_brave_search",
-    name: "Brave Search MCP",
+    name: "Brave Web Search MCP",
     transport: "http_jsonrpc",
     endpoint: "https://mcp.search.brave.com/v1",
     status: "active",
     enabled: true,
-    toolsCount: 4,
+    toolsCount: 2,
     permissionTier: "read_only",
     tools: [
-      { name: "brave.web_search", description: "Pencarian web faktual real-time", permission: "read_only" },
-      { name: "brave.news_search", description: "Pencarian berita dan pembaruan terkini", permission: "read_only" },
-      { name: "brave.local_search", description: "Pencarian lokasi dan bisnis lokal", permission: "read_only" },
-      { name: "brave.summarize", description: "Ringkasan instan hasil pencarian", permission: "read_only" }
+      { name: "brave.web_search", description: "Pencarian web independen berkecepatan tinggi", permission: "read_only" },
+      { name: "brave.news_search", description: "Pencarian artikel berita terkini", permission: "read_only" }
     ]
   },
   {
     id: "mcp_slack",
-    name: "Slack MCP",
+    name: "Slack Collaboration MCP",
     transport: "sse",
     endpoint: "https://mcp.slack.com/sse",
     status: "disconnected",
     enabled: false,
-    toolsCount: 5,
+    toolsCount: 3,
     permissionTier: "write_requires_approval",
     tools: [
-      { name: "slack.list_channels", description: "Daftar kanal ruang kerja", permission: "read_only" },
-      { name: "slack.read_thread", description: "Baca pesan dalam thread", permission: "read_only" },
-      { name: "slack.post_message", description: "Kirim pesan ke kanal (wajib persetujuan)", permission: "write_requires_approval" },
-      { name: "slack.search_messages", description: "Cari pesan di Slack", permission: "read_only" },
-      { name: "slack.list_users", description: "Daftar anggota tim", permission: "read_only" }
+      { name: "slack.list_channels", description: "Daftar channel publik dan privat yang diizinkan", permission: "read_only" },
+      { name: "slack.post_message", description: "Kirim pesan teks atau block kit ke channel", permission: "write_requires_approval" },
+      { name: "slack.read_history", description: "Baca riwayat percakapan thread terkini", permission: "read_only" }
     ]
   }
 ]);
@@ -107,96 +106,146 @@ export const BUILTIN_MCP_SERVERS = Object.freeze([
 export function buildJsonRpcRequest(method, params = {}, id = 1) {
   return {
     jsonrpc: "2.0",
-    id,
-    method: String(method || "tools/list"),
+    id: id || Date.now(),
+    method: String(method || "ping"),
     params: params && typeof params === "object" ? params : {}
   };
 }
 
 export async function listMcpServers(envOrKv, userId) {
   const kv = resolveKv(envOrKv);
-  const customKey = `mcp_servers:${userId || "anon"}`;
-  let customServers = [];
-  if (kv && userId) {
-    try {
-      const raw = await kv.get(customKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) customServers = parsed;
-      }
-    } catch (_) {}
+  if (!kv || !userId) {
+    return BUILTIN_MCP_SERVERS.map((s) => ({ ...s }));
   }
 
-  const overridesMap = new Map(customServers.map((s) => [s.id, s]));
-  const merged = BUILTIN_MCP_SERVERS.map((builtin) => {
-    const override = overridesMap.get(builtin.id);
+  const customKey = `mcp_servers:${userId}`;
+  let customList = [];
+  try {
+    const raw = await kv.get(customKey);
+    if (raw) customList = JSON.parse(raw);
+  } catch (_) {
+    customList = [];
+  }
+
+  const overrideKey = `mcp_overrides:${userId}`;
+  let overrides = {};
+  try {
+    const raw = await kv.get(overrideKey);
+    if (raw) overrides = JSON.parse(raw);
+  } catch (_) {
+    overrides = {};
+  }
+
+  const builtinsWithOverrides = BUILTIN_MCP_SERVERS.map((builtin) => {
+    const override = overrides[builtin.id];
     if (!override) return { ...builtin };
-    overridesMap.delete(builtin.id);
     return {
       ...builtin,
-      enabled: typeof override.enabled === "boolean" ? override.enabled : builtin.enabled,
-      status: override.status || (override.enabled ? "active" : "disconnected"),
-      endpoint: override.endpoint || builtin.endpoint
+      enabled: override.enabled !== undefined ? Boolean(override.enabled) : builtin.enabled,
+      status: override.status || builtin.status,
+      endpoint: isAllowedMcpEndpoint(override.endpoint) ? override.endpoint : builtin.endpoint
     };
   });
 
-  for (const extra of overridesMap.values()) {
-    merged.push(extra);
-  }
-
-  return merged;
+  return [...builtinsWithOverrides, ...customList.filter((server) => isAllowedMcpEndpoint(server?.endpoint))];
 }
 
 export async function saveMcpServer(envOrKv, userId, payload = {}) {
   const kv = resolveKv(envOrKv);
-  if (!userId) throw new Error("userId is required");
-  const action = String(payload.action || "upsert").toLowerCase();
-  const customKey = `mcp_servers:${userId}`;
-  let stored = [];
-  if (kv) {
-    try {
-      const raw = await kv.get(customKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) stored = parsed;
-      }
-    } catch (_) {}
-  }
-
-  if (action === "remove" && payload.id) {
-    const next = stored.filter((s) => s.id !== payload.id);
-    if (kv) await kv.put(customKey, JSON.stringify(next));
-    return { removed: true, id: payload.id };
-  }
+  if (!kv) throw new Error("KV binding required to save MCP server configuration.");
+  if (!userId) throw new Error("userId required to save MCP server configuration.");
 
   const serverId = String(payload.id || `mcp_custom_${Date.now().toString(36)}`).trim();
   const existingBuiltin = BUILTIN_MCP_SERVERS.find((b) => b.id === serverId);
   const enabled = payload.enabled !== undefined ? Boolean(payload.enabled) : true;
+  const rawEndpoint = String(payload.endpoint || existingBuiltin?.endpoint || "mcp://local/custom").trim().slice(0, 300);
+  if (!rawEndpoint.startsWith("mcp://")) {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(rawEndpoint);
+    } catch {
+      const err = new Error("Invalid MCP server endpoint URL.");
+      err.status = 400;
+      throw err;
+    }
+    const host = parsedUrl.hostname.toLowerCase();
+    if (!isAllowedMcpEndpoint(rawEndpoint)) {
+      const err = new Error("MCP endpoint host is not in the outbound provider allowlist.");
+      err.status = 400;
+      throw err;
+    }
+    const safeEndpoint = await validateSafeEndpoint(rawEndpoint);
+    if (!safeEndpoint.ok) {
+      const err = new Error(safeEndpoint.reason || "MCP endpoint failed outbound DNS validation.");
+      err.status = 400;
+      throw err;
+    }
+    if (
+      parsedUrl.protocol !== "https:" ||
+      host === "169.254.169.254" ||
+      host === "metadata.google.internal" ||
+      /^169\.254\./.test(host) ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+      isBlockedIp(host)
+    ) {
+      const err = new Error("MCP server HTTP/SSE endpoint must use https:// and cannot target internal/metadata addresses.");
+      err.status = 400;
+      throw err;
+    }
+  }
   const record = {
     id: serverId,
     name: String(payload.name || existingBuiltin?.name || "Custom MCP Server").trim().slice(0, 80),
     transport: ["http_jsonrpc", "sse", "stdio_bridge"].includes(payload.transport)
       ? payload.transport
       : existingBuiltin?.transport || "http_jsonrpc",
-    endpoint: String(payload.endpoint || existingBuiltin?.endpoint || "https://localhost:8788/mcp").trim().slice(0, 300),
+    endpoint: rawEndpoint,
     enabled,
     status: enabled ? "active" : "disconnected",
-    toolsCount: Array.isArray(payload.tools)
-      ? payload.tools.length
-      : existingBuiltin?.toolsCount || 2,
+    toolsCount: Array.isArray(payload.tools) ? payload.tools.length : existingBuiltin?.toolsCount || 1,
     permissionTier: payload.permissionTier || existingBuiltin?.permissionTier || "write_requires_approval",
-    tools: Array.isArray(payload.tools)
+    tools: Array.isArray(payload.tools) && payload.tools.length > 0
       ? payload.tools
       : existingBuiltin?.tools || [
-          { name: `${serverId}.ping`, description: "Periksa konektivitas server MCP kustom", permission: "read_only" },
-          { name: `${serverId}.invoke`, description: "Jalankan tool kustom MCP", permission: "write_requires_approval" }
-        ],
-    updatedAt: new Date().toISOString()
+          {
+            name: `${serverId}.execute`,
+            description: `Tool eksekusi kustom untuk ${serverId}`,
+            permission: payload.permissionTier || "write_requires_approval"
+          }
+        ]
   };
 
-  const filtered = stored.filter((s) => s.id !== serverId);
-  filtered.push(record);
-  if (kv) await kv.put(customKey, JSON.stringify(filtered.slice(0, 30)));
+  if (existingBuiltin) {
+    const overrideKey = `mcp_overrides:${userId}`;
+    let overrides = {};
+    try {
+      const raw = await kv.get(overrideKey);
+      if (raw) overrides = JSON.parse(raw);
+    } catch (_) {}
+    overrides[serverId] = {
+      enabled: record.enabled,
+      status: record.status,
+      endpoint: record.endpoint
+    };
+    await kv.put(overrideKey, JSON.stringify(overrides));
+  } else {
+    const customKey = `mcp_servers:${userId}`;
+    let list = [];
+    try {
+      const raw = await kv.get(customKey);
+      if (raw) list = JSON.parse(raw);
+    } catch (_) {}
+    const idx = list.findIndex((s) => s.id === serverId);
+    if (idx >= 0) {
+      list[idx] = record;
+    } else {
+      list.push(record);
+    }
+    await kv.put(customKey, JSON.stringify(list));
+  }
+
   return record;
 }
 
@@ -274,13 +323,9 @@ export async function executeMcpTool(envOrKv, userId, payload = {}) {
       jsonrpc: "2.0",
       id: rpcEnvelope.id,
       result: {
-        content: [
-          {
-            type: "text",
-            text: `[MCP ${server.name}] Tool '${tool.name}' berhasil dijalankan dengan aman.`
-          }
-        ],
-        isError: false
+        toolName: tool.name,
+        output: `[MCP:${server.name}] Perintah '${tool.name}' berhasil dijalankan.`,
+        data: payload.arguments || {}
       }
     }
   };

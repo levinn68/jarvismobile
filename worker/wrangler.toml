@@ -10,6 +10,16 @@ GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 LOG_LEVEL = "info"
 
+[durable_objects]
+bindings = [
+  { name = "PAIRING_COORDINATOR", class_name = "PairingCoordinator" },
+  { name = "RATE_LIMITER", class_name = "DistributedRateLimiter" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PairingCoordinator", "DistributedRateLimiter"]
+
 [[kv_namespaces]]
 binding = "DEVICE_REGISTRY"
 id = "9d3eb996a9d643eca41bf4f46be73fcc"
@@ -28,6 +38,12 @@ GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 LOG_LEVEL = "info"
 
+[env.staging.durable_objects]
+bindings = [
+  { name = "PAIRING_COORDINATOR", class_name = "PairingCoordinator" },
+  { name = "RATE_LIMITER", class_name = "DistributedRateLimiter" }
+]
+
 [[env.staging.kv_namespaces]]
 binding = "DEVICE_REGISTRY"
 id = "b4d13cd42df94a2e9033a1bcf703ef85"
@@ -45,6 +61,12 @@ FISH_MODEL = "s2.1-pro-free"
 GEMINI_MODEL = "gemini-2.5-flash"
 SUPABASE_URL = "https://agwaxaejnnszunccmftm.supabase.co"
 LOG_LEVEL = "debug"
+
+[env.development.durable_objects]
+bindings = [
+  { name = "PAIRING_COORDINATOR", class_name = "PairingCoordinator" },
+  { name = "RATE_LIMITER", class_name = "DistributedRateLimiter" }
+]
 
 [[env.development.kv_namespaces]]
 binding = "DEVICE_REGISTRY"
