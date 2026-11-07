@@ -553,7 +553,7 @@ fun JarvisProvidersScreen(
                         color = when {
                             configuredProvider.connected -> JarvisColors.Ok
                             configuredProvider.connectionStatus == "configured_unverified" -> JarvisColors.Warn
-                            configuredProvider.connectionStatus == "connection_failed" -> JarvisColors.Danger
+                            configuredProvider.connectionStatus == "connection_failed" -> JarvisColors.CoralDanger
                             else -> JarvisColors.TextMuted
                         },
                         fontSize = 11.sp,
@@ -637,13 +637,13 @@ fun JarvisProvidersScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isStatusError) JarvisColors.Danger.copy(alpha = 0.16f) else Color(0xFF0B2238))
-                            .border(1.dp, if (isStatusError) JarvisColors.Danger else JarvisColors.Cyan, RoundedCornerShape(8.dp))
+                            .background(if (isStatusError) JarvisColors.CoralDanger.copy(alpha = 0.16f) else Color(0xFF0B2238))
+                            .border(1.dp, if (isStatusError) JarvisColors.CoralDanger else JarvisColors.Cyan, RoundedCornerShape(8.dp))
                             .padding(10.dp)
                     ) {
                         Text(
                             text = statusBanner,
-                            color = if (isStatusError) JarvisColors.Danger else JarvisColors.Ice,
+                            color = if (isStatusError) JarvisColors.CoralDanger else JarvisColors.Ice,
                             fontSize = 12.sp
                         )
                     }
@@ -823,7 +823,7 @@ fun JarvisProvidersScreen(
                 !p.enabled -> JarvisColors.TextDim
                 p.connected -> JarvisColors.Ok
                 p.connectionStatus == "configured_unverified" -> JarvisColors.Warn
-                p.connectionStatus == "connection_failed" -> JarvisColors.Danger
+                p.connectionStatus == "connection_failed" -> JarvisColors.CoralDanger
                 else -> JarvisColors.TextDim
             }
             val statusLabel = when {
@@ -1132,7 +1132,7 @@ fun JarvisMultiAccountsScreen(
                                 },
                                 color = when {
                                     acc.connectionVerified || acc.status == "working_live" -> JarvisColors.Ok
-                                    acc.status == "connection_failed" -> JarvisColors.Danger
+                                    acc.status == "connection_failed" -> JarvisColors.CoralDanger
                                     else -> JarvisColors.Warn
                                 },
                                 fontSize = 11.sp
@@ -1195,7 +1195,7 @@ fun JarvisMultiAccountsScreen(
                     }
                     if (onDeleteAccount != null) {
                         TextButton(onClick = { onDeleteAccount(acc.accountId, acc.provider) }) {
-                            Text("Hapus", color = JarvisColors.Danger, fontSize = 11.sp)
+                            Text("Hapus", color = JarvisColors.CoralDanger, fontSize = 11.sp)
                         }
                     }
                 }
@@ -1291,7 +1291,7 @@ fun JarvisMultiAccountsScreen(
                         label = { Text(if (isEditing) "API Key Baru (Kosongkan jika tetap)" else "API Key Khusus ${selectedProvider.uppercase()}") }
                     )
                     if (modalError.isNotBlank()) {
-                        Text(modalError, color = JarvisColors.Danger, fontSize = 11.5.sp)
+                        Text(modalError, color = JarvisColors.CoralDanger, fontSize = 11.5.sp)
                     }
                 }
             },
