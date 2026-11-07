@@ -26,6 +26,8 @@ import {
 
 const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
 
+const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
 
@@ -129,7 +131,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     quotaUsedTokens: 200000,
     quotaLimitTokens: 200000
   }, TEST_ENCRYPTION_ENV);
-  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333" });
+  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333", AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" });
   assert.equal(chainAfterQuota[0].accountId, "acc-openai-primary");
 
   const removed = await removeUserAiAccount(kv, userId, "acc-openai-work");
