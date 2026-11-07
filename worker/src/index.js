@@ -1,7 +1,8 @@
 import { buildPersonalityPrompt } from "./personality.js";
+import { buildAdaptiveProfilePrompt, loadPersonalityProfile, savePersonalityProfile, deletePersonalityProfile } from "./adaptive-personality.js";
 import { handleDeviceRequest, deviceSessions } from "./device/router.js";
 import { executeDeviceIntent } from "./device/ai-tool-service.js";
-import { authenticateSupabaseUser, authenticateSupabaseUserDetailed, enforceAccountRateLimit, requestOriginAllowed, corsHeadersForRequest } from "./security/request-guard.js";
+import { authenticateSupabaseUser, authenticateSupabaseUserDetailed, bearerToken, enforceAccountRateLimit, requestOriginAllowed, corsHeadersForRequest } from "./security/request-guard.js";
 import { detectSpeechLanguage, fishVoiceConfig } from "./voice/fish-audio.js";
 import { createCommunicationHub } from "./voice/communication-hub.js";
 import { createKeyRotator } from "./ai/key-rotation.js";
@@ -190,6 +191,36 @@ async function handleTts(request, env) {
   }
 }
 
+async function handlePersonalityProfile(request, env) {
+  const auth = await authenticateSupabaseUserDetailed(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+  if (!env.DEVICE_REGISTRY) return json({ ok: false, error: "Personality profile storage is not configured." }, 503);
+  const key = "personality-profile:v1:" + auth.user.id;
+  try {
+    if (request.method === "GET") {
+      const profile = await loadPersonalityProfile(env.DEVICE_REGISTRY, auth.user.id);
+      return json({ ok: true, profile: profile || {
+        language: "auto", tone: "balanced", humor: "subtle",
+        verbosity: "balanced", addressStyle: "auto", empathy: "high"
+      } });
+    }
+    if (request.method === "PUT") {
+      let body = {};
+      try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json({ ok: false, error: "Profile must be a JSON object." }, 400);
+      const profile = await savePersonalityProfile(env.DEVICE_REGISTRY, auth.user.id, body);
+      return json({ ok: true, profile });
+    }
+    if (request.method === "DELETE") {
+      await deletePersonalityProfile(env.DEVICE_REGISTRY, auth.user.id);
+      return json({ ok: true, reset: true });
+    }
+    return json({ ok: false, error: "Method not allowed" }, 405);
+  } catch (error) {
+    return json({ ok: false, error: String(error?.message || error).slice(0, 200) }, 500);
+  }
+}
+
 async function handleChat(request, env) {
   let body = {};
   try { body = await request.json(); } catch (_) { return json({ ok: false, error: "Invalid JSON" }, 400); }
@@ -197,7 +228,16 @@ async function handleChat(request, env) {
   if (!prompt) return json({ ok: false, error: "message is required" }, 400);
   const clientRequestId = boundedString(body.clientRequestId || body.requestId || "", 64) || null;
   const history = normalizeConversationHistory(body.history || body.messages || []);
-  const system = buildPersonalityPrompt(prompt, history);
+  let profile = null;
+  if (bearerToken(request)) {
+    const auth = await authenticateSupabaseUserDetailed(request, env);
+    if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+    if (env.DEVICE_REGISTRY) {
+      profile = await loadPersonalityProfile(env.DEVICE_REGISTRY, auth.user.id);
+    }
+  }
+  const profilePrompt = profile ? buildAdaptiveProfilePrompt(profile) : "";
+  const system = [buildPersonalityPrompt(prompt, history), profilePrompt].filter(Boolean).join("\n\n");
   const messages = [
     { role: "system", content: system },
     ...history.map((item) => ({ role: item.role, content: item.content })),
@@ -300,6 +340,10 @@ export default {
       const deviceResponse = await handleDeviceRequest(request, env, url);
       if (deviceResponse) return deviceResponse;
     } catch (e) {}
+
+    if (url.pathname === "/v1/personality-profile" && ["GET", "PUT", "DELETE"].includes(request.method)) {
+      return handlePersonalityProfile(request, env);
+    }
 
     if (url.pathname === "/v1/chat" && request.method === "POST") {
       return handleChat(request, env);
