@@ -13,6 +13,8 @@ import {
 import { saveUserAiAccount, invokeProviderCompletion } from "../src/ai/multi-account-manager.js";
 import worker from "../src/index.js";
 
+const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../..");
 
@@ -240,7 +242,7 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
     email: "fajar@jarvis.id",
     apiKey: "sk-user-custom-account-key-9999",
     isDefault: true
-  });
+  }, TEST_ENCRYPTION_ENV);
   assert.equal(savedAcc.accountId, "acc-user-openai-custom");
 
   let usedAuthHeader = "";
@@ -271,7 +273,8 @@ test("Batch 8.5 Remediation 2 — Chat model/account routing & Fish Audio transp
       SUPABASE_ANON_KEY: "anon-key",
       OPENAI_API_KEY_1: "sk-server-default-key",
       FISH_API_KEY: "fish-secret-key",
-      DEVICE_REGISTRY: kv
+      DEVICE_REGISTRY: kv,
+      AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000"
     };
 
     const chatRes = await worker.fetch(
