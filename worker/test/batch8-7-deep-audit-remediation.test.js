@@ -48,6 +48,7 @@ test("Batch 8.7 — 1. /v1/chat routes simple & complex prompts using user-confi
     JARVIS_ENV: "production",
     DEVICE_REGISTRY: kv,
     DEVICE_TOKEN_SECRET: "b8-7-production-secret-key-minimum-32-bytes-long-998877",
+    AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_ANON_KEY: "sb_publishable_test_key"
   };
