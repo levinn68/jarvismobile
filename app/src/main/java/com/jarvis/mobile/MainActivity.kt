@@ -1124,19 +1124,20 @@ class MainActivity : ComponentActivity() {
                 for (attempt in 1..2) {
                     if (speechGeneration.get() != gen) return@Thread
                     val endpoint = URL("$workerBaseUrl/v1/tts")
-                    connection = endpoint.openConnection() as HttpURLConnection
-                    activeTtsConnection.set(connection)
-                    connection.requestMethod = "POST"
-                    connection.connectTimeout = 20000
-                    connection.readTimeout = 90000
-                    connection.doOutput = true
-                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    val activeConnection = endpoint.openConnection() as HttpURLConnection
+                    connection = activeConnection
+                    activeTtsConnection.set(activeConnection)
+                    activeConnection.requestMethod = "POST"
+                    activeConnection.connectTimeout = 20000
+                    activeConnection.readTimeout = 90000
+                    activeConnection.doOutput = true
+                    activeConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    activeConnection.setRequestProperty("Authorization", "Bearer $accessToken")
                     val body = JSONObject().put("text", cleanSpeech)
-                    connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                    val code = connection.responseCode
+                    activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                    val code = activeConnection.responseCode
                     if (code == 401 && attempt == 1 && supabaseClient.hasSession()) {
-                        connection.disconnect()
+                        activeConnection.disconnect()
                         connection = null
                         val refreshed = runCatching { supabaseClient.refreshSessionBlocking() }.getOrDefault("")
                         if (refreshed.isNotBlank()) {
@@ -1145,12 +1146,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (code !in 200..299) {
-                        val detail = connection.errorStream?.let { stream ->
+                        val detail = activeConnection.errorStream?.let { stream ->
                             BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
                         }.orEmpty()
                         throw IllegalStateException("Fish Audio HTTP $code: $detail")
                     }
-                    resolvedAudio = JarvisStabilityGuard.readBoundedBytes(connection.inputStream, JarvisStabilityGuard.MAX_TTS_AUDIO_BYTES)
+                    resolvedAudio = JarvisStabilityGuard.readBoundedBytes(activeConnection.inputStream, JarvisStabilityGuard.MAX_TTS_AUDIO_BYTES)
                     break
                 }
                 if (speechGeneration.get() != gen) return@Thread
