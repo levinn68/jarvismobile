@@ -231,6 +231,7 @@ test("Batch 8.6 — 3. Worker AI Barrel Exports & End-to-End Flow Validation (Pr
     JARVIS_ENV: "development",
     DEVICE_REGISTRY: kv,
     DEVICE_TOKEN_SECRET: "b8-6-validation-secret-key-minimum-32-bytes-long-123456",
+    AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000",
     SUPABASE_URL: "https://example.supabase.co",
     SUPABASE_ANON_KEY: "sb_publishable_test_key"
   };
