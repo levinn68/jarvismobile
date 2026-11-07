@@ -232,7 +232,9 @@ export async function executeMcpTool(envOrKv, userId, payload = {}) {
   const toolName = String(payload.toolName || "").trim();
   const approved = Boolean(payload.userApproved);
 
-  const server = servers.find((s) => s.id === serverId || s.tools.some((t) => t.name === toolName));
+  const server = serverId
+    ? servers.find((s) => s.id === serverId)
+    : servers.find((s) => Array.isArray(s.tools) && s.tools.some((t) => t.name === toolName));
   if (!server) {
     const err = new Error(`MCP server or tool not found: ${serverId || toolName}`);
     err.status = 404;
@@ -244,7 +246,7 @@ export async function executeMcpTool(envOrKv, userId, payload = {}) {
     throw err;
   }
 
-  const tool = server.tools.find((t) => t.name === toolName) || server.tools[0];
+  const tool = Array.isArray(server.tools) ? server.tools.find((t) => t.name === toolName) : null;
   if (!tool) {
     const err = new Error(`Tool '${toolName}' tidak ditemukan pada '${server.name}'.`);
     err.status = 404;

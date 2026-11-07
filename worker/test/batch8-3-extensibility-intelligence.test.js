@@ -85,6 +85,16 @@ test("Batch 8.3 — MCP Integration: JSON-RPC 2.0 envelope, 5 built-in servers, 
     (error) => error.status === 501 && error.code === "MCP_TRANSPORT_NOT_IMPLEMENTED"
   );
 
+  // A server ID must not silently fall back to a different tool when the requested tool is absent.
+  await assert.rejects(
+    () => executeMcpTool(kv, userId, {
+      serverId: "mcp_github",
+      toolName: "fs.write_file",
+      userApproved: true
+    }),
+    (error) => error.status === 404
+  );
+
   // HTTP JSON-RPC must call the remote server and return its actual response.
   let capturedRequest;
   const mcpEnv = {
