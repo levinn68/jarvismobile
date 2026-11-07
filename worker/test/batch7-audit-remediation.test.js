@@ -283,7 +283,7 @@ test("Batch 7 Audit CRIT-04, M-08, M-09, M-01, M-02, L-03, L-07, HIGH-08: KV ded
 
   // M-01 / S-01: corsHeadersForRequest does not reflect arbitrary Origin when JARVIS_ALLOWED_ORIGINS is unset
   const arbReq = new Request("https://worker.test/v1/chat", { headers: { Origin: "https://untrusted.example" } });
-  assert.equal(corsHeadersForRequest(arbReq, {})["Access-Control-Allow-Origin"], "*");
+  assert.equal(corsHeadersForRequest(arbReq, {})["Access-Control-Allow-Origin"], "null");
 
   // L-03: reasoning-engine.js executes and synthesizes
   const reasonRes = await runReasoningEngine({
