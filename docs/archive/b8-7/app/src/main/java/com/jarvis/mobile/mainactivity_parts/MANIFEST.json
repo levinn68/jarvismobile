@@ -1,0 +1,10 @@
+{
+  "format": "canonical-source",
+  "canonical_file": "app/src/main/java/com/jarvis/mobile/MainActivity.kt",
+  "raw_size": 242852,
+  "raw_sha256": "be3e027f7a457765e80bf2b91f9deb76090bcb252b907c4315c9961010393797",
+  "preview_part": {
+    "name": "MainActivity.part00.txt",
+    "size": 13416
+  }
+}

@@ -43,6 +43,17 @@ object JarvisColors {
     val Responding = Color(0xFF38D4FF)
     val Speaking = Color(0xFF5BFFC8)
     val Muted = Color(0xFF4A6578)
+
+    // B8 Semantic Color Aliases
+    val BackgroundDeep = Background
+    val SurfaceCard = PanelSolid
+    val SurfaceElevated = BackgroundElevated
+    val PanelBorder = CyanBorder
+    val CyanPrimary = Cyan
+    val TextSecondary = TextMuted
+    val EmeraldSuccess = Ok
+    val AmberWarning = Warn
+    val CoralDanger = Error
 }
 
 object JarvisShapes {
@@ -112,4 +123,49 @@ fun resolveVoiceOrbState(
     muted || !voiceEnabled -> VoiceOrbState.Muted
     recognitionActive -> VoiceOrbState.Listening
     else -> VoiceOrbState.Idle
+}
+
+
+/**
+ * J.A.R.V.I.S. B8.1 Design System Extensions — Typography, Motion Tokens,
+ * 5-Tab Bottom Navigation (`Beranda`, `Chat`, `Voice`, `Kolaborasi`, `Pengaturan`),
+ * and Intelligence Tier Badges (`CORE`, `PULSE`, `SPARK`, `APEX`).
+ */
+object JarvisTypography {
+    val HeroTitleSp = 22
+    val ScreenTitleSp = 18
+    val SectionTitleSp = 15
+    val BodySp = 13
+    val CaptionSp = 11
+    val MonoBadgeSp = 10
+}
+
+object JarvisMotion {
+    const val FastMs = 180
+    const val StandardMs = 280
+    const val EmphasisMs = 420
+    const val InitStepMs = 650
+    const val FAST_MS = FastMs
+    const val STANDARD_MS = StandardMs
+    const val EMPHASIS_MS = EmphasisMs
+}
+
+enum class JarvisB8NavTab(val route: String, val labelId: String) {
+    BERANDA("BERANDA", "Beranda"),
+    CHAT("CHAT", "Chat"),
+    VOICE("VOICE", "Voice"),
+    KOLABORASI("KOLABORASI", "Kolaborasi"),
+    PENGATURAN("PENGATURAN", "Pengaturan")
+}
+
+enum class JarvisIntelligenceTier(
+    val code: String,
+    val displayTitle: String,
+    val badgeSummary: String,
+    val defaultModelName: String
+) {
+    CORE("CORE", "JARVIS 1 — CORE", "Cepat & Efisien", "Llama 3.3 70B"),
+    PULSE("PULSE", "JARVIS 2 — PULSE", "Multimodal & Konteks Panjang", "Gemini 1.5 Pro"),
+    SPARK("SPARK", "JARVIS 3 — SPARK", "Penalaran & Arsitektur Kode", "DeepSeek-V3"),
+    APEX("APEX", "JARVIS 4 — APEX", "Flagship Multi-AI Orchestration", "GPT-4o")
 }

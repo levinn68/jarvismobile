@@ -14,6 +14,11 @@ export function clientIpFromRequest(request) {
   return first ? first.slice(0, 64) : "anonymous";
 }
 
+/**
+ * Detailed Supabase user verification that distinguishes between missing/invalid
+ * tokens (401), unconfigured environment (503), and upstream Supabase Auth
+ * timeouts/outages (504/502).
+ */
 export async function authenticateSupabaseUserDetailed(request, env, timeoutMs = 8000) {
   const token = bearerToken(request);
   if (!token) {
@@ -23,34 +28,50 @@ export async function authenticateSupabaseUserDetailed(request, env, timeoutMs =
     return { ok: false, status: 503, reason: "unconfigured", error: "Supabase authentication is not configured on the Worker." };
   }
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 8000));
   try {
-    const response = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    const response = await fetch(env.SUPABASE_URL.replace(/\/$/, "") + "/auth/v1/user", {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${token}`,
         apikey: env.SUPABASE_ANON_KEY,
+        Authorization: "Bearer " + token,
+        Accept: "application/json"
       },
-      signal: controller.signal,
+      signal: controller.signal
     });
     if (response.status === 401 || response.status === 403) {
       return { ok: false, status: 401, reason: "invalid_token", error: "Supabase session is invalid or expired." };
     }
     if (!response.ok) {
-      return { ok: false, status: response.status >= 500 ? 502 : response.status, reason: "upstream", error: `Supabase Auth returned ${response.status}` };
+      return {
+        ok: false,
+        status: response.status >= 500 ? 502 : 401,
+        reason: response.status >= 500 ? "upstream_error" : "invalid_token",
+        error: response.status >= 500 ? `Supabase Auth upstream HTTP ${response.status}` : "A valid Supabase session is required."
+      };
     }
     const user = await response.json().catch(() => null);
-    if (!user?.id) {
-      return { ok: false, status: 401, reason: "invalid_token", error: "Supabase session is invalid." };
+    if (!user || !/^[a-f0-9-]{36}$/i.test(String(user?.id || ""))) {
+      return { ok: false, status: 401, reason: "invalid_identity", error: "Supabase user identity is invalid." };
     }
-    return { ok: true, user, token };
+    return {
+      ok: true,
+      status: 200,
+      user: {
+        id: String(user.id).toLowerCase(),
+        email: typeof user.email === "string" ? user.email : null
+      }
+    };
   } catch (error) {
-    if (error?.name === "AbortError") {
-      return { ok: false, status: 504, reason: "timeout", error: "Supabase Auth timed out." };
-    }
-    return { ok: false, status: 502, reason: "network", error: String(error?.message || error).slice(0, 200) };
+    const isAbort = error?.name === "AbortError" || /abort|timed out|timeout/i.test(String(error?.message || error));
+    return {
+      ok: false,
+      status: isAbort ? 504 : 502,
+      reason: isAbort ? "supabase_timeout" : "supabase_unreachable",
+      error: isAbort ? "Supabase authentication timed out." : "Unable to reach Supabase authentication service."
+    };
   } finally {
-    clearTimeout(timer);
+    clearTimeout(timeout);
   }
 }
 
@@ -83,7 +104,7 @@ export function requestOriginAllowed(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  return allowed.length === 0 || allowed.includes(origin);
+  return allowed.includes(origin);
 }
 
 export function corsHeadersForRequest(request, env) {
@@ -92,10 +113,7 @@ export function corsHeadersForRequest(request, env) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
-  let allowOrigin = "*";
-  if (allowed.length > 0) {
-    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
-  }
+  const allowOrigin = origin && allowed.includes(origin) ? origin : "null";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -105,10 +123,21 @@ export function corsHeadersForRequest(request, env) {
   };
 }
 
+const PROMPT_INJECTION_PATTERNS = [
+  /ignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|system|developer)\s+instructions/i,
+  /abaikan\s+(?:semua\s+|seluruh\s+)?(?:instruksi|aturan)\s+(?:sebelumnya|sistem|di\s+atas)/i,
+  /(?:reveal|print|show|dump|leak|tampilkan|bocorkan)\s+(?:your\s+|the\s+)?(?:system\s+prompt|developer\s+prompt|api\s*key|secret|token|device_token_secret)/i,
+  /system\s*override|developer\s*mode\s*enabled|jailbreak/i
+];
+
 export function detectPromptInjectionSignals(text) {
-  const q = String(text || "").toLowerCase();
-  const signals = [];
-  if (/(ignore previous|system prompt|you are now|jailbreak|dan mode)/i.test(q)) signals.push("instruction_override");
-  if (/(api[_\s-]?key|secret|password|token)/i.test(q) && /(print|show|reveal|leak)/i.test(q)) signals.push("secret_exfil");
-  return { detected: signals.length > 0, signals };
+  const raw = String(text || "");
+  const matched = [];
+  for (const pattern of PROMPT_INJECTION_PATTERNS) {
+    if (pattern.test(raw)) matched.push(pattern.source);
+  }
+  return {
+    suspicious: matched.length > 0,
+    matchCount: matched.length
+  };
 }

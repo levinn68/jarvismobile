@@ -97,7 +97,8 @@ export async function redeemPairingSession({
   deviceInput,
   saveDevice,
   issueDeviceToken,
-  tokenSecret
+  tokenSecret,
+  nowMs = Date.now()
 }) {
   if (!kv) throw new Error("DEVICE_REGISTRY KV binding is required for pairing sessions");
   const normalized = extractPairingCode(code);
@@ -114,6 +115,15 @@ export async function redeemPairingSession({
     session = JSON.parse(raw);
   } catch (_) {
     throw new Error("Pairing session is corrupt");
+  }
+
+  if (session.expiresAt) {
+    const expiresMs = Date.parse(session.expiresAt);
+    if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+      session.status = "expired";
+      await kv.put(key, JSON.stringify(session), { expirationTtl: 60 });
+      throw new Error("Pairing code is invalid or expired");
+    }
   }
 
   if (session.status !== "pending") {
@@ -151,11 +161,13 @@ export async function redeemPairingSession({
       : ["apps.list", "apps.launch", "system.read", "files.read"]
   });
 
-  const token = await issueDeviceToken(device.deviceId, tokenSecret);
+  const token = await issueDeviceToken(device.deviceId, tokenSecret, 2592000, {
+    ...(typeof device?.tokenVersion === "number" ? { tv: device.tokenVersion } : {})
+  });
 
   // One-time use: mark redeemed and shrink TTL.
   session.status = "redeemed";
-  session.redeemedAt = new Date().toISOString();
+  session.redeemedAt = new Date(nowMs).toISOString();
   session.redeemedDeviceId = device.deviceId;
   await kv.put(key, JSON.stringify(session), { expirationTtl: 60 });
 
@@ -168,7 +180,7 @@ export async function redeemPairingSession({
   };
 }
 
-export async function getPairingSession({ kv, code, accountId }) {
+export async function getPairingSession({ kv, code, accountId, nowMs = Date.now() }) {
   if (!kv) throw new Error("DEVICE_REGISTRY KV binding is required");
   const normalized = extractPairingCode(code);
   const raw = await kv.get(sessionKey(normalized));
@@ -180,10 +192,43 @@ export async function getPairingSession({ kv, code, accountId }) {
     return null;
   }
   if (accountId && session.accountId !== accountId) return null;
+  const expired = session.expiresAt && Date.parse(session.expiresAt) <= nowMs;
+  return {
+    code: session.code,
+    status: expired && session.status === "pending" ? "expired" : session.status,
+    expiresAt: session.expiresAt,
+    redeemedDeviceId: session.redeemedDeviceId || null
+  };
+}
+
+export async function cancelPairingSession({ kv, code, accountId, nowMs = Date.now() }) {
+  if (!kv) throw new Error("DEVICE_REGISTRY KV binding is required");
+  const normalized = extractPairingCode(code);
+  if (!/^[A-Z0-9]{8}$/.test(normalized)) {
+    throw new Error("Invalid pairing code format");
+  }
+  const key = sessionKey(normalized);
+  const raw = await kv.get(key);
+  if (!raw) return null;
+  let session;
+  try {
+    session = JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+  if (accountId && session.accountId !== accountId) {
+    const err = new Error("Pairing session belongs to another account");
+    err.status = 403;
+    throw err;
+  }
+  if (session.status === "pending") {
+    session.status = "cancelled";
+    session.cancelledAt = new Date(nowMs).toISOString();
+    await kv.put(key, JSON.stringify(session), { expirationTtl: 60 });
+  }
   return {
     code: session.code,
     status: session.status,
-    expiresAt: session.expiresAt,
-    redeemedDeviceId: session.redeemedDeviceId || null
+    cancelledAt: session.cancelledAt || null
   };
 }

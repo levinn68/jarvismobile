@@ -3,8 +3,8 @@
 create or replace function public.jarvis_touch_conversation_updated_at()
 returns trigger
 language plpgsql
-security definer
-set search_path = public
+security invoker
+set search_path = pg_catalog, public
 as $$
 begin
   if tg_table_name = 'jarvis_messages' then

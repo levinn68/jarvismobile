@@ -1,6 +1,6 @@
 import { webCrypto } from "../utils.js";
 
-export function createTaskOrchestrator({ handlers = {}, authorize = async () => ({ allowed: true }), emit = () => {} } = {}) {
+export function createTaskOrchestrator({ handlers = {}, authorize = async () => ({ allowed: false, reason: "Task authorization is not configured." }), emit = () => {} } = {}) {
   return {
     async run(task, context = {}) {
       const type = String(task?.type || "");

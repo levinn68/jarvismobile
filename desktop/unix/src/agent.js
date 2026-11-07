@@ -1,26 +1,85 @@
 import os from "node:os";
 import fs from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { loadCredentials, saveCredentials, credentialPath } from "./credentials.js";
+import {
+  loadCredentials,
+  saveCredentials,
+  clearCredentials,
+  credentialPath,
+  redactToken
+} from "./credentials.js";
 
 const API = (process.env.JARVIS_API_BASE_URL || "https://jarvis-api.alvinorasya1304.workers.dev").replace(/\/+$/, "");
 let DEVICE_ID = process.env.JARVIS_DEVICE_ID || "";
 let DEVICE_TOKEN = process.env.JARVIS_DEVICE_TOKEN || "";
+let consecutiveFailures = 0;
+let lifecycleState = "stopped";
+let pollInFlight = false;
+let shutdownRequested = false;
+let activePollTimer = null;
+let activeAbortController = null;
+
 const POLL_MS = Math.max(5000, Number(process.env.JARVIS_POLL_INTERVAL_MS || 15000));
-const MAX_FILE_BYTES = 64 * 1024;
-const TEXT_EXTENSIONS = new Set([".txt", ".md", ".json", ".csv", ".xml", ".yaml", ".yml", ".log", ".ini", ".html", ".css", ".js", ".mjs", ".ts", ".kt", ".java", ".py"]);
-const appIndex = new Map();
-const pendingAcknowledgements = new Map();
-const pendingAcknowledgementSavedAt = new Map();
-const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
-const RESULT_CACHE_LIMIT = 500;
+export const MAX_FILE_BYTES = 60 * 1024; // 60 KB content limit keeps JSON ACK payload under 64 KB
 export const COMMAND_TTL_MS = 5 * 60 * 1000;
 export const MAX_FUTURE_SKEW_MS = 60 * 1000;
-const resultCachePath = () => path.join(path.dirname(credentialPath()), "command-results.json");
-let consecutiveFailures = 0;
+const RESULT_CACHE_TTL_MS = 15 * 60 * 1000;
+const RESULT_CACHE_LIMIT = 500;
+const UUID_REGEX = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+export const TEXT_EXTENSIONS = new Set([
+  ".txt", ".md", ".markdown", ".json", ".csv", ".tsv", ".xml", ".yaml", ".yml",
+  ".log", ".ini", ".cfg", ".conf", ".toml", ".properties", ".html", ".htm",
+  ".css", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".kt", ".kts",
+  ".java", ".py", ".rb", ".go", ".rs", ".c", ".cpp", ".h", ".hpp", ".cs",
+  ".sql", ".sh", ".zsh", ".bash", ".gradle", ".plist"
+]);
+
+const TEXT_BASENAMES = new Set([
+  "readme", "license", "makefile", "dockerfile", ".gitignore", ".editorconfig"
+]);
+
+const appIndex = new Map();
+const bundleIndex = new Map();
+const pendingAcknowledgements = new Map();
+const pendingAcknowledgementSavedAt = new Map();
+
+export const resultCachePath = (options = {}) =>
+  path.join(path.dirname(credentialPath(options)), "command-results.json");
+
+export const revokedStatePath = (options = {}) =>
+  path.join(path.dirname(credentialPath(options)), "revoked-state.json");
+
+export function getLifecycleState() {
+  return lifecycleState;
+}
+
+export function setRuntimeIdentity({ deviceId = "", token = "" } = {}) {
+  DEVICE_ID = String(deviceId || "");
+  DEVICE_TOKEN = String(token || "");
+}
+
+export function sanitizeChildEnv(baseEnv = process.env) {
+  const clean = {};
+  for (const [k, v] of Object.entries(baseEnv || {})) {
+    if (/^JARVIS_.*(TOKEN|SECRET|KEY|CODE)/i.test(k)) continue;
+    if (/^(DEVICE_TOKEN_SECRET|DEVICE_ENROLLMENT_SECRET|SUPABASE_)/i.test(k)) continue;
+    if (/^(AWS_|AZURE_|GOOGLE_|GCP_|GITHUB_|GH_TOKEN|OPENAI_|ANTHROPIC_|GEMINI_|DEEPSEEK_|GROQ_|OPENROUTER_|FISH_|SERPAPI_|NPM_TOKEN|SSH_|PRIVATE_KEY)/i.test(k)) continue;
+    clean[k] = v;
+  }
+  return clean;
+}
+
+export function platformName(options = {}) {
+  const p = options.platformOverride || process.platform;
+  if (p === "darwin" || p === "macos") return "macos";
+  if (p === "linux") return "linux";
+  throw new Error("This connector supports macOS and Linux only.");
+}
 
 export function extractPairingCode(rawInput) {
   const raw = String(rawInput || "").trim();
@@ -50,187 +109,470 @@ export function isResultCacheFresh(savedAt, now = Date.now()) {
   return Number.isFinite(savedAt) && now - savedAt >= 0 && now - savedAt < RESULT_CACHE_TTL_MS;
 }
 
-export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
-  const valid = [...results.entries()].filter(([id]) => isResultCacheFresh(savedAtById.get(id), now)).slice(-RESULT_CACHE_LIMIT);
-  return Object.fromEntries(valid.map(([id, result]) => [id, { savedAt: savedAtById.get(id), result }]));
+function sanitizeCachedResult(result) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return null;
+  try {
+    const redacted = redactToken(JSON.stringify(result));
+    if (redacted.length > 73728) {
+      return { ok: Boolean(result.ok), truncated: true, error: "Cached result exceeded size limit" };
+    }
+    return JSON.parse(redacted);
+  } catch {
+    return null;
+  }
 }
 
-async function loadResultCache() {
+export function buildResultCachePayload(results, savedAtById, now = Date.now()) {
+  const valid = [...results.entries()]
+    .filter(([id, res]) => {
+      if (!UUID_REGEX.test(String(id || ""))) return false;
+      return isResultCacheFresh(savedAtById.get(id), now) && sanitizeCachedResult(res) !== null;
+    })
+    .slice(-RESULT_CACHE_LIMIT);
+  return Object.fromEntries(
+    valid.map(([id, result]) => [
+      id,
+      { savedAt: savedAtById.get(id), result: sanitizeCachedResult(result) }
+    ])
+  );
+}
+
+export async function loadResultCache(options = {}) {
+  pendingAcknowledgements.clear();
+  pendingAcknowledgementSavedAt.clear();
   try {
-    const raw = JSON.parse(await fs.readFile(resultCachePath(), "utf8"));
+    const raw = JSON.parse(await fs.readFile(resultCachePath(options), "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
     const now = Date.now();
-    for (const [id, entry] of Object.entries(raw || {})) {
-      if (entry && isResultCacheFresh(entry.savedAt, now) && entry.result && typeof entry.result === "object") {
-        pendingAcknowledgements.set(id, entry.result);
+    for (const [id, entry] of Object.entries(raw)) {
+      if (!UUID_REGEX.test(id)) continue;
+      const sanitized = sanitizeCachedResult(entry?.result);
+      if (entry && isResultCacheFresh(entry.savedAt, now) && sanitized) {
+        pendingAcknowledgements.set(id, sanitized);
         pendingAcknowledgementSavedAt.set(id, entry.savedAt);
       }
     }
-  } catch { /* Missing or invalid cache is treated as empty. */ }
+  } catch {
+    // Missing or invalid cache is treated as empty.
+  }
 }
 
-async function persistResultCache() {
+export async function persistResultCache(options = {}) {
   const payload = buildResultCachePayload(pendingAcknowledgements, pendingAcknowledgementSavedAt);
-  const file = resultCachePath();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const temporary = file + ".tmp";
+  const file = resultCachePath(options);
+  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const temporary = `${file}.${randomBytes(6).toString("hex")}.tmp`;
   await fs.writeFile(temporary, JSON.stringify(payload), { mode: 0o600 });
   await fs.rename(temporary, file);
 }
 
-function platformName() {
-  if (process.platform === "darwin") return "macos";
-  if (process.platform === "linux") return "linux";
-  throw new Error("This connector supports macOS and Linux only.");
+export async function clearResultCache(options = {}) {
+  pendingAcknowledgements.clear();
+  pendingAcknowledgementSavedAt.clear();
+  try {
+    await fs.unlink(resultCachePath(options));
+  } catch {}
 }
 
-async function apiRequest(method, endpoint, token, body) {
-  const response = await fetch(API + endpoint, {
-    method,
-    headers: { Authorization: "Bearer " + token, Accept: "application/json", ...(body ? { "Content-Type": "application/json" } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-    signal: AbortSignal.timeout(15000)
-  });
-  const text = await response.text();
-  let result;
-  try { result = text ? JSON.parse(text) : {}; }
-  catch { throw new Error("JARVIS API returned invalid JSON (HTTP " + response.status + ")"); }
-  if (!response.ok) {
-    const err = new Error("JARVIS API HTTP " + response.status + ": " + (result.error || "Request failed"));
-    err.status = response.status;
-    throw err;
+export function computeBackoffMs(attempt, baseMs = 500, maxMs = 15000, randomFn = Math.random) {
+  const exp = Math.min(maxMs, baseMs * Math.pow(2, Math.max(0, attempt - 1)));
+  const jitter = Math.floor(Math.max(0, Math.min(1, randomFn())) * Math.max(1, Math.floor(exp * 0.25)));
+  return Math.min(maxMs, exp + jitter);
+}
+
+function isRetryableStatus(status) {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
+}
+
+export async function apiRequest(method, endpoint, token, body, options = {}) {
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const baseUrl = (options.baseUrl || API).replace(/\/+$/, "");
+  const maxRetries = Number.isInteger(options.maxRetries) ? options.maxRetries : 3;
+  const timeoutMs = Number(options.timeoutMs) || 15000;
+  const baseBackoffMs = options.baseBackoffMs !== undefined ? Number(options.baseBackoffMs) : 300;
+
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    activeAbortController = controller;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const headers = {
+        Accept: "application/json",
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+        ...(body ? { "Content-Type": "application/json" } : {})
+      };
+      const response = await fetchImpl(baseUrl + endpoint, {
+        method,
+        headers,
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: controller.signal
+      });
+      const text = await response.text();
+      let result;
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch {
+        const parseErr = new Error("JARVIS API returned invalid JSON (HTTP " + response.status + ")");
+        parseErr.status = response.status >= 500 ? response.status : 502;
+        throw parseErr;
+      }
+      if (!response.ok) {
+        const err = new Error(
+          redactToken("JARVIS API HTTP " + response.status + ": " + (result.error || "Request failed"))
+        );
+        err.status = response.status;
+        err.retryAfter = Number(response.headers?.get?.("Retry-After") || result.retryAfter || 0);
+        throw err;
+      }
+      return result;
+    } catch (error) {
+      lastError = error;
+      const status = Number(error?.status || 0);
+      if (status && !isRetryableStatus(status)) {
+        throw error;
+      }
+      if (attempt >= maxRetries || shutdownRequested) {
+        throw error;
+      }
+      const retryDelay =
+        error?.retryAfter > 0
+          ? Math.min(error.retryAfter * 1000, 15000)
+          : computeBackoffMs(attempt, baseBackoffMs, 10000);
+      if (retryDelay > 0) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    } finally {
+      clearTimeout(timer);
+      if (activeAbortController === controller) activeAbortController = null;
+    }
   }
-  return result;
+  throw lastError || new Error("API request failed");
 }
 
-async function pair(cliArgCode = "") {
-  const pairingCode = extractPairingCode(process.env.JARVIS_PAIRING_CODE || cliArgCode || "");
-  const accountToken = (process.env.JARVIS_ACCOUNT_TOKEN || "").trim();
-  const platform = platformName();
-  const deviceId = platform + "-" + randomUUID();
+export async function pair(cliArgCode = "", options = {}) {
+  lifecycleState = "pairing";
+  const pairingCode = extractPairingCode(
+    options.pairingCode ?? process.env.JARVIS_PAIRING_CODE ?? cliArgCode ?? ""
+  );
+  const accountToken = String(options.accountToken ?? process.env.JARVIS_ACCOUNT_TOKEN ?? "").trim();
+  const platform = platformName(options);
+  const existingCreds = await loadCredentials(options).catch(() => null);
+  const deviceId = options.deviceId || existingCreds?.deviceId || platform + "-" + randomUUID();
+  const payload = {
+    deviceId,
+    platform,
+    name: String(options.deviceName || os.hostname()).slice(0, 80),
+    osVersion: os.release(),
+    appVersion: "1.1.0",
+    capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
+  };
 
   let result;
   if (pairingCode) {
     if (!/^[A-Za-z0-9]{8}$/.test(pairingCode)) {
       throw new Error("JARVIS_PAIRING_CODE must be an 8-character alphanumeric code from Android.");
     }
-    result = await fetch(API + "/v1/pairing/redeem", {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: pairingCode,
-        deviceId,
-        platform,
-        name: os.hostname(),
-        osVersion: os.release(),
-        appVersion: "1.0.0",
-        capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
-      }),
-      signal: AbortSignal.timeout(15000)
-    }).then(async (response) => {
-      const text = await response.text();
-      const parsed = text ? JSON.parse(text) : {};
-      if (!response.ok) throw new Error(parsed.error || ("HTTP " + response.status));
-      return parsed;
-    });
+    result = await apiRequest(
+      "POST",
+      "/v1/pairing/redeem",
+      "",
+      { code: pairingCode, ...payload },
+      options
+    );
   } else if (accountToken) {
-    result = await apiRequest("POST", "/v1/devices/enroll", accountToken, {
-      deviceId, platform, name: os.hostname(), osVersion: os.release(), appVersion: "1.0.0",
-      capabilities: ["apps.list", "apps.launch", "system.read", "files.read"]
-    });
+    if (accountToken.length < 16 || /\s/.test(accountToken)) {
+      throw new Error("JARVIS_ACCOUNT_TOKEN is invalid or malformed.");
+    }
+    result = await apiRequest("POST", "/v1/devices/enroll", accountToken, payload, options);
   } else {
     throw new Error("Set JARVIS_PAIRING_CODE (from Android QR) or JARVIS_ACCOUNT_TOKEN before pairing.");
   }
 
-  if (!result.token) throw new Error("Pairing response did not include a device token.");
+  if (!result?.token || typeof result.token !== "string") {
+    throw new Error("Pairing response did not include a valid device token.");
+  }
   const enrolledId = result.device?.deviceId || deviceId;
-  const file = await saveCredentials({ deviceId: enrolledId, token: result.token, platform });
+  const accountId = result.accountId || result.device?.accountId || null;
+  const file = await saveCredentials(
+    { deviceId: enrolledId, token: result.token, platform, accountId },
+    options
+  );
+
+  // Immediately clear one-time pairing secrets from process environment memory
+  delete process.env.JARVIS_ACCOUNT_TOKEN;
+  delete process.env.JARVIS_PAIRING_CODE;
+
   DEVICE_ID = enrolledId;
   DEVICE_TOKEN = result.token;
-  process.stdout.write("Pairing succeeded.\nDevice ID: " + enrolledId + "\n");
-  process.stdout.write("Credentials saved to: " + file + "\n");
-  process.stdout.write("Device token was also printed once below — store offline if needed:\n" + result.token + "\n");
-  process.stdout.write("Run: npm start\n");
+  lifecycleState = "connected";
+
+  if (!options.silent) {
+    process.stdout.write("Pairing succeeded.\nDevice ID: " + enrolledId + "\n");
+    process.stdout.write("Credentials securely stored via: " + file + "\n");
+    process.stdout.write("Run: npm start\n");
+  }
+  return { ok: true, deviceId: enrolledId, accountId, credentialsFile: file };
 }
 
-function allowedRoots() {
-  return (process.env.JARVIS_ALLOWED_DIRS || "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean);
+function allowedRoots(options = {}) {
+  const raw = options.allowedDirs ?? process.env.JARVIS_ALLOWED_DIRS ?? "";
+  return String(raw)
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
-async function resolvedRoots() {
+export async function resolvedRoots(options = {}) {
   const roots = [];
-  for (const entry of allowedRoots()) {
+  for (const entry of allowedRoots(options)) {
     try {
       const real = await fs.realpath(path.resolve(entry));
       if ((await fs.stat(real)).isDirectory()) roots.push(real);
     } catch (error) {
-      process.stderr.write("Ignoring unavailable approved folder: " + entry + " (" + error.message + ")\n");
+      if (!options.silent) {
+        process.stderr.write("Ignoring unavailable approved folder: " + entry + " (" + error.message + ")\n");
+      }
     }
   }
   return roots.slice(0, 20);
 }
 
-export function isInside(root, target) {
-  const relative = path.relative(root, target);
-  return relative === "" || (!relative.startsWith(".." + path.sep) && relative !== ".." && !path.isAbsolute(relative));
+export function normalizedPosixPath(value, caseInsensitive = false) {
+  let resolved = path.resolve(String(value ?? "").normalize("NFC"));
+  if (caseInsensitive) {
+    resolved = resolved.toLocaleLowerCase("en-US");
+  }
+  return resolved;
+}
+
+export function isInside(root, target, options = {}) {
+  const caseInsensitive = Boolean(options.caseInsensitive);
+  const safeRoot = normalizedPosixPath(root, caseInsensitive);
+  const safeTargetPath = normalizedPosixPath(target, caseInsensitive);
+  const relative = path.relative(safeRoot, safeTargetPath);
+  return (
+    relative === "" ||
+    (!relative.startsWith(".." + path.sep) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative))
+  );
+}
+
+function validatePosixRelativePath(relativePath) {
+  if (typeof relativePath !== "string") {
+    throw new Error("A relative path inside an approved folder is required.");
+  }
+  if (/[\x00-\x1f\x7f]/.test(relativePath)) {
+    throw new Error("Path contains invalid control characters.");
+  }
+  // Normalize Unicode NFC so macOS APFS/HFS+ NFD/NFC edge cases are canonicalized
+  const normalized = relativePath.normalize("NFC");
+  if (path.isAbsolute(normalized) || normalized.startsWith("~")) {
+    throw new Error("A relative path inside an approved folder is required.");
+  }
+  const segments = normalized.split("/").filter(Boolean);
+  for (const seg of segments) {
+    if (seg === "..") {
+      throw new Error("Path escapes the approved folder.");
+    }
+  }
+  return normalized;
 }
 
 export async function safeTarget(root, relativePath, mustExist = true) {
-  if (typeof relativePath !== "string" || relativePath.includes("\0") || path.isAbsolute(relativePath)) {
-    throw new Error("A relative path inside an approved folder is required.");
-  }
+  const cleanRel = validatePosixRelativePath(relativePath);
   const canonicalRoot = mustExist ? await fs.realpath(root) : path.resolve(root);
-  const target = path.resolve(canonicalRoot, relativePath || ".");
-  if (!isInside(canonicalRoot, target)) throw new Error("Path escapes the approved folder.");
-  const real = mustExist ? await fs.realpath(target) : target;
-  if (!isInside(canonicalRoot, real)) throw new Error("Resolved path escapes the approved folder.");
+  const target = path.resolve(canonicalRoot, cleanRel || ".");
+  if (!isInside(canonicalRoot, target)) {
+    throw new Error("Path escapes the approved folder.");
+  }
+
+  // Stepwise component lstat + realpath check to catch intermediate symlink escapes
+  // and support Unicode NFC/NFD equivalence across macOS APFS/HFS+ and Linux filesystems.
+  const segments = cleanRel.split("/").filter((s) => s && s !== ".");
+  let current = canonicalRoot;
+  for (let i = 0; i < segments.length; i++) {
+    let seg = segments[i];
+    let candidate = path.join(current, seg);
+    let lst;
+    try {
+      lst = await fs.lstat(candidate);
+    } catch (err) {
+      if (err && err.code === "ENOENT") {
+        const entries = await fs.readdir(current).catch(() => []);
+        const match = entries.find((e) => e.normalize("NFC") === seg.normalize("NFC"));
+        if (match) {
+          candidate = path.join(current, match);
+          lst = await fs.lstat(candidate);
+        }
+      }
+      if (!lst) {
+        if (mustExist) throw err;
+        current = candidate;
+        continue;
+      }
+    }
+    if (lst.isSymbolicLink()) {
+      const resolvedLink = await fs.realpath(candidate);
+      if (!isInside(canonicalRoot, resolvedLink)) {
+        throw new Error("Resolved path escapes the approved folder.");
+      }
+    }
+    current = candidate;
+  }
+
+  const real = mustExist ? await fs.realpath(current) : current;
+  if (!isInside(canonicalRoot, real)) {
+    throw new Error("Resolved path escapes the approved folder.");
+  }
   return real;
 }
 
-async function walkFiles(directory, depth, output, limit = 1000) {
+export function isBinaryBuffer(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length === 0) return false;
+  const sampleLen = Math.min(buffer.length, 8192);
+  let suspiciousControlBytes = 0;
+  for (let i = 0; i < sampleLen; i++) {
+    const byte = buffer[i];
+    if (byte === 0x00) return true;
+    if (byte < 0x07 || (byte > 0x0e && byte < 0x20 && byte !== 0x1b)) {
+      suspiciousControlBytes += 1;
+    }
+  }
+  return suspiciousControlBytes / sampleLen > 0.1;
+}
+
+function isSupportedTextFile(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (TEXT_EXTENSIONS.has(ext)) return true;
+  const base = path.basename(filePath).toLowerCase();
+  return TEXT_BASENAMES.has(base);
+}
+
+async function walkFiles(canonicalRoot, directory, depth, output, limit = 1000, visited = new Set()) {
   if (depth < 0 || output.length >= limit) return;
+  let realDir;
+  try {
+    realDir = await fs.realpath(directory);
+  } catch {
+    return;
+  }
+  if (!isInside(canonicalRoot, realDir)) return;
+  if (visited.has(realDir)) return;
+  visited.add(realDir);
+
   let entries;
-  try { entries = await fs.readdir(directory, { withFileTypes: true }); } catch { return; }
+  try {
+    entries = await fs.readdir(realDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+
   for (const entry of entries) {
     if (output.length >= limit) break;
     if (entry.name.startsWith(".") && entry.name !== ".well-known") continue;
-    const full = path.join(directory, entry.name);
-    if (entry.isFile()) output.push(full);
-    else if (entry.isDirectory() && depth > 0) await walkFiles(full, depth - 1, output, limit);
+    const full = path.join(realDir, entry.name);
+    try {
+      const lst = await fs.lstat(full);
+      const realFull = lst.isSymbolicLink() ? await fs.realpath(full) : full;
+      if (!isInside(canonicalRoot, realFull)) continue;
+      const st = await fs.stat(realFull);
+      if (st.isFile()) {
+        output.push(realFull);
+      } else if (st.isDirectory() && depth > 0) {
+        await walkFiles(canonicalRoot, realFull, depth - 1, output, limit, visited);
+      }
+    } catch {
+      continue;
+    }
   }
 }
 
-async function listFiles(params) {
-  const roots = await resolvedRoots();
-  if (!roots.length) return { ok: false, requiresConfiguration: true, error: "Configure JARVIS_ALLOWED_DIRS with folders the user explicitly approves." };
+export async function listFiles(params = {}, options = {}) {
+  const roots = await resolvedRoots(options);
+  if (!roots.length) {
+    return {
+      ok: false,
+      requiresConfiguration: true,
+      error: "Configure JARVIS_ALLOWED_DIRS with folders the user explicitly approves."
+    };
+  }
   const index = Number.isInteger(params.rootIndex) ? params.rootIndex : 0;
   const root = roots[index];
   if (!root) return { ok: false, error: "Invalid rootIndex. Available roots: " + roots.length };
-  const directory = await safeTarget(root, params.relativePath || "");
-  if (!(await fs.stat(directory)).isDirectory()) return { ok: false, error: "Selected path is not a folder." };
-  const entries = await fs.readdir(directory, { withFileTypes: true });
+  let directory;
+  try {
+    directory = await safeTarget(root, params.relativePath || "");
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+  const dirStat = await fs.stat(directory).catch(() => null);
+  if (!dirStat || !dirStat.isDirectory()) {
+    return { ok: false, error: "Selected path is not a folder." };
+  }
+  let entries;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (err) {
+    return { ok: false, error: "Permission denied or unable to read directory." };
+  }
   const items = [];
   for (const entry of entries.slice(0, 200)) {
     const full = path.join(directory, entry.name);
-    let info;
-    try { info = await fs.stat(full); } catch { continue; }
-    items.push({ name: entry.name, isDirectory: entry.isDirectory(), size: entry.isDirectory() ? null : info.size, lastModified: info.mtimeMs });
+    try {
+      const realFull = await fs.realpath(full);
+      if (!isInside(root, realFull)) continue;
+      const info = await fs.stat(realFull);
+      items.push({
+        name: entry.name,
+        isDirectory: info.isDirectory(),
+        size: info.isDirectory() ? null : info.size,
+        lastModified: info.mtimeMs
+      });
+    } catch {
+      continue;
+    }
   }
-  return { ok: true, rootIndex: index, relativePath: path.relative(root, directory), items, count: items.length };
+  return {
+    ok: true,
+    rootIndex: index,
+    relativePath: path.relative(root, directory),
+    items,
+    count: items.length
+  };
 }
 
-async function searchFiles(params) {
-  const roots = await resolvedRoots();
-  if (!roots.length) return { ok: false, requiresConfiguration: true, error: "Configure JARVIS_ALLOWED_DIRS with folders the user explicitly approves." };
-  const selected = Number.isInteger(params.rootIndex) ? [[roots[params.rootIndex], params.rootIndex]] : roots.map((root, index) => [root, index]);
+export async function searchFiles(params = {}, options = {}) {
+  const roots = await resolvedRoots(options);
+  if (!roots.length) {
+    return {
+      ok: false,
+      requiresConfiguration: true,
+      error: "Configure JARVIS_ALLOWED_DIRS with folders the user explicitly approves."
+    };
+  }
+  const query = String(params.query || "").trim().normalize("NFC").toLocaleLowerCase();
+  if (!query || query.length > 200) {
+    return { ok: false, error: "A valid search query (1-200 characters) is required." };
+  }
+  const selected = Number.isInteger(params.rootIndex)
+    ? [[roots[params.rootIndex], params.rootIndex]]
+    : roots.map((root, index) => [root, index]);
   if (selected.some(([root]) => !root)) return { ok: false, error: "Invalid rootIndex." };
-  const query = params.query.toLocaleLowerCase();
+
   const items = [];
   for (const [root, rootIndex] of selected) {
     const files = [];
-    await walkFiles(root, 4, files, 1000);
+    await walkFiles(root, root, 4, files, 1000);
     for (const full of files) {
-      if (path.basename(full).toLocaleLowerCase().includes(query)) {
-        items.push({ rootIndex, relativePath: path.relative(root, full), name: path.basename(full) });
+      const baseNormalized = path.basename(full).normalize("NFC").toLocaleLowerCase();
+      if (baseNormalized.includes(query)) {
+        items.push({
+          rootIndex,
+          relativePath: path.relative(root, full),
+          name: path.basename(full)
+        });
         if (items.length >= 100) break;
       }
     }
@@ -239,180 +581,707 @@ async function searchFiles(params) {
   return { ok: true, items, count: items.length, truncated: items.length >= 100 };
 }
 
-async function readFile(params) {
-  const roots = await resolvedRoots();
+export async function readFile(params = {}, options = {}) {
+  const roots = await resolvedRoots(options);
+  if (!roots.length) {
+    return {
+      ok: false,
+      requiresConfiguration: true,
+      error: "Configure JARVIS_ALLOWED_DIRS with folders the user explicitly approves."
+    };
+  }
+  if (!Number.isInteger(params.rootIndex)) {
+    return { ok: false, error: "Invalid rootIndex." };
+  }
   const root = roots[params.rootIndex];
   if (!root) return { ok: false, error: "Invalid rootIndex." };
-  const full = await safeTarget(root, params.relativePath);
-  const stat = await fs.stat(full);
-  if (!stat.isFile()) return { ok: false, error: "Selected path is not a file." };
-  if (!TEXT_EXTENSIONS.has(path.extname(full).toLowerCase())) return { ok: false, error: "This connector reads text-based files only." };
-  if (stat.size > MAX_FILE_BYTES) return { ok: false, error: "File exceeds the 64 KB read limit." };
-  const content = await fs.readFile(full, "utf8");
-  return { ok: true, name: path.basename(full), bytes: Buffer.byteLength(content), content };
-}
 
-async function listApplications() {
-  const platform = platformName();
-  const home = os.homedir();
-  const folders = platform === "macos"
-    ? ["/Applications", path.join(home, "Applications")]
-    : ["/usr/share/applications", "/usr/local/share/applications", path.join(home, ".local", "share", "applications")];
-  const output = [];
-  appIndex.clear();
-
-  async function visit(folder, depth) {
-    if (depth < 0 || output.length >= 500) return;
-    let entries;
-    try { entries = await fs.readdir(folder, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-      const full = path.join(folder, entry.name);
-      if (platform === "macos" && entry.isDirectory() && entry.name.endsWith(".app")) {
-        const appId = createHash("sha256").update(full).digest("base64url").slice(0, 24);
-        appIndex.set(appId, full);
-        output.push({ appId, name: entry.name.slice(0, -4) });
-      } else if (platform === "linux" && entry.isFile() && entry.name.endsWith(".desktop")) {
-        let data;
-        try { data = await fs.readFile(full, "utf8"); } catch { continue; }
-        const name = data.match(/^Name=(.+)$/m)?.[1]?.trim();
-        if (!name || /^NoDisplay=true$/m.test(data) || /^Hidden=true$/m.test(data)) continue;
-        const appId = createHash("sha256").update(full).digest("base64url").slice(0, 24);
-        appIndex.set(appId, full);
-        output.push({ appId, name });
-      } else if (platform === "macos" && entry.isDirectory() && depth > 0) {
-        await visit(full, depth - 1);
-      }
-      if (output.length >= 500) break;
-    }
+  let full;
+  try {
+    full = await safeTarget(root, params.relativePath);
+  } catch (err) {
+    return { ok: false, error: err.message };
   }
 
-  for (const folder of folders) await visit(folder, 2);
+  if (!isSupportedTextFile(full)) {
+    return { ok: false, error: "This connector reads text-based files only." };
+  }
+
+  let lstatBefore;
+  try {
+    lstatBefore = await fs.lstat(full);
+  } catch {
+    return { ok: false, error: "File not found." };
+  }
+  if (!lstatBefore.isFile() || lstatBefore.isSymbolicLink()) {
+    return { ok: false, error: "Selected path is not a regular file." };
+  }
+  if (lstatBefore.size > MAX_FILE_BYTES) {
+    return { ok: false, error: "File exceeds the 64 KB read limit." };
+  }
+
+  if (typeof options.beforeOpenHook === "function") {
+    await options.beforeOpenHook(full);
+  }
+
+  const openFlags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW || 0);
+  let handle;
+  try {
+    handle = await fs.open(full, openFlags);
+    const [statAfter, lstatAfter, realAfter] = await Promise.all([
+      handle.stat(),
+      fs.lstat(full),
+      fs.realpath(full)
+    ]);
+
+    if (
+      !statAfter.isFile() ||
+      !lstatAfter.isFile() ||
+      lstatAfter.isSymbolicLink() ||
+      !isInside(root, realAfter)
+    ) {
+      return { ok: false, error: "File changed or replaced during access (TOCTOU protection)." };
+    }
+    if (
+      lstatBefore.ino &&
+      statAfter.ino &&
+      (lstatBefore.ino !== statAfter.ino || lstatBefore.dev !== statAfter.dev)
+    ) {
+      return { ok: false, error: "File inode changed during access (TOCTOU protection)." };
+    }
+    if (statAfter.size > MAX_FILE_BYTES) {
+      return { ok: false, error: "File exceeds the 64 KB read limit." };
+    }
+
+    const buffer = Buffer.alloc(Math.min(statAfter.size || MAX_FILE_BYTES, MAX_FILE_BYTES + 1));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > MAX_FILE_BYTES) {
+      return { ok: false, error: "File exceeds the 64 KB read limit." };
+    }
+    const slice = buffer.subarray(0, bytesRead);
+    if (isBinaryBuffer(slice)) {
+      return { ok: false, error: "Binary files are not permitted; text files only." };
+    }
+    const content = slice.toString("utf8");
+    return {
+      ok: true,
+      name: path.basename(full),
+      bytes: Buffer.byteLength(content, "utf8"),
+      content
+    };
+  } catch (err) {
+    return { ok: false, error: redactToken(err.message || "Unable to read file") };
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+  }
+}
+
+function parseMacosInfoPlist(xmlText) {
+  if (typeof xmlText !== "string" || !xmlText.includes("<plist")) return {};
+  const extractKey = (keyName) => {
+    const regex = new RegExp(`<key>\\s*${keyName}\\s*</key>\\s*<string>([^<]+)</string>`, "i");
+    const match = xmlText.match(regex);
+    return match ? match[1].trim() : null;
+  };
+  const bundleId = extractKey("CFBundleIdentifier");
+  const displayName = extractKey("CFBundleDisplayName") || extractKey("CFBundleName");
+  return {
+    bundleId: bundleId && /^[A-Za-z0-9.-]{3,160}$/.test(bundleId) ? bundleId : null,
+    displayName: displayName || null
+  };
+}
+
+export function parseDesktopEntry(content, filename = "") {
+  if (typeof content !== "string") return null;
+  const lines = content.split(/\r?\n/);
+  let inDesktopEntry = false;
+  const fields = {};
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[") && line.endsWith("]")) {
+      inDesktopEntry = line === "[Desktop Entry]";
+      continue;
+    }
+    if (!inDesktopEntry) continue;
+    const eqIdx = line.indexOf("=");
+    if (eqIdx <= 0) continue;
+    const key = line.slice(0, eqIdx).trim();
+    const val = line.slice(eqIdx + 1).trim();
+    if (!(key in fields)) fields[key] = val;
+  }
+  if (!fields.Name) return null;
+  if (fields.Type && fields.Type !== "Application") return null;
+  if (/^true$/i.test(fields.NoDisplay || "") || /^true$/i.test(fields.Hidden || "")) return null;
+  if (!fields.Exec) return null;
+
+  const desktopId = filename.endsWith(".desktop") ? filename.slice(0, -8) : filename;
+  return {
+    name: fields.Name,
+    exec: fields.Exec,
+    desktopId: desktopId || null
+  };
+}
+
+function getApplicationFolders(platform, options = {}) {
+  if (Array.isArray(options.appDirs) && options.appDirs.length) {
+    return options.appDirs;
+  }
+  const envOverride =
+    platform === "macos"
+      ? process.env.JARVIS_MACOS_APP_DIRS
+      : process.env.JARVIS_LINUX_APP_DIRS;
+  if (envOverride) {
+    return envOverride.split(path.delimiter).map((s) => s.trim()).filter(Boolean);
+  }
+  const home = os.homedir();
+  return platform === "macos"
+    ? ["/Applications", "/System/Applications", "/System/Applications/Utilities", path.join(home, "Applications")]
+    : [
+        "/usr/share/applications",
+        "/usr/local/share/applications",
+        "/var/lib/flatpak/exports/share/applications",
+        "/var/lib/snapd/desktop/applications",
+        path.join(home, ".local", "share", "applications")
+      ];
+}
+
+export async function listApplications(options = {}) {
+  const platform = platformName(options);
+  const folders = getApplicationFolders(platform, options);
+  const output = [];
+  appIndex.clear();
+  bundleIndex.clear();
+
+  for (const folder of folders) {
+    let canonicalFolder;
+    try {
+      canonicalFolder = await fs.realpath(folder);
+    } catch {
+      continue;
+    }
+
+    async function visit(dir, depth) {
+      if (depth < 0 || output.length >= 500) return;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (output.length >= 500) break;
+        const full = path.join(dir, entry.name);
+        try {
+          const realFull = await fs.realpath(full);
+          if (!isInside(canonicalFolder, realFull)) continue;
+          const st = await fs.stat(realFull);
+
+          if (platform === "macos" && st.isDirectory() && entry.name.endsWith(".app")) {
+            const plistPath = path.join(realFull, "Contents", "Info.plist");
+            const plistRaw = await fs.readFile(plistPath, "utf8").catch(() => "");
+            const plistMeta = parseMacosInfoPlist(plistRaw);
+            const visibleName = entry.name.slice(0, -4);
+            const appId = createHash("sha256").update(realFull).digest("base64url").slice(0, 24);
+            const appEntry = {
+              appId,
+              name: visibleName,
+              bundleId: plistMeta.bundleId || undefined,
+              targetPath: realFull
+            };
+            appIndex.set(appId, appEntry);
+            if (plistMeta.bundleId) {
+              bundleIndex.set(plistMeta.bundleId.toLowerCase(), appEntry);
+            }
+            output.push({
+              appId,
+              name: visibleName,
+              ...(plistMeta.bundleId ? { bundleId: plistMeta.bundleId } : {})
+            });
+          } else if (platform === "linux" && st.isFile() && entry.name.endsWith(".desktop")) {
+            const data = await fs.readFile(realFull, "utf8").catch(() => "");
+            const parsed = parseDesktopEntry(data, entry.name);
+            if (!parsed) continue;
+            const appId = createHash("sha256").update(realFull).digest("base64url").slice(0, 24);
+            const appEntry = {
+              appId,
+              name: parsed.name,
+              desktopId: parsed.desktopId,
+              targetPath: realFull
+            };
+            appIndex.set(appId, appEntry);
+            if (parsed.desktopId) {
+              bundleIndex.set(parsed.desktopId.toLowerCase(), appEntry);
+              bundleIndex.set((parsed.desktopId + ".desktop").toLowerCase(), appEntry);
+            }
+            output.push({
+              appId,
+              name: parsed.name,
+              ...(parsed.desktopId ? { desktopId: parsed.desktopId } : {})
+            });
+          } else if (st.isDirectory() && depth > 0 && !entry.name.endsWith(".app")) {
+            await visit(realFull, depth - 1);
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    await visit(canonicalFolder, 2);
+  }
+
   return output.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-async function launchApp(appId) {
-  const apps = await listApplications();
-  if (!apps.some((app) => app.appId === appId)) return { ok: false, error: "App is not in the current application allowlist. Refresh apps.list first." };
-  const target = appIndex.get(appId);
-  const platform = platformName();
+export async function launchApp(appId, options = {}) {
+  const cleanId = String(appId || "").trim();
+  if (!cleanId || cleanId.length > 200 || /[^A-Za-z0-9_.-]/.test(cleanId) || cleanId.includes("..")) {
+    return { ok: false, error: "Invalid application identifier." };
+  }
+
+  const platform = platformName(options);
+  await listApplications(options);
+
+  const entry = appIndex.get(cleanId) || bundleIndex.get(cleanId.toLowerCase());
+  if (!entry) {
+    return {
+      ok: false,
+      error: "App is not in the current application allowlist. Refresh apps.list first."
+    };
+  }
+
+  const spawnImpl = options.spawnImpl || spawn;
   const command = platform === "macos" ? "open" : "gio";
-  const args = platform === "macos" ? ["-a", target] : ["launch", target];
-  const child = spawn(command, args, { stdio: "ignore" });
-  child.on("error", () => {});
-  child.unref();
-  return { ok: true, launchedAppId: appId };
+  const args =
+    platform === "macos"
+      ? entry.bundleId && cleanId.toLowerCase() === entry.bundleId.toLowerCase()
+        ? ["-b", entry.bundleId]
+        : ["-a", entry.targetPath]
+      : ["launch", entry.targetPath];
+
+  return new Promise((resolve) => {
+    let settled = false;
+    try {
+      const child = spawnImpl(command, args, {
+        shell: false,
+        stdio: "ignore",
+        env: sanitizeChildEnv(process.env)
+      });
+      child.on("error", (err) => {
+        if (!settled) {
+          settled = true;
+          resolve({ ok: false, error: redactToken("Failed to launch application: " + err.message) });
+        }
+      });
+      setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { child.unref?.(); } catch {}
+          resolve({
+            ok: true,
+            launchedAppId: entry.appId,
+            name: entry.name,
+            ...(entry.bundleId ? { bundleId: entry.bundleId } : {}),
+            ...(entry.desktopId ? { desktopId: entry.desktopId } : {})
+          });
+        }
+      }, 60);
+    } catch (err) {
+      if (!settled) {
+        settled = true;
+        resolve({ ok: false, error: redactToken("Failed to launch application: " + err.message) });
+      }
+    }
+  });
 }
 
-async function launchAppByName(appName) {
-  const wanted = String(appName || "").trim().toLocaleLowerCase();
-  if (!wanted || wanted.length > 100) return { ok: false, error: "A valid app name is required." };
-  const apps = await listApplications();
-  const matches = apps.filter((app) => app.name.trim().toLocaleLowerCase() === wanted);
+export async function launchAppByName(appName, options = {}) {
+  const wanted = String(appName || "").trim();
+  if (!wanted || wanted.length > 100 || /[\x00-\x1f\x7f]/.test(wanted)) {
+    return { ok: false, error: "A valid app name is required." };
+  }
+  const wantedLower = wanted.toLocaleLowerCase();
+  const apps = await listApplications(options);
+
+  // Also check if user supplied an exact bundleId or desktopId
+  const directBundle = bundleIndex.get(wantedLower);
+  if (directBundle) {
+    return launchApp(directBundle.appId, options);
+  }
+
+  const matches = apps.filter((app) => app.name.trim().toLocaleLowerCase() === wantedLower);
   if (matches.length !== 1) {
     return {
       ok: false,
-      error: matches.length ? "More than one installed app has that exact name. Use apps.list and choose a specific entry." : "No installed app matched that exact name. Refresh apps.list and check the visible name.",
+      error: matches.length
+        ? "More than one installed app has that exact name. Use apps.list and choose a specific entry."
+        : "No installed app matched that exact name. Refresh apps.list and check the visible name.",
       matches: matches.map((app) => ({ appId: app.appId, name: app.name }))
     };
   }
-  return launchApp(matches[0].appId);
+  return launchApp(matches[0].appId, options);
 }
 
-async function execute(command) {
-  const params = command.params || {};
+async function readLinuxDistroInfo(osReleasePath = "/etc/os-release") {
+  try {
+    const raw = await fs.readFile(osReleasePath, "utf8");
+    const info = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const m = line.match(/^([A-Z_]+)=(.+)$/);
+      if (!m) continue;
+      info[m[1]] = m[2].replace(/^["']|["']$/g, "").trim();
+    }
+    return {
+      id: info.ID || "linux",
+      name: info.PRETTY_NAME || info.NAME || "Linux",
+      versionId: info.VERSION_ID || null
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readMacosProductVersion(
+  plistPath = "/System/Library/CoreServices/SystemVersion.plist"
+) {
+  try {
+    const raw = await fs.readFile(plistPath, "utf8");
+    const match = raw.match(/<key>\s*ProductVersion\s*<\/key>\s*<string>([^<]+)<\/string>/i);
+    return match ? match[1].trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function checkNetworkConnected() {
+  try {
+    const nets = os.networkInterfaces() || {};
+    for (const list of Object.values(nets)) {
+      for (const iface of list || []) {
+        if (!iface.internal && iface.address) return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+export async function systemStatus(options = {}) {
+  const platform = platformName(options);
+  const totalMem = os.totalmem();
+  const freeMem = os.freemem();
+  const usedMem = Math.max(0, totalMem - freeMem);
+  const cpus = os.cpus() || [];
+  const roots = await resolvedRoots(options);
+
+  const distro = platform === "linux" ? await readLinuxDistroInfo(options.osReleasePath) : null;
+  const macosVersion = platform === "macos" ? await readMacosProductVersion(options.macosVersionPlistPath) : null;
+
+  return {
+    ok: true,
+    deviceStatus: "online",
+    lifecycleState,
+    hostname: os.hostname(),
+    platform,
+    osType: os.type(),
+    osVersion: os.release(),
+    kernelVersion: os.release(),
+    ...(distro ? { distro } : {}),
+    ...(macosVersion ? { macosProductVersion: macosVersion } : {}),
+    architecture: os.arch(),
+    nodeVersion: process.version,
+    cpuCount: cpus.length,
+    cpuModel: cpus[0]?.model ? String(cpus[0].model).trim().slice(0, 120) : "unknown",
+    totalMemoryBytes: totalMem,
+    freeMemoryBytes: freeMem,
+    usedMemoryBytes: usedMem,
+    memoryUsagePercent: totalMem > 0 ? Math.round((usedMem / totalMem) * 100) : 0,
+    uptimeSeconds: Math.floor(os.uptime()),
+    networkConnected: checkNetworkConnected(),
+    allowedFolderCount: roots.length
+  };
+}
+
+export async function execute(command, options = {}) {
+  if (!command || typeof command !== "object") {
+    return { ok: false, error: "Invalid command payload." };
+  }
+  const params = command.params && typeof command.params === "object" ? command.params : {};
   switch (command.action) {
     case "system.status":
-      return {
-        ok: true, hostname: os.hostname(), platform: platformName(), osVersion: os.release(),
-        architecture: os.arch(), cpuCount: os.cpus().length, totalMemoryBytes: os.totalmem(),
-        freeMemoryBytes: os.freemem(), uptimeSeconds: os.uptime(),
-        allowedFolderCount: (await resolvedRoots()).length
-      };
-    case "apps.list": return { ok: true, apps: await listApplications() };
-    case "apps.launch": return launchApp(params.appId);
-    case "apps.launch_label": return launchAppByName(params.appName);
-    case "files.list": return listFiles(params);
-    case "files.search": return searchFiles(params);
-    case "files.read": return readFile(params);
-    default: return { ok: false, error: "Unsupported desktop connector action." };
+      return systemStatus(options);
+    case "apps.list":
+      return { ok: true, apps: await listApplications(options) };
+    case "apps.launch":
+      return launchApp(params.appId, options);
+    case "apps.launch_label":
+      return launchAppByName(params.appName, options);
+    case "files.list":
+      return listFiles(params, options);
+    case "files.search":
+      return searchFiles(params, options);
+    case "files.read":
+      return readFile(params, options);
+    default:
+      return { ok: false, error: "Unsupported desktop connector action." };
   }
 }
 
-async function pollOnce() {
-  await apiRequest("POST", "/v1/devices/" + encodeURIComponent(DEVICE_ID) + "/heartbeat", DEVICE_TOKEN);
-  const response = await apiRequest("GET", "/v1/device/commands?deviceId=" + encodeURIComponent(DEVICE_ID), DEVICE_TOKEN);
-  for (const command of response.commands || []) {
-    if (!command?.commandId) continue;
-    let result = pendingAcknowledgements.get(command.commandId);
-    if (result && !isResultCacheFresh(pendingAcknowledgementSavedAt.get(command.commandId))) {
+export async function handleRevocation(reason = "Device revoked or token rejected", options = {}) {
+  lifecycleState = "revoked";
+  shutdownRequested = true;
+  if (activePollTimer) {
+    clearTimeout(activePollTimer);
+    activePollTimer = null;
+  }
+  if (activeAbortController) {
+    try { activeAbortController.abort(); } catch {}
+    activeAbortController = null;
+  }
+  const revokedDeviceId = DEVICE_ID;
+  DEVICE_ID = "";
+  DEVICE_TOKEN = "";
+
+  await clearCredentials(options).catch(() => {});
+  await clearResultCache(options).catch(() => {});
+
+  try {
+    const revFile = revokedStatePath(options);
+    await fs.mkdir(path.dirname(revFile), { recursive: true, mode: 0o700 });
+    await fs.writeFile(
+      revFile,
+      JSON.stringify({
+        revoked: true,
+        deviceId: revokedDeviceId || null,
+        reason: redactToken(reason),
+        revokedAt: new Date().toISOString()
+      }, null, 2),
+      { mode: 0o600 }
+    );
+  } catch {}
+
+  process.exitCode = 2;
+  return { revoked: true, exitCode: 2 };
+}
+
+export async function pollOnce(options = {}) {
+  if (pollInFlight) return { skipped: true, reason: "poll_in_flight" };
+  if (lifecycleState === "revoked" || shutdownRequested) {
+    return { skipped: true, reason: lifecycleState };
+  }
+  pollInFlight = true;
+  try {
+    await apiRequest(
+      "POST",
+      "/v1/devices/" + encodeURIComponent(DEVICE_ID) + "/heartbeat",
+      DEVICE_TOKEN,
+      undefined,
+      options
+    );
+    lifecycleState = "connected";
+
+    const response = await apiRequest(
+      "GET",
+      "/v1/device/commands?deviceId=" + encodeURIComponent(DEVICE_ID),
+      DEVICE_TOKEN,
+      undefined,
+      options
+    );
+
+    const commands = Array.isArray(response?.commands) ? response.commands : [];
+    for (const command of commands) {
+      if (shutdownRequested || lifecycleState === "revoked") break;
+      if (!command?.commandId || !UUID_REGEX.test(String(command.commandId))) continue;
+
+      let result = pendingAcknowledgements.get(command.commandId);
+      if (result && !isResultCacheFresh(pendingAcknowledgementSavedAt.get(command.commandId))) {
+        pendingAcknowledgements.delete(command.commandId);
+        pendingAcknowledgementSavedAt.delete(command.commandId);
+        result = undefined;
+      }
+
+      if (!result) {
+        if (isCommandExpired(command)) {
+          result = { ok: false, expired: true, error: "Command expired or has an invalid timestamp." };
+        } else {
+          try {
+            result = await execute(command, options);
+          } catch (error) {
+            result = { ok: false, error: redactToken(String(error.message || error)).slice(0, 500) };
+          }
+        }
+        pendingAcknowledgements.set(command.commandId, result);
+        pendingAcknowledgementSavedAt.set(command.commandId, Date.now());
+        await persistResultCache(options);
+      }
+
+      await apiRequest(
+        "POST",
+        "/v1/device/commands/ack",
+        DEVICE_TOKEN,
+        {
+          deviceId: DEVICE_ID,
+          commandId: command.commandId,
+          result
+        },
+        options
+      );
       pendingAcknowledgements.delete(command.commandId);
       pendingAcknowledgementSavedAt.delete(command.commandId);
-      result = undefined;
+      await persistResultCache(options);
     }
-    if (!result) {
-      if (isCommandExpired(command)) {
-        result = { ok: false, expired: true, error: "Command expired or has an invalid timestamp." };
-      } else {
-        try { result = await execute(command); }
-        catch (error) { result = { ok: false, error: String(error.message || error).slice(0, 500) }; }
-      }
-      pendingAcknowledgements.set(command.commandId, result);
-      pendingAcknowledgementSavedAt.set(command.commandId, Date.now());
-      await persistResultCache();
-    }
-    await apiRequest("POST", "/v1/device/commands/ack", DEVICE_TOKEN, { deviceId: DEVICE_ID, commandId: command.commandId, result });
-    pendingAcknowledgements.delete(command.commandId);
-    pendingAcknowledgementSavedAt.delete(command.commandId);
-    await persistResultCache();
+    return { ok: true, processed: commands.length };
+  } finally {
+    pollInFlight = false;
   }
 }
 
-async function resolveIdentity() {
-  if (DEVICE_ID && DEVICE_TOKEN) return;
-  const stored = await loadCredentials();
+export async function resolveIdentity(options = {}) {
+  if (DEVICE_ID && DEVICE_TOKEN) return { deviceId: DEVICE_ID, token: DEVICE_TOKEN };
+  const stored = await loadCredentials(options);
   if (stored) {
     DEVICE_ID = stored.deviceId;
     DEVICE_TOKEN = stored.token;
-    process.stdout.write("Loaded credentials from " + credentialPath() + "\n");
+    if (!options.silent) {
+      process.stdout.write("Loaded credentials from " + credentialPath(options) + "\n");
+    }
+    return stored;
+  }
+  return null;
+}
+
+export function stopAgent() {
+  shutdownRequested = true;
+  if (lifecycleState !== "revoked") lifecycleState = "stopped";
+  if (activePollTimer) {
+    clearTimeout(activePollTimer);
+    activePollTimer = null;
+  }
+  if (activeAbortController) {
+    try { activeAbortController.abort(); } catch {}
+    activeAbortController = null;
   }
 }
 
-async function run() {
-  const platform = platformName();
-  await resolveIdentity();
-  await loadResultCache();
+export async function run(options = {}) {
+  const platform = platformName(options);
+  shutdownRequested = false;
+  lifecycleState = "startup";
+
+  await resolveIdentity(options);
+  await loadResultCache(options);
   if (!DEVICE_ID || !DEVICE_TOKEN) {
-    throw new Error("Missing credentials. Pair first (JARVIS_PAIRING_CODE=XXXXXXXX npm run pair) or set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN.");
+    throw new Error(
+      "Missing credentials. Pair first (JARVIS_PAIRING_CODE=XXXXXXXX npm run pair) or set JARVIS_DEVICE_ID and JARVIS_DEVICE_TOKEN."
+    );
   }
-  process.stdout.write("JARVIS " + platform + " connector started for " + DEVICE_ID + ".\n");
-  process.stdout.write("Approved folder roots: " + (await resolvedRoots()).length + ".\n");
-  for (;;) {
-    try {
-      await pollOnce();
-      consecutiveFailures = 0;
-    } catch (error) {
-      consecutiveFailures += 1;
-      const status = error.status || 0;
-      process.stderr.write("Sync error: " + String(error.message || error) + "\n");
-      if (status === 401 || status === 404) {
-        process.stderr.write("Device token rejected or device revoked. Re-pair from Android QR.\n");
-        process.exitCode = 2;
-        return;
+
+  const onSignal = () => {
+    stopAgent();
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+
+  if (!options.silent) {
+    process.stdout.write("JARVIS " + platform + " connector started for " + DEVICE_ID + ".\n");
+    process.stdout.write("Approved folder roots: " + (await resolvedRoots(options)).length + ".\n");
+  }
+
+  try {
+    while (!shutdownRequested) {
+      try {
+        await pollOnce(options);
+        consecutiveFailures = 0;
+      } catch (error) {
+        consecutiveFailures += 1;
+        const status = Number(error?.status || 0);
+        if (!options.silent) {
+          process.stderr.write("Sync error: " + redactToken(String(error.message || error)) + "\n");
+        }
+        if (status === 401 || status === 404) {
+          if (!options.silent) {
+            process.stderr.write("Device token rejected or device revoked. Clearing local credentials and exiting.\n");
+          }
+          await handleRevocation(error.message || "HTTP " + status, options);
+          return { exitCode: 2, state: "revoked" };
+        }
+        lifecycleState = consecutiveFailures > 1 ? "reconnecting" : "offline";
+        if (options.maxIterations && consecutiveFailures >= options.maxIterations) break;
+        const delay = computeBackoffMs(consecutiveFailures, POLL_MS, 120000);
+        await new Promise((resolve) => {
+          activePollTimer = setTimeout(resolve, delay);
+        });
+        continue;
       }
-      // Exponential backoff on repeated network failures, capped at 2 minutes.
-      const delay = Math.min(POLL_MS * Math.pow(2, Math.min(consecutiveFailures, 4)), 120000);
-      await new Promise((resolve) => setTimeout(resolve, delay));
-      continue;
+      if (options.maxIterations && options.maxIterations <= 1) break;
+      await new Promise((resolve) => {
+        activePollTimer = setTimeout(resolve, options.pollIntervalMs || POLL_MS);
+      });
     }
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
+  } finally {
+    process.removeListener("SIGINT", onSignal);
+    process.removeListener("SIGTERM", onSignal);
   }
+  return { exitCode: process.exitCode || 0, state: lifecycleState };
+}
+
+export function generateServiceConfig(options = {}) {
+  const platform = platformName(options);
+  const nodePath = options.nodePath || process.execPath;
+  const scriptPath = options.scriptPath || fileURLToPath(import.meta.url);
+  if (platform === "macos") {
+    return {
+      platform: "macos",
+      label: "com.jarvis.desktop.agent",
+      plistPath: path.join(os.homedir(), "Library", "LaunchAgents", "com.jarvis.desktop.agent.plist"),
+      plistXml: [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+        '<plist version="1.0"><dict>',
+        '  <key>Label</key><string>com.jarvis.desktop.agent</string>',
+        '  <key>ProgramArguments</key><array>',
+        `    <string>${nodePath}</string>`,
+        `    <string>${scriptPath}</string>`,
+        '  </array>',
+        '  <key>RunAtLoad</key><true/>',
+        '  <key>KeepAlive</key><true/>',
+        '</dict></plist>'
+      ].join("\n")
+    };
+  }
+  return {
+    platform: "linux",
+    unitName: "jarvis-desktop-agent.service",
+    unitPath: path.join(os.homedir(), ".config", "systemd", "user", "jarvis-desktop-agent.service"),
+    unitFile: [
+      "[Unit]",
+      "Description=JARVIS Desktop Companion Agent",
+      "After=network-online.target",
+      "",
+      "[Service]",
+      "Type=simple",
+      `ExecStart="${nodePath}" "${scriptPath}"`,
+      "Restart=on-failure",
+      "RestartSec=10",
+      "",
+      "[Install]",
+      "WantedBy=default.target"
+    ].join("\n")
+  };
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  const mode = process.argv[2] || "run";
-  (mode === "pair" ? pair(process.argv[3] || "") : run()).catch((error) => {
-    process.stderr.write("JARVIS desktop connector: " + error.message + "\n");
-    process.exitCode = 1;
+  process.on("unhandledRejection", (reason) => {
+    process.stderr.write("JARVIS desktop connector unhandled rejection: " + redactToken(reason) + "\n");
   });
+  const mode = process.argv[2] || "run";
+  if (mode === "--print-service-config" || mode === "service-config") {
+    process.stdout.write(JSON.stringify(generateServiceConfig(), null, 2) + "\n");
+  } else {
+    (mode === "pair" ? pair(process.argv[3] || "") : run()).catch((error) => {
+      process.stderr.write("JARVIS desktop connector: " + redactToken(error.message) + "\n");
+      if (!process.exitCode) process.exitCode = 1;
+    });
+  }
 }

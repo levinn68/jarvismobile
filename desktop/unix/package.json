@@ -1,14 +1,15 @@
 {
   "name": "jarvis-unix-connector",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=18"
   },
   "scripts": {
     "start": "node src/agent.js",
     "pair": "node src/agent.js pair",
+    "check": "node --check src/agent.js && node --check src/credentials.js",
     "test": "node --test"
   }
 }
