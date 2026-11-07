@@ -46,7 +46,8 @@ class DeviceCredentialVault(context: Context) {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, key(recreateIfBroken = true))
             cipher.doFinal(plainText.toByteArray(Charsets.UTF_8)) to cipher.iv
-        }    }
+        }
+    }
 
     @Synchronized
     fun save(deviceId: String, token: String) {

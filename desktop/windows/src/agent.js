@@ -663,7 +663,8 @@ export async function readFile(params = {}, options = {}) {
     const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
     if (bytesRead > MAX_FILE_BYTES) {
       return { ok: false, error: "File exceeds the 64 KB read limit." };
-    }    const slice = buffer.subarray(0, bytesRead);
+    }
+    const slice = buffer.subarray(0, bytesRead);
     if (isBinaryBuffer(slice)) {
       return { ok: false, error: "Binary files are not permitted; text files only." };
     }

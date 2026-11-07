@@ -157,7 +157,8 @@ test("B5 File Security: Windows drive letters, UNC paths, case-insensitivity, AD
     // 5. Binary file rejection (even with .txt extension)
     const binPath = path.join(root, "disguised.txt");
     await fs.writeFile(binPath, Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00]));
-    const binRead = await readFile({ rootIndex: 0, relativePath: "disguised.txt" }, { allowedDirs: root, silent: true });    assert.equal(binRead.ok, false);
+    const binRead = await readFile({ rootIndex: 0, relativePath: "disguised.txt" }, { allowedDirs: root, silent: true });
+    assert.equal(binRead.ok, false);
     assert.match(binRead.error, /Binary files are not permitted/i);
 
     // 6. Oversized file rejection (> 64 KB)

@@ -140,7 +140,8 @@ object JarvisStabilityGuard {
                 if (err is CancellationException) throw err
                 recordDiagnostic(Subsystem.NAVIGATION, "MAIN_THREAD_ACTION_ERROR", err)
             }
-        } else {            mainHandler.post {
+        } else {
+            mainHandler.post {
                 runCatching(action).onFailure { err ->
                     if (err is CancellationException) throw err
                     recordDiagnostic(Subsystem.NAVIGATION, "MAIN_POST_ACTION_ERROR", err)

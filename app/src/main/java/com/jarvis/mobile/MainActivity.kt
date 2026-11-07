@@ -622,7 +622,8 @@ class MainActivity : ComponentActivity() {
         historyBusy.value = true
         lifecycleScope.launch {
             try {
-                supabaseClient.renameConversation(id, cleaned)                conversationsState.value = supabaseClient.listConversations()
+                supabaseClient.renameConversation(id, cleaned)
+                conversationsState.value = supabaseClient.listConversations()
                 accountStatus.value = "JUDUL PERCAKAPAN DIPERBARUI"
             } catch (error: Exception) {
                     JarvisStabilityGuard.rethrowIfCancellation(error)
@@ -2621,6 +2622,7 @@ private fun VoiceHudClock() {
         fontFamily = FontFamily.Monospace
     )
 }
+
 @Composable
 private fun VoiceHudReactor(
     modifier: Modifier,
@@ -3619,7 +3621,8 @@ private fun JarvisScreen(
                                     ) {
                                         Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Cyan, modifier = Modifier.size(16.dp))
                                     }
-                                } else {                                    // Mini waveform indicator inside right side of pill
+                                } else {
+                                    // Mini waveform indicator inside right side of pill
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -4530,3 +4533,4 @@ private fun JarvisScreen(
         }
     }
 }
+

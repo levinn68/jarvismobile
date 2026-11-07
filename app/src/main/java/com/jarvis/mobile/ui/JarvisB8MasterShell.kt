@@ -654,7 +654,8 @@ fun JarvisB8MasterShell(
                             .background(if (active) JarvisColors.CyanPrimary else JarvisColors.SurfaceCard)
                             .clickable {
                                 overlayRoute = if (active) JarvisB8OverlayRoute.NONE else route
-                            }                            .padding(horizontal = 7.dp, vertical = 4.dp)
+                            }
+                            .padding(horizontal = 7.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = label,

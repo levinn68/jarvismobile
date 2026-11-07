@@ -575,7 +575,8 @@ async function callGemini(env, prompt, system, keyValue, history = [], modelOver
     .filter((web, index, all) => all.findIndex((item) => item.uri === web.uri) === index)
     .slice(0, 6);
   if (sources.length) {
-    text += "\n\nSumber yang bisa dibuka:\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\n");  }
+    text += "\n\nSumber yang bisa dibuka:\n" + sources.map((source) => "- [" + source.title + "](" + source.uri + ")").join("\n");
+  }
   return text;
 }
 
@@ -1574,7 +1575,8 @@ export default {
           return json({ ok: false, error: "Collaboration session not found" }, 404, request, env);
         }
         return json({ ok: true, session }, 201, request, env);
-      } catch (error) {        return json({ ok: false, error: safeError(error, 200) }, error?.status || 400, request, env);
+      } catch (error) {
+        return json({ ok: false, error: safeError(error, 200) }, error?.status || 400, request, env);
       }
     }
     if (request.method === "DELETE" && (url.pathname === "/v1/collaboration/sessions" || url.pathname.startsWith("/v1/collaboration/sessions/"))) {

@@ -299,7 +299,8 @@ fun JarvisAgentNetworkAnimation(
                         y = nodePos.y + (center.y - nodePos.y) * pulseProgress
                     )
                     drawCircle(
-                        color = if (isSpeaking) JarvisColors.CyanGlow else JarvisColors.EmeraldSuccess,                        radius = if (isSpeaking) 5.5f else 3.5f,
+                        color = if (isSpeaking) JarvisColors.CyanGlow else JarvisColors.EmeraldSuccess,
+                        radius = if (isSpeaking) 5.5f else 3.5f,
                         center = packetPos
                     )
                 }
@@ -1298,7 +1299,8 @@ fun JarvisB8CollaborationSuiteScreen(
                         claimText = n.optString("claimText", n.optString("label", "")),
                         nodeType = n.optString("nodeType", "CLAIM"),
                         sessionId = prov?.optString("sessionId", activeSessionId).orEmpty(),
-                        agentId = prov?.optString("agentId", "").orEmpty(),                        modelId = prov?.optString("modelId", "").orEmpty(),
+                        agentId = prov?.optString("agentId", "").orEmpty(),
+                        modelId = prov?.optString("modelId", "").orEmpty(),
                         messageId = prov?.optString("messageId", "").orEmpty(),
                         timestamp = prov?.optString("timestamp", "").orEmpty(),
                         sourceReference = prov?.optString("sourceReference", "").orEmpty()
@@ -2297,7 +2299,8 @@ fun JarvisB8CollaborationSuiteScreen(
                                     colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Kirim ke Chat", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)                                }
+                                    Text("Kirim ke Chat", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
                                 OutlinedButton(onClick = { screenIndex = 30 }, modifier = Modifier.weight(1f)) {
                                     Text("Riwayat Sesi", color = JarvisColors.CyanGlow, fontSize = 12.sp)
                                 }

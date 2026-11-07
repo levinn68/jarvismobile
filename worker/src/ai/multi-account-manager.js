@@ -132,7 +132,6 @@ export async function decryptCredentialFromKv(recordOrEnvelope, { env = {}, user
     if (!candidates.length) {
       throw new Error("Credential decryption key is not configured. Set AI_CREDENTIAL_ENCRYPTION_KEY and, for legacy v1 records, LEGACY_AI_CREDENTIAL_ENCRYPTION_KEY.");
     }
-    let lastError;
     for (const candidate of candidates) {
       try {
         const aesKey = await deriveCredentialAesKey(env, userId, normProvider, candidate);
@@ -142,9 +141,7 @@ export async function decryptCredentialFromKv(recordOrEnvelope, { env = {}, user
           ciphertext
         );
         return textDecoder.decode(plainBuf);
-      } catch (error) {
-        lastError = error;
-      }
+      } catch (_) {}
     }
     throw new Error("Stored provider credential could not be decrypted with the configured key versions.");
   }
@@ -501,28 +498,10 @@ export function maskEmailOrLabel(identifier = "") {
 
 function validateProviderEndpoint(rawEndpoint) {
   let parsed;
-  try {
-    parsed = new URL(String(rawEndpoint || ""));
-  } catch (_) {
-    throw new Error("Provider endpoint must be a valid HTTPS URL.");
-  }
+  try { parsed = new URL(String(rawEndpoint || "")); }
+  catch (_) { throw new Error("Provider endpoint must be a valid HTTPS URL."); }
   const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.username ||
-    parsed.password ||
-    (parsed.port && parsed.port !== "443") ||
-    !hostname ||
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal") ||
-    hostname.endsWith(".test") ||
-    hostname.endsWith(".example") ||
-    hostname.endsWith(".invalid") ||
-    /^[0-9.]+$/.test(hostname) ||
-    hostname.includes(":")
-  ) {
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || (parsed.port && parsed.port !== "443") || !hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".example") || hostname.endsWith(".invalid") || /^[0-9.]+$/.test(hostname) || hostname.includes(":")) {
     throw new Error("Provider endpoint is not allowed. Use a public HTTPS hostname without credentials or a custom port.");
   }
   return parsed.toString().replace(/\/$/, "");
@@ -628,7 +607,8 @@ export async function saveProviderConfiguration(kv, userId, input = {}, env = {}
       ? input.discoveredModels.slice(0, 100)
       : existing.discoveredModels || [],
     lastConnectionTest: input.lastConnectionTest !== undefined ? input.lastConnectionTest : existing.lastConnectionTest || null,
-    errorStatus: input.errorStatus !== undefined ? input.errorStatus : existing.errorStatus || null,    updatedAt: new Date().toISOString()
+    errorStatus: input.errorStatus !== undefined ? input.errorStatus : existing.errorStatus || null,
+    updatedAt: new Date().toISOString()
   };
 
   configsMap[providerId] = updated;
@@ -1633,7 +1613,8 @@ export async function invokeProviderCompletion({
           const messages = [
             { role: "system", content: String(systemPrompt || "") },
             ...normalizedHistory,
-            { role: "user", content: String(prompt || "") }          ];
+            { role: "user", content: String(prompt || "") }
+          ];
           response = await fetchImpl(targetEndpoint, {
             method: "POST",
             headers: {

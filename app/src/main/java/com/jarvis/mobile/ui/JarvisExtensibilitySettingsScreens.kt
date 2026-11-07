@@ -744,7 +744,8 @@ fun JarvisExtensibilityAndSettingsSuite(
                                 onClick = { diagnosticNote = "DIAGNOSTIC VERIFIED • ZERO ERRORS" },
                                 colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary),
                                 modifier = Modifier.fillMaxWidth()
-                            ) {                                Text("Jalankan Diagnostik Sistem", color = Color.Black, fontWeight = FontWeight.Bold)
+                            ) {
+                                Text("Jalankan Diagnostik Sistem", color = Color.Black, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

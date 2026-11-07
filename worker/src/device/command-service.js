@@ -126,7 +126,8 @@ export async function enqueueDeviceCommand({ kv, device, input, context = {} }) 
     ok: true,
     commandId: command.commandId,
     status: record.status,
-    deviceId: device.deviceId,    requiresConfirmation: !!decision.requiresConfirmation
+    deviceId: device.deviceId,
+    requiresConfirmation: !!decision.requiresConfirmation
   };
 }
 

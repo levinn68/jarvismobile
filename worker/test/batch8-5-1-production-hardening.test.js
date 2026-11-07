@@ -684,3 +684,4 @@ test("Batch 8.5.1 — Knowledge Graph enforces semantic node/edge types, full pr
   assert.ok(brokenValidation.invalidAgentRefCount >= 1);
   assert.ok(brokenValidation.missingTimestampCount >= 1);
 });
+

@@ -188,7 +188,8 @@ test("B5 Applications (macOS & Linux): .app bundle + Info.plist bundleId and .de
     process.env.JARVIS_DEVICE_TOKEN = "secret-mac-token-dont-leak";
     const mockMacSpawn = (cmd, args, opts) => {
       macSpawned = { cmd, args, opts };
-      const emitter = new EventEmitter();      emitter.unref = () => {};
+      const emitter = new EventEmitter();
+      emitter.unref = () => {};
       return emitter;
     };
 

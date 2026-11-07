@@ -9,7 +9,8 @@ export function bearerToken(request) {
 export function clientIpFromRequest(request) {
   const cfIp = request?.headers?.get?.("CF-Connecting-IP") || "";
   if (cfIp.trim()) return cfIp.trim().slice(0, 64);
-  const forwarded = request?.headers?.get?.("X-Forwarded-For") || "";  const first = forwarded.split(",")[0]?.trim() || "";
+  const forwarded = request?.headers?.get?.("X-Forwarded-For") || "";
+  const first = forwarded.split(",")[0]?.trim() || "";
   return first ? first.slice(0, 64) : "anonymous";
 }
 

@@ -723,7 +723,8 @@ const CANONICAL_CONCEPT_CLUSTERS = Object.freeze([
     pattern: /(zero trust|jwt pendek|oauth2|mtls|autentikasi berlapis|rotasi kunci|short-lived token|verifikasi kriptografis)/i
   },
   {
-    id: "concept_relational_acid",    label: "Database Relasional Transaksional (ACID / PostgreSQL)",
+    id: "concept_relational_acid",
+    label: "Database Relasional Transaksional (ACID / PostgreSQL)",
     pattern: /(\bpostgresql\b|relational database|acid transaction|basis data relasional|konsistensi transaksi ketat|integritas referensial)/i
   },
   {
@@ -1722,7 +1723,8 @@ export function buildKnowledgeGraphFromActualResponses(
     const msgTimestamp = msg.createdAt || nowIso;
 
     addNode({
-      id: posNodeId,      label: `${msg.modelName} (${msg.role} R${msg.round})`,
+      id: posNodeId,
+      label: `${msg.modelName} (${msg.role} R${msg.round})`,
       nodeType: KNOWLEDGE_NODE_TYPES.AGENT_POSITION,
       claimText: primaryClaim,
       weight: 90,
@@ -2721,7 +2723,8 @@ export function createOfflineTestProviderFetchFallback(originalFetch, envGuard =
   }
   return async (input, init) => {
     const url = typeof input === "string" ? input : input?.url || "";
-    const bodyRaw = init?.body ? String(init.body) : "{}";    let promptSnippet = "analisis arsitektur dan strategi teknis";
+    const bodyRaw = init?.body ? String(init.body) : "{}";
+    let promptSnippet = "analisis arsitektur dan strategi teknis";
     try {
       const parsed = JSON.parse(bodyRaw);
       const lastMsg =

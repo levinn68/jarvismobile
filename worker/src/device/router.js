@@ -52,7 +52,8 @@ export function createWorkerDeviceSkills(env) {
       if (!device) return { ok: false, error: "Device not registered" };
       return enqueueDeviceCommand({
         kv: env.DEVICE_COMMANDS,
-        device,        input: { action, params },
+        device,
+        input: { action, params },
         context: { userConfirmed: false }
       });
     }

@@ -140,7 +140,8 @@ val IndependentProviderCatalog = listOf(
         docsUrl = "https://api-docs.deepseek.com/",
         defaultModel = "deepseek-chat",
         supportedModels = listOf("deepseek-v3", "deepseek-chat", "deepseek-reasoner")
-    ),    JarvisProviderItem(
+    ),
+    JarvisProviderItem(
         id = "groq",
         name = "Groq",
         connected = false,
@@ -1139,7 +1140,8 @@ fun JarvisMultiAccountsScreen(
                         }
                     }
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.clickable { onToggleAccountActive(acc.accountId) }
                     ) {
                         Text(

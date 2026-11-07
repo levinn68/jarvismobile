@@ -15,7 +15,8 @@ begin
     return new;
   elsif tg_table_name = 'jarvis_conversations' then
     new.updated_at := now();
-    return new;  end if;
+    return new;
+  end if;
   return new;
 end;
 $$;

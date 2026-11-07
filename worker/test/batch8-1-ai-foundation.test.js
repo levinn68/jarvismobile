@@ -129,7 +129,7 @@ test("Batch 8.1 — Multi-Account Architecture: account storage, default switchi
     quotaUsedTokens: 200000,
     quotaLimitTokens: 200000
   }, TEST_ENCRYPTION_ENV);
-  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333", AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" });
+  const chainAfterQuota = await resolveAccountCredentialsChain(kv, userId, "openai", { OPENAI_API_KEY_1: "sk-server-fallback-3333" });
   assert.equal(chainAfterQuota[0].accountId, "acc-openai-primary");
 
   const removed = await removeUserAiAccount(kv, userId, "acc-openai-work");
@@ -209,7 +209,8 @@ test("Batch 8.1 — Provider Connection Testing & HTTP Endpoints (/v1/models, /v
     );
     assert.equal(createAccHttp.status, 201);
     const createAccBody = await createAccHttp.json();
-    assert.equal(createAccBody.ok, true);    assert.equal(createAccBody.account.apiKey, undefined);
+    assert.equal(createAccBody.ok, true);
+    assert.equal(createAccBody.account.apiKey, undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

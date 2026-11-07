@@ -59,7 +59,8 @@ export function createKeyRotator({
       return [...state.entries()].map(([id, value]) => ({ id, ...value }));
     },
     circuitSnapshot(now = Date.now()) {
-      return [...providerCircuit.entries()].map(([provider, value]) => ({        provider,
+      return [...providerCircuit.entries()].map(([provider, value]) => ({
+        provider,
         consecutiveFailures: value.consecutiveFailures,
         open: value.openUntil > now,
         openUntil: value.openUntil

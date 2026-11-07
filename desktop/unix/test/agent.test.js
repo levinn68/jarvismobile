@@ -64,6 +64,7 @@ test("safeTarget rejects traversal and absolute paths", async () => {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
 test("safeTarget rejects a symlink that resolves outside the approved root", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "jarvis-root-"));
   const outside = await fs.mkdtemp(path.join(os.tmpdir(), "jarvis-outside-"));

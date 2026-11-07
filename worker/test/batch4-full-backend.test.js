@@ -416,7 +416,8 @@ test("B4 Device Lifecycle: Token version superseding, command FIFO ordering, dup
   );
   assert.equal(oldTokenHeartbeat.status, 401);
 
-  const newTokenHeartbeat = await handleDeviceRequest(    new Request("https://worker.test/v1/devices/android-lifecycle-01/heartbeat", {
+  const newTokenHeartbeat = await handleDeviceRequest(
+    new Request("https://worker.test/v1/devices/android-lifecycle-01/heartbeat", {
       method: "POST",
       headers: { Authorization: "Bearer " + tokenV2 }
     }),

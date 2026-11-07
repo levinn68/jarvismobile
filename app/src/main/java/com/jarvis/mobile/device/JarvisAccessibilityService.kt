@@ -140,7 +140,8 @@ class JarvisAccessibilityService : AccessibilityService() {
             ?: findNodeByText(root, query, exact = false, depth = 0)
             ?: return JSONObject().put("ok", false).put("error", "Elemen dengan teks '$query' tidak ditemukan di layar aktif.")
 
-        var clickableTarget: AccessibilityNodeInfo? = matchedNode        var hops = 0
+        var clickableTarget: AccessibilityNodeInfo? = matchedNode
+        var hops = 0
         while (clickableTarget != null && !clickableTarget.isClickable && hops < 6) {
             clickableTarget = clickableTarget.parent
             hops++

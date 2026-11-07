@@ -10,7 +10,8 @@ Every tool must define: purpose, input schema, output schema, errors, side effec
 
 ## Routing
 - Select a tool based on user intent and required evidence.
-- Load only the tool descriptions relevant to the task.- Validate arguments before invocation.
+- Load only the tool descriptions relevant to the task.
+- Validate arguments before invocation.
 - Prefer deterministic tools for exact calculations, database operations, and state changes.
 - Use the language model for interpretation and synthesis, not as a substitute for tool evidence.
 
