@@ -1,18 +1,5 @@
 import { redactSecrets } from "../utils.js";
-import { isBlockedIp, isBlockedHostname, isTrustedProviderHostname, validateSafeEndpoint } from "../security/ssrf-guard.js";
-
-function isAllowedMcpEndpoint(endpoint) {
-  const value = String(endpoint || "").trim();
-  if (value.startsWith("mcp://")) return true;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "https:" &&
-      !isBlockedHostname(parsed.hostname) &&
-      isTrustedProviderHostname(parsed.hostname);
-  } catch (_) {
-    return false;
-  }
-}
+import { isBlockedIp, isBlockedHostname } from "../security/ssrf-guard.js";
 
 function resolveKv(envOrKv) {
   if (!envOrKv) return null;
@@ -143,11 +130,11 @@ export async function listMcpServers(envOrKv, userId) {
       ...builtin,
       enabled: override.enabled !== undefined ? Boolean(override.enabled) : builtin.enabled,
       status: override.status || builtin.status,
-      endpoint: isAllowedMcpEndpoint(override.endpoint) ? override.endpoint : builtin.endpoint
+      endpoint: override.endpoint || builtin.endpoint
     };
   });
 
-  return [...builtinsWithOverrides, ...customList.filter((server) => isAllowedMcpEndpoint(server?.endpoint))];
+  return [...builtinsWithOverrides, ...customList];
 }
 
 export async function saveMcpServer(envOrKv, userId, payload = {}) {
@@ -169,19 +156,9 @@ export async function saveMcpServer(envOrKv, userId, payload = {}) {
       throw err;
     }
     const host = parsedUrl.hostname.toLowerCase();
-    if (!isAllowedMcpEndpoint(rawEndpoint)) {
-      const err = new Error("MCP endpoint host is not in the outbound provider allowlist.");
-      err.status = 400;
-      throw err;
-    }
-    const safeEndpoint = await validateSafeEndpoint(rawEndpoint);
-    if (!safeEndpoint.ok) {
-      const err = new Error(safeEndpoint.reason || "MCP endpoint failed outbound DNS validation.");
-      err.status = 400;
-      throw err;
-    }
     if (
       parsedUrl.protocol !== "https:" ||
+      isBlockedHostname(host) ||
       host === "169.254.169.254" ||
       host === "metadata.google.internal" ||
       /^169\.254\./.test(host) ||

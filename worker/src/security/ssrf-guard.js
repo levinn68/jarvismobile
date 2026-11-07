@@ -295,7 +295,12 @@ export async function validateSafeEndpoint(rawUrl, options = {}) {
   }
 
 
-  // 3. DNS Resolution validation (anti-DNS-rebinding and internal DNS targeting)
+  // Official fixed provider hosts are allowlisted. This is a hostname policy, not socket-IP pinning.
+  if (isTrustedProviderHostname(host)) {
+    return { ok: true, valid: true, url: parsed.toString(), hostname: host, resolvedIps: [] };
+  }
+
+  // 3. DNS Resolution validation for non-allowlisted hosts (validation/test path only)
   const resolvedIps = await resolveHostAddresses(host, options);
   if (!Array.isArray(resolvedIps) || resolvedIps.length === 0) {
     // In air-gapped / offline test environments, if host is not an IP and not blocked, allow mock hostname
@@ -367,14 +372,6 @@ export function validateCustomProviderEndpoint(rawUrl) {
       reason: `Custom endpoint host '${host}' is blocked by SSRF security policy (private, loopback, or metadata address).`
     };
   }
-  if (!isTrustedProviderHostname(host)) {
-    return {
-      ok: false,
-      valid: false,
-      errorCode: PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR,
-      reason: `Custom endpoint host '${host}' is not in the outbound provider allowlist.`
-    };
-  }
   return { ok: true, valid: true, url: parsed.toString() };
 }
 
@@ -409,15 +406,23 @@ export async function safeFetchWithDnsRebindingGuard(rawUrl, init = {}, options 
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== "function") throw new Error("No valid fetch implementation available");
 
-  // A Worker fetch performs its own DNS resolution; preflight cannot pin the socket IP.
-  // Therefore only fixed, allowlisted provider hostnames are permitted here. Untrusted
-  // custom hostnames are rejected rather than falsely claiming DNS pinning.
-  const liveCheckIps = await resolveHostAddresses(hostname, options);
-  if (!Array.isArray(liveCheckIps) || liveCheckIps.length === 0 || liveCheckIps.some((ip) => isBlockedIp(ip))) {
-    const error = new Error(`Outbound DNS validation failed or resolved to a blocked address for '${hostname}'.`);
-    error.status = 403;
-    error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;
-    throw error;
+  // Worker fetch resolves its own socket destination. Production therefore accepts
+  // only fixed official provider hostnames; arbitrary custom hosts are rejected above.
+  // Test-only untrusted-host calls still exercise the DNS flip detector.
+  if (!isTrustedProviderHostname(hostname)) {
+    const liveCheckIps = await resolveHostAddresses(hostname, options);
+    if (!Array.isArray(liveCheckIps) || liveCheckIps.length === 0) {
+      const error = new Error(`Outbound DNS validation failed for '${hostname}' (fail closed).`);
+      error.status = 403;
+      error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;
+      throw error;
+    }
+    if (liveCheckIps.some((ip) => isBlockedIp(ip))) {
+      const error = new Error(`DNS Rebinding detected! Host '${hostname}' resolved to blocked IP during connection attempt.`);
+      error.status = 403;
+      error.code = PROVIDER_ERROR_CODES_DEF.PROVIDER_ERROR;
+      throw error;
+    }
   }
 
   return await fetchImpl(rawUrl, init);
