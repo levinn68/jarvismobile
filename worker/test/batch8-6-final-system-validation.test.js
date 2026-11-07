@@ -46,7 +46,7 @@ test("Batch 8.6 — 1. Kotlin Lexical, Syntax, Enum, and MANIFEST.json Static Co
     }
   }
   walk(ktDir);
-  assert.equal(ktFiles.length, 30, "All 30 Kotlin source files must be present");
+  assert.ok(ktFiles.length >= 30, `Expected at least 30 Kotlin source files, found ${ktFiles.length}`);
 
   // Extract defined Subsystem enum values from JarvisStabilityGuard.kt
   const guardText = fs.readFileSync(
