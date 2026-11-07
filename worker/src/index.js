@@ -594,7 +594,7 @@ async function callGemini(env, prompt, system, keyValue, history = [], modelOver
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payloadBody,
-      }}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
+      }, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   }
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
@@ -653,7 +653,8 @@ async function callAnthropic(env, prompt, system, keyNameOrValue, history = [], 
       max_tokens: 2200,
       system,
       messages,
-    })}, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
+    }),
+  }, { env, allowUnresolvedMock: env?.JARVIS_ALLOW_MOCK_PROVIDERS === "true" });
   if (!response.ok) {
     const errBody = await response.text().catch(() => "");
     let errMsg = "anthropic request failed";
