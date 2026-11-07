@@ -26,8 +26,6 @@ import {
 
 const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
 
-const TEST_ENCRYPTION_ENV = { AI_CREDENTIAL_ENCRYPTION_KEY: "test-only-ai-credential-master-key-64-characters-minimum-000000000000000000" };
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../..");
 
