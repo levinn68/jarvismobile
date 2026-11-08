@@ -415,7 +415,7 @@ fun JarvisB8ChatExperienceScreen(
                     if (sizeIdx >= 0) sizeBytes = cursor.getLong(sizeIdx)
                 }
             }
-            val sizeValid = JarvisStabilityGuard.validateAttachmentSize(sizeBytes, 15L * 1024L * 1024L)
+            val sizeValid = JarvisStabilityGuard.validateAttachmentSize(context, uri, 15L * 1024L * 1024L)
             if (!sizeValid) {
                 attachedLabel = "$displayName (Melebihi 15MB)"
                 attachedContextSummary = "[Lampiran ditolak karena ukuran > 15MB: $displayName]"
@@ -647,9 +647,9 @@ fun JarvisB8ChatExperienceScreen(
 
         // 2. Compact iOS Segmented Control (Mulai Chat | Percakapan | Detail & Struktur)
         JarvisSegmentedGlassTabs(
-            tabs = listOf("Mulai Chat", "Percakapan", "Detail & Struktur"),
-            selectedIndex = stage,
-            onSelect = { stage = it }
+            tabs = listOf(0 to "Mulai Chat", 1 to "Percakapan", 2 to "Detail & Struktur"),
+            selectedTab = stage,
+            onSelectTab = { stage = it }
         )
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -674,10 +674,10 @@ fun JarvisB8ChatExperienceScreen(
                             item {
                                 JarvisLiquidGlassCard(
                                     modifier = Modifier.fillMaxWidth(),
-                                    isHighlighted = true,
+                                    highlighted = true,
                                     accentColor = JarvisColors.CyanPrimary,
-                                    cornerRadius = 20.dp,
-                                    contentPadding = 14.dp
+                                    shape = RoundedCornerShape(20.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -782,8 +782,8 @@ fun JarvisB8ChatExperienceScreen(
                                 item {
                                     JarvisLiquidGlassCard(
                                         modifier = Modifier.fillMaxWidth(),
-                                        cornerRadius = 16.dp,
-                                        contentPadding = 12.dp
+                                        shape = RoundedCornerShape(16.dp),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
                                     ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -865,14 +865,12 @@ fun JarvisB8ChatExperienceScreen(
                                         }
                                     }
                                     JarvisUserBubble(
-                                        message = turn.content,
-                                        timestamp = turn.timestamp
+                                        text = turn.content
                                     )
                                 }
                             } else if (turn.isError) {
                                 JarvisChatErrorCard(
-                                    errorTitle = "J.A.R.V.I.S. · PROVIDER ERROR",
-                                    errorDescription = turn.content,
+                                    message = turn.content,
                                     onRetry = {
                                         if (lastSubmittedPrompt.isNotBlank()) {
                                             submitChatPrompt(lastSubmittedPrompt)
@@ -882,8 +880,8 @@ fun JarvisB8ChatExperienceScreen(
                             } else {
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     JarvisAssistantBubble(
-                                        modelName = turn.modelLabel.ifBlank { activeModelLabel },
-                                        responseText = turn.content
+                                        text = turn.content,
+                                        isStreaming = false
                                     )
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -923,10 +921,10 @@ fun JarvisB8ChatExperienceScreen(
                             item {
                                 JarvisLiquidGlassCard(
                                     modifier = Modifier.fillMaxWidth(),
-                                    isHighlighted = true,
+                                    highlighted = true,
                                     accentColor = JarvisColors.CyanPrimary,
-                                    cornerRadius = 16.dp,
-                                    contentPadding = 12.dp
+                                    shape = RoundedCornerShape(16.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -978,10 +976,10 @@ fun JarvisB8ChatExperienceScreen(
                         item {
                             JarvisLiquidGlassCard(
                                 modifier = Modifier.fillMaxWidth(),
-                                isHighlighted = true,
+                                highlighted = true,
                                 accentColor = JarvisColors.CyanPrimary,
-                                cornerRadius = 18.dp,
-                                contentPadding = 14.dp
+                                shape = RoundedCornerShape(18.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
                             ) {
                                 Text(
                                     text = if (liveResponseText.isNotBlank()) "Ekstraksi Poin Respons Aktual" else "Struktur Respons [UNAVAILABLE — Belum Ada Chat Aktif]",
@@ -1067,12 +1065,12 @@ fun JarvisB8ChatExperienceScreen(
 
         // 5. Unified Attachment Menu (File, Foto, Dokumen, Suara in a single sleek popover)
         JarvisUnifiedAttachmentMenu(
-            expanded = showAttachmentMenu,
+            visible = showAttachmentMenu,
+            onPickFile = { filePickerLauncher.launch("*/*") },
+            onPickPhoto = { photoPickerLauncher.launch("image/*") },
+            onPickDocument = { documentPickerLauncher.launch("application/*") },
+            onActivateVoice = { onSwitchToVoice() },
             onDismiss = { showAttachmentMenu = false },
-            onSelectFile = { filePickerLauncher.launch("*/*") },
-            onSelectPhoto = { photoPickerLauncher.launch("image/*") },
-            onSelectDocument = { documentPickerLauncher.launch("application/*") },
-            onSelectVoice = { onSwitchToVoice() },
             modifier = Modifier.padding(bottom = 6.dp)
         )
 
@@ -1081,16 +1079,17 @@ fun JarvisB8ChatExperienceScreen(
             value = inputPrompt,
             onValueChange = { inputPrompt = it },
             onSend = { submitChatPrompt(inputPrompt) },
-            onVoiceClick = { onSwitchToVoice() },
-            onAttachmentClick = { showAttachmentMenu = !showAttachmentMenu },
-            isAttachmentMenuOpen = showAttachmentMenu,
-            isStreaming = isStreamingOrLoading,
-            onCancelStream = {
+            onMic = { onSwitchToVoice() },
+            busy = isStreamingOrLoading,
+            onCancel = {
                 cancelActiveCall?.invoke()
                 cancelActiveCall = null
                 isStreamingOrLoading = false
                 JarvisStabilityGuard.releaseRequestLock("b8_chat_send")
-            }
+            },
+            onToggleAttachmentMenu = { showAttachmentMenu = !showAttachmentMenu },
+            attachmentMenuOpen = showAttachmentMenu,
+            attachmentCount = if (attachedLabel.isNullOrBlank()) 0 else 1
         )
     }
 }
@@ -1181,10 +1180,10 @@ fun JarvisB8VoiceExperienceScreen(
 
     val dynamicSubtext = when {
         isListeningState -> liveRecognizedText.ifBlank { "Silakan berbicara — gelombang suara dianalisis secara real-time." }
-        isProcessingState -> "Transkrip: "${liveRecognizedText.ifBlank { lastProcessedTranscript }}""
+        isProcessingState -> "Transkrip: \"${liveRecognizedText.ifBlank { lastProcessedTranscript }}\""
         isSpeakingState -> lastVoiceAiAnswer.ifBlank { "Menyuarakan respons asisten J.A.R.V.I.S..." }
         lastVoiceAiAnswer.isNotBlank() -> lastVoiceAiAnswer
-        liveRecognizedText.isNotBlank() -> "Transkrip Terakhir: "$liveRecognizedText""
+        liveRecognizedText.isNotBlank() -> "Transkrip Terakhir: \"$liveRecognizedText\""
         else -> "Ketuk Mulai Dengar atau langsung ketuk Orb Hologram untuk berbicara dengan J.A.R.V.I.S."
     }
 
@@ -1392,15 +1391,15 @@ fun JarvisB8VoiceExperienceScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 68.dp, max = 128.dp),
-            isHighlighted = isListeningState || isSpeakingState || isProcessingState,
+            highlighted = isListeningState || isSpeakingState || isProcessingState,
             accentColor = when {
                 isErrorState -> JarvisColors.CoralDanger
                 isListeningState -> JarvisColors.EmeraldSuccess
                 isSpeakingState -> JarvisColors.VioletAccent
                 else -> JarvisColors.CyanPrimary
             },
-            cornerRadius = 18.dp,
-            contentPadding = 12.dp
+            shape = RoundedCornerShape(18.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
         ) {
             Text(
                 text = dynamicSubtext,
@@ -1599,8 +1598,8 @@ fun JarvisB8ConversationHistoryScreen(
         if (filtered.isEmpty()) {
             JarvisLiquidGlassCard(
                 modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 16.dp,
-                contentPadding = 14.dp
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(14.dp)
             ) {
                 Text(
                     text = "Belum ada riwayat percakapan tersimpan dari akun Supabase aktif.",
@@ -1615,9 +1614,9 @@ fun JarvisB8ConversationHistoryScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onSelectConversation(item.id) },
-                        isHighlighted = item.isPinned,
-                        cornerRadius = 14.dp,
-                        contentPadding = 12.dp
+                        highlighted = item.isPinned,
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),

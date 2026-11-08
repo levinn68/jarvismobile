@@ -94,6 +94,8 @@ object JarvisColors {
     val EmeraldSuccess = Ok
     val AmberWarning = Warn
     val CoralDanger = Error
+    val VioletAccent = Violet
+    val GlassSurfaceStrong = GlassElevated
 }
 
 object JarvisShapes {
