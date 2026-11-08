@@ -3,13 +3,19 @@
   "canonical_file": "app/src/main/java/com/jarvis/mobile/MainActivity.kt",
   "target": "app/src/main/java/com/jarvis/mobile/MainActivity.kt",
   "raw_size": 244045,
-  "raw_sha256": "placeholder",
-  "parts": [
-    {
-      "name": "MainActivity.part00.txt",
-      "index": 0,
-      "size": 14709
-    }
-  ],
-  "notes": "Batch 8 liquid glass redesign staging"
+  "raw_sha256": "5725d7f6f02922d3646b92924f4a1f27cfd9d3867532a992c23a26febb6e51c9",
+  "preview_part": {
+    "name": "MainActivity.part00.txt",
+    "size": 14709,
+    "sha256": "2a9857bb705a540bfc1e86a2da6034b14aab0ecc60c5a88ea16015332ee3093a",
+    "note": "First 300 lines of MainActivity.kt; full source lives directly at target."
+  },
+  "markers": [
+    "requestMicFocus",
+    "clientRequestId",
+    "registerConnectivityFlush",
+    "HolographicOrb",
+    "JarvisChatComposer",
+    "JarvisUserBubble"
+  ]
 }
