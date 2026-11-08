@@ -845,8 +845,7 @@ class MainActivity : ComponentActivity() {
                                 val accessToken = supabaseClient.currentAccessToken() // Refresh/validate Google session.
                                 client.createOrRestoreAccountWithSupabase(accessToken) // Rotate the one-hour device-control token.
                                 val userId = supabaseClient.currentUserId() ?: throw IllegalStateException("Masuk dengan Google terlebih dahulu.")
-                                val idempotencyKey = "ui-" + java.util.UUID.randomUUID().toString()
-                                val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId, idempotencyKey)
+                                val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId)
                                 if (queued.optBoolean("ok")) {
                                     if (deviceId == localId) JarvisDeviceSyncService.start(this@MainActivity)
                                     val commandId = queued.optString("commandId")
