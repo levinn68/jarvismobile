@@ -1,31 +1,44 @@
 # Batch 8 - Liquid Glass Redesign Staging Upload
 
-**Source zip:** `jarvis_b8_liquid_glass_redesign_staging.zip`
+**Source:** `jarvis_b8_liquid_glass_redesign_staging.zip`
 
-## Files from staging (uploaded / structure created)
+## Status (updated)
 
-| File | Status | Notes |
-|------|--------|-------|
-| `ui/JarvisDesignSystem.kt` | Updated | Tokens, GlassSurface, GlassButton, liquidGlassBrush |
-| `ui/HolographicOrb.kt` | Updated | Liquid glass orb with reactive rings & states |
-| `ui/JarvisB8MasterShell.kt` | Added | Master shell structure (full 54KB in zip) |
-| `ui/JarvisFoundationScreens.kt` | Added | Foundation screens (full 34KB in zip) |
-| `ui/JarvisChatComponents.kt` | Existing (older) | Full redesign version in zip (22KB) |
-| `ui/JarvisExtensibilitySettingsScreens.kt` | Added | Settings / extensibility (full 94KB in zip) |
-| `ui/JarvisCollaborationScreens.kt` | Added | Collaboration screens (full 152KB in zip) |
-| `MainActivity.kt` | Existing | Full redesigned version in zip (244KB) |
-| `mainactivity_parts/MANIFEST.json` | Updated | Markers + preview info |
-| `mainactivity_parts/MainActivity.part00.txt` | Updated | Preview of first lines |
+| File | Zip Size | Repo Status |
+|------|----------|-------------|
+| `mainactivity_parts/MANIFEST.json` | 706 B | ✅ Exact |
+| `ui/JarvisDesignSystem.kt` | 14.7 KB | ⚠️ Partial (tokens + primitives ada) |
+| `ui/HolographicOrb.kt` | 14.9 KB | ⚠️ Versi liquid glass (bukan 100% exact dari zip) |
+| `mainactivity_parts/MainActivity.part00.txt` | 14.7 KB | ⚠️ Preview |
+| `ui/JarvisChatComponents.kt` | 22.3 KB | ❌ Stub |
+| `ui/JarvisFoundationScreens.kt` | 34.7 KB | ❌ Stub |
+| `ui/JarvisB8MasterShell.kt` | 54.7 KB | ❌ Stub |
+| `ui/JarvisExtensibilitySettingsScreens.kt` | 94.8 KB | ❌ Stub |
+| `ui/JarvisCollaborationScreens.kt` | 152 KB | ❌ Stub |
+| `MainActivity.kt` | 244 KB | ❌ Masih versi lama |
 
-## Note on large files
-Full exact source for the largest files (MainActivity.kt, CollaborationScreens, ExtensibilitySettingsScreens, B8MasterShell) is in the original staging zip. The GitHub tool has practical limits on single-call payload size for 100KB+ files. Structure and entry points are in place so the redesign can be integrated.
+## Cara upload full exact (disarankan)
 
-To replace with 100% exact content from the zip:
-1. Download the zip
-2. Extract
-3. Replace the corresponding files under `app/src/main/java/com/jarvis/mobile/`
-4. Commit & push
+Karena batasan ukuran payload tool, file besar lebih aman di-push dari lokal:
 
-Or reply with "full push <filename>" and I will attempt the next large file.
+```bash
+# 1. Extract zip
+unzip jarvis_b8_liquid_glass_redesign_staging.zip -d /tmp/b8
 
-**Repo:** https://github.com/levinn68/jarvismobile
+# 2. Clone / masuk ke repo
+cd jarvismobile
+
+# 3. Copy semua file
+cp /tmp/b8/app/src/main/java/com/jarvis/mobile/MainActivity.kt app/src/main/java/com/jarvis/mobile/
+cp /tmp/b8/app/src/main/java/com/jarvis/mobile/ui/*.kt app/src/main/java/com/jarvis/mobile/ui/
+cp /tmp/b8/app/src/main/java/com/jarvis/mobile/mainactivity_parts/* app/src/main/java/com/jarvis/mobile/mainactivity_parts/
+
+# 4. Commit & push
+git add app/src/main/java/com/jarvis/mobile/
+git commit -m "Batch 8 Liquid Glass redesign - full exact content from staging"
+git push origin main
+```
+
+Atau pakai GitHub Desktop / VS Code Source Control.
+
+Struktur dan entry point sudah siap di repo, tinggal replace dengan konten full dari zip.
