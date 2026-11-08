@@ -83,6 +83,7 @@ import com.jarvis.mobile.ai.JarvisModelSelectorScreen
 import com.jarvis.mobile.ai.JarvisProviderItem
 import com.jarvis.mobile.ai.JarvisProvidersScreen
 import com.jarvis.mobile.device.JarvisDeviceClient
+import com.jarvis.mobile.stability.JarvisStabilityGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
