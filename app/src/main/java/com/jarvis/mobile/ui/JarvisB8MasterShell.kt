@@ -6,6 +6,10 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
 import android.util.Log
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
