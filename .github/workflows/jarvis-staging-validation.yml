@@ -1,0 +1,195 @@
+name: JARVIS staging validation and deployment
+
+on:
+  push:
+    branches:
+      - release/b8-1-1-r2-staging-20261107
+  pull_request:
+    branches:
+      - integration/b8-7-full-source-import
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jarvis-staging-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  worker-tests:
+    name: Cloudflare Worker tests and syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Worker JavaScript syntax
+        run: |
+          find worker/src -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Run Worker test suite
+        run: npm test --prefix worker
+
+  android-build:
+    name: Android debug APK build
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+      GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Add Android SDK tools to PATH
+        run: |
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+      - name: Install Android SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Assemble debug APK
+        run: gradle assembleDebug --stacktrace
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-android-debug-staging
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-tests:
+    name: Windows desktop connector tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Windows agent syntax
+        working-directory: desktop/windows
+        run: node --check src/agent.js
+      - name: Run Windows connector tests
+        run: npm test --prefix desktop/windows
+
+  unix-tests:
+    name: Unix desktop connector tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Unix agent syntax
+        working-directory: desktop/unix
+        run: node --check src/agent.js
+      - name: Run Unix connector tests
+        run: npm test --prefix desktop/unix
+
+  deploy-staging:
+    name: Deploy isolated Cloudflare staging Worker
+    if: github.ref == 'refs/heads/release/b8-1-1-r2-staging-20261107' && github.event_name != 'pull_request'
+    needs:
+      - worker-tests
+      - android-build
+      - windows-tests
+      - unix-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Wrangler
+        run: npm install --global wrangler@4
+      - name: Validate required deployment secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          DEVICE_TOKEN_SECRET: ${{ secrets.DEVICE_TOKEN_SECRET }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" || (echo "::error::Missing CLOUDFLARE_API_TOKEN" && exit 1)
+          test -n "$CLOUDFLARE_ACCOUNT_ID" || (echo "::error::Missing CLOUDFLARE_ACCOUNT_ID" && exit 1)
+          test -n "$FISH_API_KEY" || (echo "::error::Missing FISH_API_KEY" && exit 1)
+          test -n "$SUPABASE_ANON_KEY" || (echo "::error::Missing SUPABASE_ANON_KEY" && exit 1)
+          test -n "$DEVICE_TOKEN_SECRET" || (echo "::error::Missing DEVICE_TOKEN_SECRET" && exit 1)
+      - name: Create ephemeral staging secret bundle
+        env:
+          FISH_API_KEY: ${{ secrets.FISH_API_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          DEVICE_TOKEN_SECRET: ${{ secrets.DEVICE_TOKEN_SECRET }}
+          AI_CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.AI_CREDENTIAL_ENCRYPTION_KEY }}
+          GEMINI_API_KEY_1: ${{ secrets.GEMINI_API_KEY_1 }}
+          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          DEEPSEEK_API_KEY_1: ${{ secrets.DEEPSEEK_API_KEY_1 }}
+          DEEPSEEK_API_KEY_2: ${{ secrets.DEEPSEEK_API_KEY_2 }}
+          DEEPSEEK_API_KEY_3: ${{ secrets.DEEPSEEK_API_KEY_3 }}
+          GROQ_API_KEY_1: ${{ secrets.GROQ_API_KEY_1 }}
+          GROQ_API_KEY_2: ${{ secrets.GROQ_API_KEY_2 }}
+          GROQ_API_KEY_3: ${{ secrets.GROQ_API_KEY_3 }}
+          OPENAI_API_KEY_1: ${{ secrets.OPENAI_API_KEY_1 }}
+          OPENAI_API_KEY_2: ${{ secrets.OPENAI_API_KEY_2 }}
+          OPENAI_API_KEY_3: ${{ secrets.OPENAI_API_KEY_3 }}
+          ANTHROPIC_API_KEY_1: ${{ secrets.ANTHROPIC_API_KEY_1 }}
+          ANTHROPIC_API_KEY_2: ${{ secrets.ANTHROPIC_API_KEY_2 }}
+          ANTHROPIC_API_KEY_3: ${{ secrets.ANTHROPIC_API_KEY_3 }}
+          OPENROUTER_API_KEY_1: ${{ secrets.OPENROUTER_API_KEY_1 }}
+          OPENROUTER_API_KEY_2: ${{ secrets.OPENROUTER_API_KEY_2 }}
+          OPENROUTER_API_KEY_3: ${{ secrets.OPENROUTER_API_KEY_3 }}
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const names = [
+            "FISH_API_KEY", "SUPABASE_ANON_KEY", "DEVICE_TOKEN_SECRET",
+            "AI_CREDENTIAL_ENCRYPTION_KEY",
+            "GEMINI_API_KEY_1", "GEMINI_API_KEY_2", "GEMINI_API_KEY_3",
+            "DEEPSEEK_API_KEY_1", "DEEPSEEK_API_KEY_2", "DEEPSEEK_API_KEY_3",
+            "GROQ_API_KEY_1", "GROQ_API_KEY_2", "GROQ_API_KEY_3",
+            "OPENAI_API_KEY_1", "OPENAI_API_KEY_2", "OPENAI_API_KEY_3",
+            "ANTHROPIC_API_KEY_1", "ANTHROPIC_API_KEY_2", "ANTHROPIC_API_KEY_3",
+            "OPENROUTER_API_KEY_1", "OPENROUTER_API_KEY_2", "OPENROUTER_API_KEY_3",
+            "SERPAPI_API_KEY"
+          ];
+          const values = {};
+          for (const name of names) {
+            if (process.env[name]) values[name] = process.env[name];
+          }
+          for (const required of ["FISH_API_KEY", "SUPABASE_ANON_KEY", "DEVICE_TOKEN_SECRET"]) {
+            if (!values[required]) throw new Error("Missing required secret: " + required);
+          }
+          const target = process.env.RUNNER_TEMP + "/jarvis-staging-secrets.json";
+          fs.writeFileSync(target, JSON.stringify(values), { mode: 0o600 });
+          NODE
+      - name: Deploy staging Worker only
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler deploy --config worker/wrangler.toml --env staging --secrets-file "$RUNNER_TEMP/jarvis-staging-secrets.json"
+      - name: Verify staging health endpoint
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent --show-error "https://jarvis-api-staging.alvinorasya1304.workers.dev/health"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Staging health check failed"
+          exit 1
+      - name: Remove ephemeral secret bundle
+        if: always()
+        run: rm -f "$RUNNER_TEMP/jarvis-staging-secrets.json"

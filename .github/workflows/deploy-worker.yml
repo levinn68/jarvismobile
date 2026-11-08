@@ -1,10 +1,11 @@
 name: Deploy JARVIS Cloudflare Worker
 on:
   push:
+    branches:
+      - main
     paths:
       - "worker/**"
       - ".github/workflows/deploy-worker.yml"
-  workflow_dispatch:
 concurrency:
   group: jarvis-worker-${{ github.ref }}
   cancel-in-progress: true

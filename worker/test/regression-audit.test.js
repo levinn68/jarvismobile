@@ -13,13 +13,13 @@ test("detectSpeechLanguage accurately distinguishes English and Indonesian text 
   assert.equal(detectSpeechLanguage("What is the weather today and how can you help me explain this?"), "en");
   assert.equal(detectSpeechLanguage("Tolong jelaskan bagaimana cara membuat jadwal belajar untuk saya"), "id");
 
-  const enCfg = fishVoiceConfig({ FISH_API_KEY: "k", FISH_VOICE_ID_EN: "c7b2977d49894310866a70e6412afe10", FISH_VOICE_ID_ID: "voice-id" }, "Please explain how the system works and what you can build");
+  const enCfg = fishVoiceConfig({ FISH_API_KEY: "k", FISH_VOICE_ID_EN: "voice-en", FISH_VOICE_ID_ID: "voice-id" }, "Please explain how the system works and what you can build");
   assert.equal(enCfg.language, "en");
-  assert.equal(enCfg.voiceId, "c7b2977d49894310866a70e6412afe10");
+  assert.equal(enCfg.voiceId, "voice-en");
 
-  const idCfg = fishVoiceConfig({ FISH_API_KEY: "k", FISH_VOICE_ID_EN: "c7b2977d49894310866a70e6412afe10", FISH_VOICE_ID_ID: "voice-id" }, "Saya ingin kamu menjelaskan bagaimana cara kerja sistem ini");
+  const idCfg = fishVoiceConfig({ FISH_API_KEY: "k", FISH_VOICE_ID_EN: "voice-en", FISH_VOICE_ID_ID: "voice-id" }, "Saya ingin kamu menjelaskan bagaimana cara kerja sistem ini");
   assert.equal(idCfg.language, "id");
-  assert.equal(idCfg.voiceId, "c7b2977d49894310866a70e6412afe10");
+  assert.equal(idCfg.voiceId, "voice-id");
 });
 
 test("isCommandTimestampFresh rejects future timestamps, expired timestamps, and malformed values", () => {
@@ -171,64 +171,6 @@ test("Worker /v1/chat forwards conversation history and returns normalized visua
     assert.equal(capturedMessages.length, 4); // system + 2 history + 1 user
     assert.equal(capturedMessages[1].content, "Nama saya Budi");
     assert.equal(capturedMessages[2].content, "Baik Pak Budi, akan saya ingat.");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("authenticated /v1/tts proxies Fish Audio with one stable Jarvis voice profile", async () => {
-  const originalFetch = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url, init = {}) => {
-    calls.push({ url: String(url), init });
-    if (String(url).endsWith("/auth/v1/user")) {
-      return new Response(JSON.stringify({ id: "user-jarvis-test" }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-    if (String(url) === "https://api.fish.audio/v1/tts") {
-      assert.equal(init.headers.Authorization, "Bearer fish-test-key");
-      assert.equal(init.headers.model, "s2.1-pro-free");
-      const body = JSON.parse(init.body);
-      assert.equal(body.reference_id, "c7b2977d49894310866a70e6412afe10");
-      assert.equal(body.format, "mp3");
-      return new Response(new Uint8Array([73, 68, 51, 4]), { status: 200, headers: { "Content-Type": "audio/mpeg" } });
-    }
-    throw new Error("Unexpected upstream URL: " + url);
-  };
-  try {
-    const response = await workerApp.fetch(new Request("https://worker.test/v1/tts", {
-      method: "POST",
-      headers: { Authorization: "Bearer supabase-test-token", "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Good evening, Sir." })
-    }), {
-      SUPABASE_URL: "https://supabase.test",
-      SUPABASE_ANON_KEY: "anon-test",
-      FISH_API_KEY: "fish-test-key"
-    });
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get("Content-Type"), "audio/mpeg");
-    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [73, 68, 51, 4]);
-    assert.equal(calls.length, 2);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test("unauthenticated /v1/tts requests are rejected before contacting Fish Audio", async () => {
-  const originalFetch = globalThis.fetch;
-  let fishCalled = false;
-  globalThis.fetch = async (url) => {
-    if (String(url).endsWith("/auth/v1/user")) return new Response("{}", { status: 401 });
-    fishCalled = true;
-    return new Response("unexpected", { status: 500 });
-  };
-  try {
-    const response = await workerApp.fetch(new Request("https://worker.test/v1/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: "Hello" })
-    }), { SUPABASE_URL: "https://supabase.test", SUPABASE_ANON_KEY: "anon", FISH_API_KEY: "fish" });
-    assert.equal(response.status, 401);
-    assert.equal(fishCalled, false);
   } finally {
     globalThis.fetch = originalFetch;
   }

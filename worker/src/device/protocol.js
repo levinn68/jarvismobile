@@ -25,9 +25,20 @@ const ANDROID_ACTIONS = Object.freeze({
   "apps.list": { capability: "apps.list", params: [] },
   "apps.launch": { capability: "apps.launch", params: ["packageName"] },
   "apps.launch_label": { capability: "apps.launch", params: ["appName"] },
+  "OPEN_APP": { capability: "apps.launch", params: ["packageName", "appName"] },
   "screen.read": { capability: "screen.read", params: [] },
   "screen.tap": { capability: "screen.control", params: ["x", "y"] },
+  "TAP_COORDINATE": { capability: "screen.control", params: ["x", "y"] },
   "screen.type": { capability: "screen.control", params: ["text"] },
+  "TYPE_TEXT": { capability: "screen.control", params: ["text"] },
+  "screen.click_text": { capability: "screen.control", params: ["text"] },
+  "CLICK_TEXT": { capability: "screen.control", params: ["text"] },
+  "screen.scroll": { capability: "screen.control", params: ["direction"] },
+  "SCROLL": { capability: "screen.control", params: ["direction"] },
+  "screen.global_action": { capability: "screen.control", params: ["globalAction"] },
+  "GLOBAL_ACTION": { capability: "screen.control", params: ["globalAction"] },
+  "system.wait": { capability: "system.read", params: ["durationMs"] },
+  "WAIT": { capability: "system.read", params: ["durationMs"] },
   "contacts.list": { capability: "contacts.read", params: [] },
   "calendar.list": { capability: "calendar.read", params: [] },
   "system.status": { capability: "system.read", params: [] },
@@ -43,6 +54,9 @@ const DESKTOP_ACTIONS = Object.freeze({
   "apps.launch_label": { capability: "apps.launch", params: ["appName"] },
   "system.status": { capability: "system.read", params: [] }
 });
+
+const VALID_SCROLL_DIRECTIONS = new Set(["up", "down", "left", "right"]);
+const VALID_GLOBAL_ACTIONS = new Set(["BACK", "HOME", "RECENTS", "NOTIFICATIONS", "QUICK_SETTINGS"]);
 
 function validateParams(action, raw, schema, platform) {
   if (raw == null) raw = {};
@@ -83,21 +97,61 @@ function validateParams(action, raw, schema, platform) {
         throw new Error("apps.launch requires a valid Android packageName");
       }
       params.packageName = packageName;
+    } else if (action === "OPEN_APP") {
+      const packageName = typeof raw.packageName === "string" ? raw.packageName.trim() : "";
+      const appName = typeof raw.appName === "string" ? raw.appName.trim() : "";
+      if (!packageName && !appName) {
+        throw new Error("OPEN_APP requires packageName or appName");
+      }
+      if (packageName) {
+        if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(packageName) || packageName.length > 200) {
+          throw new Error("OPEN_APP requires a valid Android packageName");
+        }
+        params.packageName = packageName;
+      }
+      if (appName) {
+        if (appName.length > 100) throw new Error("OPEN_APP appName must be 1-100 characters");
+        params.appName = appName;
+      }
     } else if (action === "files.search") {
       params.query = raw.query.trim();
-    } else if (action === "screen.tap") {
+    } else if (action === "screen.tap" || action === "TAP_COORDINATE") {
       if (typeof raw.x !== "number" || !Number.isFinite(raw.x) || raw.x < 0 || raw.x > 1 ||
           typeof raw.y !== "number" || !Number.isFinite(raw.y) || raw.y < 0 || raw.y > 1) {
-        throw new Error("screen.tap requires normalized x and y coordinates from 0 to 1");
+        throw new Error(`${action} requires normalized x and y coordinates from 0 to 1`);
       }
       params.x = raw.x;
       params.y = raw.y;
-    } else if (action === "screen.type") {
+    } else if (action === "screen.type" || action === "TYPE_TEXT") {
       const value = typeof raw.text === "string" ? raw.text : "";
       if (!value.trim() || value.length > 500) {
-        throw new Error("screen.type requires text (1-500 characters)");
+        throw new Error(`${action} requires text (1-500 characters)`);
       }
       params.text = value;
+    } else if (action === "screen.click_text" || action === "CLICK_TEXT") {
+      const value = typeof raw.text === "string" ? raw.text.trim() : "";
+      if (!value || value.length > 200) {
+        throw new Error(`${action} requires text (1-200 characters)`);
+      }
+      params.text = value;
+    } else if (action === "screen.scroll" || action === "SCROLL") {
+      const dir = typeof raw.direction === "string" ? raw.direction.trim().toLowerCase() : "";
+      if (!VALID_SCROLL_DIRECTIONS.has(dir)) {
+        throw new Error(`${action} requires direction (up, down, left, or right)`);
+      }
+      params.direction = dir;
+    } else if (action === "screen.global_action" || action === "GLOBAL_ACTION") {
+      const ga = typeof raw.globalAction === "string" ? raw.globalAction.trim().toUpperCase() : "";
+      if (!VALID_GLOBAL_ACTIONS.has(ga)) {
+        throw new Error(`${action} requires globalAction (BACK, HOME, RECENTS, NOTIFICATIONS, or QUICK_SETTINGS)`);
+      }
+      params.globalAction = ga;
+    } else if (action === "system.wait" || action === "WAIT") {
+      const durationMs = Number(raw.durationMs);
+      if (!Number.isInteger(durationMs) || durationMs < 100 || durationMs > 5000) {
+        throw new Error(`${action} requires integer durationMs between 100 and 5000`);
+      }
+      params.durationMs = durationMs;
     }
     return params;
   }

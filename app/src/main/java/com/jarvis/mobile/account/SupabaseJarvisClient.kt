@@ -81,7 +81,6 @@ class SupabaseJarvisClient(context: Context) {
     fun refreshSessionBlocking(): String =
         ensureSession(vault.read(), forceRefresh = true).optString("access_token").takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("Sesi Supabase tidak valid.")
-
     fun resolveGoogleWebClientId(): String {
         val overrideId = appContext
             .getSharedPreferences("jarvis_secure_settings", Context.MODE_PRIVATE)
@@ -407,7 +406,8 @@ class SupabaseJarvisClient(context: Context) {
             val ok = ensureSession(stored).optString("access_token").isNotBlank()
             if (ok) runCatching { flushPendingTurnsInternal() }
             ok
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             false
         }
     }
@@ -438,6 +438,7 @@ class SupabaseJarvisClient(context: Context) {
             persistTurn(userText, assistantText, turnId)
             flushPendingTurnsInternal()
         } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
             enqueuePendingTurn(userText, assistantText, turnId)
             throw error
         }
@@ -739,7 +740,7 @@ class SupabaseJarvisClient(context: Context) {
             }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val response = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val response = if (stream != null) String(com.jarvis.mobile.stability.JarvisStabilityGuard.readBoundedBytes(stream, 2 * 1024 * 1024), Charsets.UTF_8) else ""
             if (code !in 200..299) {
                 throw parseSupabaseHttpError(code, response)
             }
@@ -815,3 +816,4 @@ class SupabaseJarvisClient(context: Context) {
         }
     }
 }
+

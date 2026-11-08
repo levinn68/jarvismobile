@@ -11,7 +11,25 @@ import org.json.JSONObject
  * No unrestricted filesystem traversal or hidden access is attempted.
  */
 class FileController(private val context: Context) {
-    companion object { const val PREFS = "jarvis_device_secure"; const val TREE_URI = "selected_tree_uri" }
+    companion object {
+        const val PREFS = "jarvis_device_secure"
+        const val TREE_URI = "selected_tree_uri"
+        const val MAX_READ_BYTES = 60 * 1024 // 60 KB content cap so JSON ACK envelope stays <= 64 KB
+        private val ALLOWED_TEXT_MIMES = setOf(
+            "application/json",
+            "application/xml",
+            "application/javascript",
+            "application/x-yaml",
+            "application/toml",
+            "application/sql"
+        )
+        private val ALLOWED_TEXT_EXTENSIONS = setOf(
+            "txt", "md", "markdown", "json", "csv", "tsv", "xml", "yaml", "yml",
+            "log", "ini", "cfg", "conf", "toml", "properties", "html", "htm",
+            "css", "js", "mjs", "cjs", "ts", "tsx", "jsx", "kt", "kts", "java",
+            "py", "rb", "go", "rs", "c", "cpp", "h", "hpp", "cs", "sql", "sh", "gradle"
+        )
+    }
 
     fun hasSelectedFolder(): Boolean = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(TREE_URI, null) != null
     fun saveSelectedFolder(uri: Uri) {
@@ -40,7 +58,11 @@ class FileController(private val context: Context) {
             return JSONObject().put("ok", false).put("error", "A valid SAF documentId is required")
         val uri = DocumentsContract.buildDocumentUriUsingTree(tree, documentId)
         val mime = context.contentResolver.getType(uri).orEmpty()
-        if (!(mime.startsWith("text/") || mime in setOf("application/json", "application/xml", "application/javascript")))
+        val ext = documentId.substringAfterLast('.', "").lowercase()
+        val isAllowedText = mime.startsWith("text/") ||
+            mime in ALLOWED_TEXT_MIMES ||
+            ((mime.isBlank() || mime == "application/octet-stream") && ext in ALLOWED_TEXT_EXTENSIONS)
+        if (!isAllowedText)
             return JSONObject().put("ok", false).put("error", "Only text documents can be read by this connector")
         val bytes = context.contentResolver.openInputStream(uri)?.use { input ->
             val out = java.io.ByteArrayOutputStream()
@@ -50,12 +72,15 @@ class FileController(private val context: Context) {
                 val count = input.read(buffer)
                 if (count < 0) break
                 total += count
-                if (total > 65536) throw IllegalStateException("File exceeds 64 KB read limit")
+                if (total > MAX_READ_BYTES) throw IllegalStateException("File exceeds 64 KB read limit (max 60 KB content)")
                 out.write(buffer, 0, count)
             }
             out.toByteArray()
         } ?: throw IllegalStateException("Unable to open selected document")
-        return JSONObject().put("ok", true).put("mimeType", mime)
+        if (bytes.any { it == 0.toByte() }) {
+            return JSONObject().put("ok", false).put("error", "Binary files are not permitted; text documents only")
+        }
+        return JSONObject().put("ok", true).put("mimeType", mime.ifBlank { "text/plain" })
             .put("content", String(bytes, Charsets.UTF_8)).put("bytes", bytes.size)
     }
 
