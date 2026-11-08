@@ -3,10 +3,12 @@ package com.jarvis.mobile.ui
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -30,74 +32,109 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Holographic orb for B8 Liquid Glass redesign.
- * Bound to VoiceOrbState with liquid glass aesthetics, soft glow, and reactive rings.
+ * Cupertino Liquid Glass + Aurora Holographic Orb bound to real [VoiceOrbState].
+ * Designed as the large centered centerpiece for J.A.R.V.I.S. Voice Mode.
+ * Supports all 7 states:
+ * - Idle / Standby: luminous cyan-violet aurora sphere with calm breathing rings.
+ * - Listening: reactive multi-ring expansion + live microphone RMS wave energy.
+ * - Processing: accelerated dual-axis neural violet-cyan orbital spin.
+ * - Responding: synthesized response burst before/with visual card reveal.
+ * - Speaking: outward harmonic aurora waves + orbital energy nodes.
+ * - Muted: restrained dark-glass cyan-indigo core with subtle standby ring.
+ * - Error: high-visibility coral-amber alert pulse.
  */
 @Composable
 fun HolographicOrb(
     state: VoiceOrbState,
     rmsLevel: Float = 0f,
-    size: Dp = 220.dp,
+    size: Dp = 248.dp,
     modifier: Modifier = Modifier
 ) {
-    val infinite = rememberInfiniteTransition(label = "orb")
+    val infinite = rememberInfiniteTransition(label = "jarvis_liquid_orb")
     val spinDuration = when (state) {
         VoiceOrbState.Processing -> 3200
         VoiceOrbState.Responding -> 4200
-        VoiceOrbState.Speaking -> 5800
-        VoiceOrbState.Muted -> 22000
-        else -> 12000
+        VoiceOrbState.Speaking -> 5200
+        VoiceOrbState.Listening -> 6800
+        VoiceOrbState.Muted -> 16000
+        else -> 11000
     }
     val spin by infinite.animateFloat(
-        0f, 360f,
-        infiniteRepeatable(tween(spinDuration, easing = LinearEasing), RepeatMode.Restart),
-        label = "spin"
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(spinDuration, easing = LinearEasing), RepeatMode.Restart),
+        label = "orb_spin"
+    )
+    val counterSpin by infinite.animateFloat(
+        initialValue = 360f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(tween((spinDuration * 1.35f).toInt(), easing = LinearEasing), RepeatMode.Restart),
+        label = "orb_counter_spin"
     )
     val pulse by infinite.animateFloat(
-        0.94f, 1.06f,
-        infiniteRepeatable(tween(when (state) {
-            VoiceOrbState.Listening -> 620
-            VoiceOrbState.Processing -> 780
-            VoiceOrbState.Responding -> 700
-            VoiceOrbState.Speaking -> 840
-            VoiceOrbState.Error -> 420
-            VoiceOrbState.Muted -> 2000
-            else -> 1500
-        }), RepeatMode.Reverse),
-        label = "pulse"
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            tween(
+                durationMillis = when (state) {
+                    VoiceOrbState.Listening -> 620
+                    VoiceOrbState.Processing -> 740
+                    VoiceOrbState.Responding -> 700
+                    VoiceOrbState.Speaking -> 780
+                    VoiceOrbState.Error -> 460
+                    VoiceOrbState.Muted -> 1900
+                    else -> 1500
+                },
+                easing = FastOutSlowInEasing
+            ),
+            RepeatMode.Reverse
+        ),
+        label = "orb_pulse"
     )
     val ringBreath by infinite.animateFloat(
-        0f, 1f,
-        infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
-        label = "ring"
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart),
+        label = "orb_ring_breath"
     )
+
+    val normalizedRms = (rmsLevel / 16f).coerceIn(0f, 1f)
     val targetIntensity = when (state) {
-        VoiceOrbState.Idle, VoiceOrbState.Standby -> 0.40f
-        VoiceOrbState.Listening -> (0.55f + (rmsLevel / 16f).coerceIn(0f, 1f) * 0.40f)
-        VoiceOrbState.Processing -> 0.74f
-        VoiceOrbState.Responding -> 0.82f
-        VoiceOrbState.Speaking -> 0.88f
-        VoiceOrbState.Muted -> 0.22f
-        VoiceOrbState.Error -> 0.90f
+        VoiceOrbState.Idle, VoiceOrbState.Standby -> 0.72f
+        VoiceOrbState.Listening -> (0.78f + normalizedRms * 0.22f)
+        VoiceOrbState.Processing -> 0.88f
+        VoiceOrbState.Responding -> 0.92f
+        VoiceOrbState.Speaking -> (0.86f + normalizedRms * 0.14f)
+        VoiceOrbState.Muted -> 0.56f
+        VoiceOrbState.Error -> 0.94f
     }
-    val intensity by animateFloatAsState(targetIntensity, tween(200), label = "intensity")
+    val intensity by animateFloatAsState(
+        targetValue = targetIntensity,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessLow),
+        label = "orb_intensity"
+    )
 
     val coreColor = when (state) {
-        VoiceOrbState.Idle, VoiceOrbState.Standby -> JarvisTokens.AccentCyan
-        VoiceOrbState.Listening -> Color(0xFF00F0FF)
-        VoiceOrbState.Processing -> JarvisTokens.AccentPurple
-        VoiceOrbState.Responding -> Color(0xFF40C4FF)
-        VoiceOrbState.Speaking -> JarvisTokens.AccentCyan
-        VoiceOrbState.Muted -> Color(0xFF78909C)
-        VoiceOrbState.Error -> JarvisTokens.Error
+        VoiceOrbState.Idle, VoiceOrbState.Standby -> JarvisColors.CyanGlow
+        VoiceOrbState.Listening -> JarvisColors.CyanGlow
+        VoiceOrbState.Processing -> JarvisColors.VioletGlow
+        VoiceOrbState.Responding -> JarvisColors.Responding
+        VoiceOrbState.Speaking -> JarvisColors.Speaking
+        VoiceOrbState.Muted -> JarvisColors.CyanDim
+        VoiceOrbState.Error -> JarvisColors.Error
     }
-    val secondary = when (state) {
-        VoiceOrbState.Processing -> Color(0xFFB388FF)
-        VoiceOrbState.Responding -> Color(0xFF80D8FF)
-        VoiceOrbState.Speaking -> Color(0xFF18FFFF)
-        VoiceOrbState.Muted -> Color(0xFF546E7A)
-        VoiceOrbState.Error -> JarvisTokens.Warning
-        else -> Color(0xFF82B1FF)
+    val secondaryColor = when (state) {
+        VoiceOrbState.Processing -> JarvisColors.Cyan
+        VoiceOrbState.Responding -> JarvisColors.VioletGlow
+        VoiceOrbState.Speaking -> JarvisColors.CyanGlow
+        VoiceOrbState.Muted -> JarvisColors.AuroraMid
+        VoiceOrbState.Error -> JarvisColors.Warn
+        else -> JarvisColors.Violet
+    }
+    val tertiaryColor = when (state) {
+        VoiceOrbState.Speaking -> JarvisColors.VioletGlow
+        VoiceOrbState.Listening -> JarvisColors.AuroraMid
+        else -> JarvisColors.AuroraEnd
     }
 
     Box(
@@ -109,172 +146,189 @@ fun HolographicOrb(
         Canvas(Modifier.fillMaxSize()) {
             val cx = this.size.width / 2f
             val cy = this.size.height / 2f
-            val effectivePulse = if (state == VoiceOrbState.Muted) 0.96f else pulse
-            val baseR = this.size.minDimension * 0.27f * effectivePulse
+            val effectivePulse = if (state == VoiceOrbState.Muted) (0.96f + (pulse - 0.94f) * 0.35f) else pulse
+            val baseR = this.size.minDimension * 0.29f * effectivePulse
             val rmsBoost = if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking) {
-                (rmsLevel / 16f).coerceIn(0f, 1f) * baseR * 0.32f
-            } else 0f
-
-            // Soft liquid glass outer glow
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(coreColor.copy(alpha = 0.22f * intensity), Color.Transparent),
-                    center = Offset(cx, cy),
-                    radius = baseR * 2.9f
-                ),
-                radius = baseR * 2.9f,
-                center = Offset(cx, cy)
-            )
-
-            val ringCount = if (state == VoiceOrbState.Muted) 1 else 3
-            for (i in 0 until ringCount) {
-                val phase = (ringBreath + i * 0.33f) % 1f
-                val ringR = baseR * (1.32f + phase * 1.05f) + rmsBoost * (1f - i * 0.18f)
-                val alpha = (1f - phase) * 0.34f * intensity
-                drawCircle(
-                    color = coreColor.copy(alpha = alpha),
-                    radius = ringR,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 1.5f + intensity * 1.3f)
-                )
+                normalizedRms * baseR * 0.38f
+            } else {
+                baseR * 0.04f
             }
 
-            // Precision instrument halo
-            rotate(-spin * 0.20f, Offset(cx, cy)) {
-                val haloRadius = baseR * 2.08f
-                drawCircle(
-                    color = coreColor.copy(alpha = 0.16f * intensity),
-                    radius = haloRadius,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = 0.8.dp.toPx())
-                )
-                for (tick in 0 until 48) {
-                    val angle = Math.toRadians((tick * 7.5).toDouble())
-                    val major = tick % 4 == 0
-                    val inner = haloRadius - if (major) 7.dp.toPx() else 2.8.dp.toPx()
-                    val outer = haloRadius + if (major) 2.8.dp.toPx() else 1.dp.toPx()
-                    drawLine(
-                        color = coreColor.copy(alpha = (if (major) 0.50f else 0.18f) * intensity),
-                        start = Offset(cx + cos(angle).toFloat() * inner, cy + sin(angle).toFloat() * inner),
-                        end = Offset(cx + cos(angle).toFloat() * outer, cy + sin(angle).toFloat() * outer),
-                        strokeWidth = if (major) 1.1.dp.toPx() else 0.65.dp.toPx(),
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-
-            rotate(spin, Offset(cx, cy)) {
-                val arcStroke = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                drawArc(
-                    color = coreColor.copy(alpha = 0.55f * intensity),
-                    startAngle = 0f,
-                    sweepAngle = if (state == VoiceOrbState.Responding) 105f else 68f,
-                    useCenter = false,
-                    topLeft = Offset(cx - baseR * 1.52f, cy - baseR * 1.52f),
-                    size = androidx.compose.ui.geometry.Size(baseR * 3.04f, baseR * 3.04f),
-                    style = arcStroke
-                )
-                drawArc(
-                    color = secondary.copy(alpha = 0.42f * intensity),
-                    startAngle = 135f,
-                    sweepAngle = if (state == VoiceOrbState.Processing) 80f else 48f,
-                    useCenter = false,
-                    topLeft = Offset(cx - baseR * 1.68f, cy - baseR * 1.68f),
-                    size = androidx.compose.ui.geometry.Size(baseR * 3.36f, baseR * 3.36f),
-                    style = Stroke(width = 1.7f, cap = StrokeCap.Round)
-                )
-            }
-            rotate(-spin * 0.62f, Offset(cx, cy)) {
-                drawArc(
-                    color = JarvisTokens.AccentPurple.copy(alpha = 0.30f * intensity),
-                    startAngle = 195f,
-                    sweepAngle = 42f,
-                    useCenter = false,
-                    topLeft = Offset(cx - baseR * 1.88f, cy - baseR * 1.88f),
-                    size = androidx.compose.ui.geometry.Size(baseR * 3.76f, baseR * 3.76f),
-                    style = Stroke(width = 1.3f, cap = StrokeCap.Round)
-                )
-            }
-
-            // Liquid glass core
+            // 1. Deep outer ambient aurora halo
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.80f * intensity),
-                        coreColor.copy(alpha = 0.92f),
-                        secondary.copy(alpha = 0.70f),
-                        coreColor.copy(alpha = 0.12f)
+                        coreColor.copy(alpha = 0.32f * intensity),
+                        secondaryColor.copy(alpha = 0.18f * intensity),
+                        tertiaryColor.copy(alpha = 0.06f * intensity),
+                        Color.Transparent
                     ),
-                    center = Offset(cx - baseR * 0.14f, cy - baseR * 0.18f),
-                    radius = baseR * 1.12f
+                    center = Offset(cx, cy),
+                    radius = baseR * 3.1f + rmsBoost
                 ),
-                radius = baseR,
+                radius = baseR * 3.1f + rmsBoost,
                 center = Offset(cx, cy)
             )
 
-            // Hologram mesh
-            rotate(spin * 0.40f, Offset(cx, cy)) {
-                for (latitude in -2..2) {
-                    val yOffset = latitude * baseR * 0.26f
-                    val widthFactor = kotlin.math.sqrt(
-                        (1f - (yOffset * yOffset) / (baseR * baseR)).coerceAtLeast(0.12f)
-                    )
-                    drawOval(
-                        color = Color(0xFFB8F7FF).copy(alpha = 0.18f * intensity),
-                        topLeft = Offset(
-                            cx - baseR * 0.90f * widthFactor,
-                            cy + yOffset - baseR * 0.15f * widthFactor
+            // 2. Expanding harmonic liquid wave rings
+            val ringCount = if (state == VoiceOrbState.Muted) 2 else 4
+            for (i in 0 until ringCount) {
+                val phase = (ringBreath + i * (1f / ringCount)) % 1f
+                val ringR = baseR * (1.18f + phase * 1.25f) + rmsBoost * (1f - i * 0.18f)
+                val alpha = (1f - phase) * 0.42f * intensity
+                drawCircle(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            coreColor.copy(alpha = alpha),
+                            secondaryColor.copy(alpha = alpha * 0.85f),
+                            tertiaryColor.copy(alpha = alpha * 0.65f),
+                            coreColor.copy(alpha = alpha)
                         ),
-                        size = androidx.compose.ui.geometry.Size(
-                            baseR * 1.80f * widthFactor,
-                            baseR * 0.30f * widthFactor
-                        ),
-                        style = Stroke(width = 0.75.dp.toPx())
-                    )
-                }
-                for (longitude in -2..2) {
-                    val xScale = 0.21f + kotlin.math.abs(longitude) * 0.17f
-                    drawOval(
-                        color = Color(0xFF8DEEFF).copy(alpha = 0.14f * intensity),
-                        topLeft = Offset(cx - baseR * xScale, cy - baseR * 0.94f),
-                        size = androidx.compose.ui.geometry.Size(
-                            baseR * xScale * 2f,
-                            baseR * 1.88f
-                        ),
-                        style = Stroke(width = 0.75.dp.toPx())
-                    )
-                }
+                        center = Offset(cx, cy)
+                    ),
+                    radius = ringR,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.5f + intensity * 1.5f)
+                )
             }
 
+            // 3. Outer precision holographic instrument ring
             drawCircle(
-                color = Color.White.copy(alpha = 0.32f * intensity),
-                radius = baseR * 0.26f,
-                center = Offset(cx - baseR * 0.20f, cy - baseR * 0.26f)
+                color = Color.White.copy(alpha = 0.12f * intensity),
+                radius = baseR * 1.92f,
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.dp.toPx())
             )
 
-            if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking || state == VoiceOrbState.Responding) {
-                val nodes = 8
-                for (n in 0 until nodes) {
-                    val ang = Math.toRadians((n * (360.0 / nodes) + spin * 0.28).toDouble())
-                    val dist = baseR * (1.42f + (rmsLevel / 16f).coerceIn(0f, 1f) * 0.22f)
-                    val nx = cx + cos(ang).toFloat() * dist
-                    val ny = cy + sin(ang).toFloat() * dist
-                    drawCircle(
-                        color = coreColor.copy(alpha = 0.45f * intensity),
-                        radius = 2.3f + intensity * 1.8f,
-                        center = Offset(nx, ny)
-                    )
-                }
+            // 4. Primary rotating aurora arcs
+            rotate(spin, Offset(cx, cy)) {
+                val arcStroke = Stroke(width = 3.2f, cap = StrokeCap.Round)
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            coreColor.copy(alpha = 0.78f * intensity),
+                            Color.White.copy(alpha = 0.85f * intensity),
+                            secondaryColor.copy(alpha = 0.65f * intensity),
+                            Color.Transparent
+                        ),
+                        center = Offset(cx, cy)
+                    ),
+                    startAngle = 12f,
+                    sweepAngle = if (state == VoiceOrbState.Responding || state == VoiceOrbState.Speaking) 135f else 96f,
+                    useCenter = false,
+                    topLeft = Offset(cx - baseR * 1.48f, cy - baseR * 1.48f),
+                    size = androidx.compose.ui.geometry.Size(baseR * 2.96f, baseR * 2.96f),
+                    style = arcStroke
+                )
+                drawArc(
+                    color = secondaryColor.copy(alpha = 0.62f * intensity),
+                    startAngle = 192f,
+                    sweepAngle = if (state == VoiceOrbState.Processing) 110f else 74f,
+                    useCenter = false,
+                    topLeft = Offset(cx - baseR * 1.66f, cy - baseR * 1.66f),
+                    size = androidx.compose.ui.geometry.Size(baseR * 3.32f, baseR * 3.32f),
+                    style = Stroke(width = 2.2f, cap = StrokeCap.Round)
+                )
             }
 
-            if (state == VoiceOrbState.Muted) {
-                val slashOffset = baseR * 0.62f
-                drawLine(
-                    color = JarvisTokens.Warning.copy(alpha = 0.62f),
-                    start = Offset(cx - slashOffset, cy - slashOffset),
-                    end = Offset(cx + slashOffset, cy + slashOffset),
-                    strokeWidth = 2.0.dp.toPx(),
-                    cap = StrokeCap.Round
+            // 5. Counter-rotating inner & outer plasma filaments
+            rotate(counterSpin, Offset(cx, cy)) {
+                drawArc(
+                    color = tertiaryColor.copy(alpha = 0.52f * intensity),
+                    startAngle = 45f,
+                    sweepAngle = 82f,
+                    useCenter = false,
+                    topLeft = Offset(cx - baseR * 1.82f, cy - baseR * 1.82f),
+                    size = androidx.compose.ui.geometry.Size(baseR * 3.64f, baseR * 3.64f),
+                    style = Stroke(width = 1.8f, cap = StrokeCap.Round)
+                )
+                drawArc(
+                    color = coreColor.copy(alpha = 0.46f * intensity),
+                    startAngle = 225f,
+                    sweepAngle = 68f,
+                    useCenter = false,
+                    topLeft = Offset(cx - baseR * 1.28f, cy - baseR * 1.28f),
+                    size = androidx.compose.ui.geometry.Size(baseR * 2.56f, baseR * 2.56f),
+                    style = Stroke(width = 2.0f, cap = StrokeCap.Round)
+                )
+            }
+
+            // 6. Refractive Liquid Glass Core Sphere
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.94f * intensity),
+                        coreColor.copy(alpha = 0.92f * intensity),
+                        secondaryColor.copy(alpha = 0.78f * intensity),
+                        Color(0xFF091B32).copy(alpha = 0.92f)
+                    ),
+                    center = Offset(cx - baseR * 0.18f, cy - baseR * 0.22f),
+                    radius = baseR * 1.28f
+                ),
+                radius = baseR + rmsBoost * 0.28f,
+                center = Offset(cx, cy)
+            )
+
+            // 7. Inner plasma swirl / aurora lens
+            rotate(spin * 0.5f, Offset(cx, cy)) {
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.36f * intensity),
+                            coreColor.copy(alpha = 0.22f * intensity),
+                            tertiaryColor.copy(alpha = 0.40f * intensity)
+                        ),
+                        start = Offset(cx - baseR, cy - baseR),
+                        end = Offset(cx + baseR, cy + baseR)
+                    ),
+                    radius = baseR * 0.82f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.6f)
+                )
+            }
+
+            // 8. Specular glass rim border + top-left lens reflection
+            drawCircle(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.78f * intensity),
+                        coreColor.copy(alpha = 0.55f * intensity),
+                        secondaryColor.copy(alpha = 0.35f * intensity)
+                    ),
+                    start = Offset(cx - baseR, cy - baseR),
+                    end = Offset(cx + baseR, cy + baseR)
+                ),
+                radius = baseR + rmsBoost * 0.28f,
+                center = Offset(cx, cy),
+                style = Stroke(width = 2.2f)
+            )
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.58f * intensity),
+                        Color.Transparent
+                    ),
+                    center = Offset(cx - baseR * 0.30f, cy - baseR * 0.34f),
+                    radius = baseR * 0.46f
+                ),
+                radius = baseR * 0.46f,
+                center = Offset(cx - baseR * 0.30f, cy - baseR * 0.34f)
+            )
+
+            // 9. Orbital telemetry nodes (active in all states, expanded on Listening/Speaking)
+            val nodes = if (state == VoiceOrbState.Listening || state == VoiceOrbState.Speaking || state == VoiceOrbState.Responding) 12 else 8
+            for (n in 0 until nodes) {
+                val ang = Math.toRadians((n * (360.0 / nodes) + spin * 0.45).toDouble())
+                val waveOffset = sin(Math.toRadians((ringBreath * 360f + n * 45f).toDouble())).toFloat() * (baseR * 0.08f)
+                val dist = baseR * (1.38f + normalizedRms * 0.28f) + waveOffset
+                val nx = cx + cos(ang).toFloat() * dist
+                val ny = cy + sin(ang).toFloat() * dist
+                drawCircle(
+                    color = if (n % 2 == 0) coreColor.copy(alpha = 0.72f * intensity) else secondaryColor.copy(alpha = 0.64f * intensity),
+                    radius = if (n % 3 == 0) 3.4f + intensity * 1.8f else 2.2f + intensity * 1.2f,
+                    center = Offset(nx, ny)
                 )
             }
         }
