@@ -1,6 +1,44 @@
 package com.jarvis.mobile.ui
 
 import android.content.Context
+import android.net.Uri
+import android.os.Handler
+import android.os.Looper
+import android.provider.OpenableColumns
+import android.util.Log
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.font.FontFamily
+import android.media.MediaPlayer
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -42,11 +80,9 @@ import com.jarvis.mobile.ai.IndependentProviderCatalog
 import com.jarvis.mobile.ai.JarvisAccountItem
 import com.jarvis.mobile.ai.JarvisModelItem
 import com.jarvis.mobile.ai.JarvisModelSelectorScreen
-import com.jarvis.mobile.ai.JarvisMultiAccountsScreen
 import com.jarvis.mobile.ai.JarvisProviderItem
 import com.jarvis.mobile.ai.JarvisProvidersScreen
 import com.jarvis.mobile.device.JarvisDeviceClient
-import com.jarvis.mobile.stability.JarvisStabilityGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -680,7 +716,7 @@ fun JarvisB8MasterShell(
                         JarvisB8ConversationHistoryScreen(
                             savedConversations = savedConversations,
                             onRefreshConversations = onRefreshConversations,
-                            onSelectConversation = { convId ->
+                            onSelectConversation = { convId: String ->
                                 onOpenSavedConversation(convId)
                                 overlayRoute = JarvisB8OverlayRoute.NONE
                                 activeTab = JarvisB8NavTab.CHAT
@@ -694,7 +730,7 @@ fun JarvisB8MasterShell(
                             selectedTier = selectedTier,
                             models = modelsState,
                             connectedProviderIds = connectedProviderIds,
-                            onSelectModel = { model ->
+                            onSelectModel = { model: JarvisModelItem ->
                                 selectedModelId = model.id
                                 selectedTier = model.tier
                                 activeModelLabel = "${model.tier.displayTitle} (${model.name})"
@@ -726,7 +762,7 @@ fun JarvisB8MasterShell(
                                 }
                                 overlayRoute = JarvisB8OverlayRoute.NONE
                             },
-                            onSelectTier = { tier ->
+                            onSelectTier = { tier: JarvisIntelligenceTier ->
                                 selectedTier = tier
                                 selectedModelId = tier.defaultModelId
                                 activeModelLabel = "${tier.displayTitle} (${tier.defaultModelName})"
@@ -766,7 +802,7 @@ fun JarvisB8MasterShell(
                     JarvisB8OverlayRoute.AI_PROVIDERS -> {
                         JarvisProvidersScreen(
                             providers = providersState,
-                            onToggleProvider = { id, enabled ->
+                            onToggleProvider = { id: String, enabled: Boolean ->
                                 val idx = providersState.indexOfFirst { it.id == id }
                                 if (idx >= 0) {
                                     val curr = providersState[idx]
@@ -800,11 +836,11 @@ fun JarvisB8MasterShell(
                                     }
                                 }
                             },
-                            onOpenMultiAccounts = { provId ->
+                            onOpenMultiAccounts = { provId: String ->
                                 selectedAccountProvider = provId
                                 overlayRoute = JarvisB8OverlayRoute.MULTI_ACCOUNTS
                             },
-                            onAddProvider = { provId, apiKey ->
+                            onAddProvider = { provId: String, apiKey: String ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = provId,
                                     label = "${provId.uppercase()} Main",
@@ -812,7 +848,7 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onSaveIndependentProviderConfig = { provId, accountLabel, emailHint, apiKey, customEndpoint, defaultModel ->
+                            onSaveIndependentProviderConfig = { provId: String, accountLabel: String, emailHint: String, apiKey: String, customEndpoint: String, defaultModel: String ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = provId,
                                     label = accountLabel,
@@ -822,7 +858,7 @@ fun JarvisB8MasterShell(
                                     defaultModel = defaultModel
                                 )
                             },
-                            onTestProviderConnection = { provId, apiKey, customEndpoint, onResult ->
+                            onTestProviderConnection = { provId: String, apiKey: String, customEndpoint: String, onResult: (Boolean, String, List<String>) -> Unit ->
                                 executeLiveProviderConnectionTest(
                                     providerId = provId,
                                     apiKey = apiKey,
@@ -838,8 +874,8 @@ fun JarvisB8MasterShell(
                         JarvisMultiAccountsScreen(
                             selectedProvider = selectedAccountProvider,
                             accounts = accountsState,
-                            onSelectProviderTab = { selectedAccountProvider = it },
-                            onToggleAccountActive = { accId ->
+                            onSelectProviderTab = { provTab: String -> selectedAccountProvider = provTab },
+                            onToggleAccountActive = { accId: String ->
                                 val idx = accountsState.indexOfFirst { it.accountId == accId }
                                 if (idx >= 0) {
                                     val curr = accountsState[idx]
@@ -855,7 +891,7 @@ fun JarvisB8MasterShell(
                                     )
                                 }
                             },
-                            onAddAccount = { prov, label, email, apiKey ->
+                            onAddAccount = { prov: String, label: String, email: String, apiKey: String ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = prov,
                                     label = label,
@@ -863,7 +899,7 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onEditAccount = { accId, prov, label, email, apiKey ->
+                            onEditAccount = { accId: String, prov: String, label: String, email: String, apiKey: String ->
                                 saveAccountOrProviderConfigToBackend(
                                     accountId = accId,
                                     providerId = prov,
@@ -872,10 +908,10 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onDeleteAccount = { accId, prov ->
+                            onDeleteAccount = { accId: String, prov: String ->
                                 deleteAccountFromBackend(accId, prov)
                             },
-                            onSetDefaultAccount = { accId, prov ->
+                            onSetDefaultAccount = { accId: String, prov: String ->
                                 val target = accountsState.find { it.accountId == accId }
                                 if (target != null) {
                                     prefs.edit().putString("selected_account_id", accId).apply()
@@ -889,7 +925,7 @@ fun JarvisB8MasterShell(
                                     )
                                 }
                             },
-                            onTestAccountConnection = { accId, prov, onResult ->
+                            onTestAccountConnection = { accId: String, prov: String, onResult: (Boolean, String) -> Unit ->
                                 executeLiveProviderConnectionTest(
                                     providerId = prov,
                                     accountId = accId
@@ -925,7 +961,7 @@ fun JarvisB8MasterShell(
                                 JarvisB8ChatExperienceScreen(
                                     activeModelLabel = activeModelLabel,
                                     onOpenModelSelector = { overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR },
-                                    onOpenCollaborationWithTopic = { topic ->
+                                    onOpenCollaborationWithTopic = { topic: String ->
                                         collaborationTopic = topic
                                         activeTab = JarvisB8NavTab.KOLABORASI
                                     },
@@ -933,7 +969,7 @@ fun JarvisB8MasterShell(
                                     onSendLiveChatPrompt = onSendLiveChatPrompt,
                                     savedConversations = savedConversations,
                                     onOpenHistory = { overlayRoute = JarvisB8OverlayRoute.HISTORY_SEARCH },
-                                    onSelectSavedConversation = { convId ->
+                                    onSelectSavedConversation = { convId: String ->
                                         onOpenSavedConversation(convId)
                                     }
                                 )
@@ -948,7 +984,7 @@ fun JarvisB8MasterShell(
                                     onStartListening = onStartListening,
                                     onStopSpeaking = onStopSpeaking,
                                     onSpeakText = onSpeakText,
-                                    onSwitchToChat = {
+                                    onSwitchToChat = { _: String ->
                                         activeTab = JarvisB8NavTab.CHAT
                                     },
                                     onSendLiveChatPrompt = onSendLiveChatPrompt,
@@ -961,7 +997,7 @@ fun JarvisB8MasterShell(
                                 JarvisB8CollaborationSuiteScreen(
                                     initialTopic = collaborationTopic,
                                     accessTokenProvider = accessTokenProvider,
-                                    onSendSynthesisToChat = {
+                                    onSendSynthesisToChat = { _: String ->
                                         activeTab = JarvisB8NavTab.CHAT
                                     }
                                 )
