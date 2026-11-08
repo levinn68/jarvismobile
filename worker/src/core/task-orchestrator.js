@@ -3,63 +3,32 @@ import { webCrypto } from "../utils.js";
 export function createTaskOrchestrator({
   handlers = {},
   authorize = async () => ({ allowed: false, reason: "Task authorization is not configured." }),
-  execute = async () => ({ ok: false, error: "Task executor is not configured." }),
-  onProgress = null,
+  emit = () => {}
 } = {}) {
-  const tasks = new Map();
-
-  async function submit(taskType, payload = {}, meta = {}) {
-    const id = crypto.randomUUID?.() || webCrypto.randomUUID();
-    const task = {
-      id,
-      type: taskType,
-      status: "pending",
-      payload,
-      meta,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    tasks.set(id, task);
-
-    const auth = await authorize({ type: taskType, payload, meta });
-    if (!auth?.allowed) {
-      task.status = "rejected";
-      task.error = auth?.reason || "Unauthorized";
-      task.updatedAt = Date.now();
-      return { ...task };
+  return {
+    async run(task, context = {}) {
+      const type = String(task?.type || "");
+      const handler = handlers[type];
+      if (!handler) throw new Error("No handler registered for task: " + type);
+      const decision = await authorize(task, context);
+      if (!decision?.allowed) {
+        return {
+          ok: false,
+          status: "blocked",
+          reason: decision?.reason || "Not authorized",
+          requiresConfirmation: Boolean(decision?.requiresConfirmation)
+        };
+      }
+      const id = webCrypto.randomUUID();
+      emit("task.started", { id, type });
+      try {
+        const result = await handler(task.payload || {}, context);
+        emit("task.completed", { id, type });
+        return { ok: true, id, status: "completed", result };
+      } catch (error) {
+        emit("task.failed", { id, type, error: String(error?.message || error) });
+        return { ok: false, id, status: "failed", error: String(error?.message || error).slice(0, 300) };
+      }
     }
-
-    task.status = "running";
-    task.updatedAt = Date.now();
-    if (typeof onProgress === "function") {
-      try { onProgress(task); } catch (_) {}
-    }
-
-    try {
-      const handler = handlers[taskType] || execute;
-      const result = await handler({ type: taskType, payload, meta, taskId: id });
-      task.status = result?.ok === false ? "failed" : "completed";
-      task.result = result;
-      if (result?.error) task.error = result.error;
-    } catch (err) {
-      task.status = "failed";
-      task.error = err?.message || String(err);
-    }
-    task.updatedAt = Date.now();
-    if (typeof onProgress === "function") {
-      try { onProgress(task); } catch (_) {}
-    }
-    return { ...task };
-  }
-
-  function get(id) {
-    const t = tasks.get(id);
-    return t ? { ...t } : null;
-  }
-
-  function list() {
-    return Array.from(tasks.values()).map((t) => ({ ...t }));
-  }
-
-  return { submit, get, list };
+  };
 }
