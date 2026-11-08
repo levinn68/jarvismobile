@@ -1040,3 +1040,379 @@ fun JarvisB8MasterShell(
         )
     }
 }
+@Composable
+fun JarvisMultiAccountsScreen(
+    selectedProvider: String,
+    accounts: List<JarvisAccountItem>,
+    onSelectProviderTab: (String) -> Unit,
+    onToggleAccountActive: (String) -> Unit,
+    onAddAccount: (String, String, String, String) -> Unit,
+    onBack: () -> Unit,
+    onEditAccount: ((accountId: String, provider: String, label: String, email: String, apiKey: String) -> Unit)? = null,
+    onDeleteAccount: ((accountId: String, provider: String) -> Unit)? = null,
+    onSetDefaultAccount: ((accountId: String, provider: String) -> Unit)? = null,
+    onTestAccountConnection: ((accountId: String, provider: String, onResult: (Boolean, String) -> Unit) -> Unit)? = null
+) {
+    var showAddOrEditModal by remember { mutableStateOf(false) }
+    var editingAccountId by remember { mutableStateOf<String?>(null) }
+    var labelDraft by remember { mutableStateOf("") }
+    var emailDraft by remember { mutableStateOf("") }
+    var keyDraft by remember { mutableStateOf("") }
+    var modalError by remember { mutableStateOf("") }
+    var accountFeedbackBanner by remember { mutableStateOf("") }
+
+    val providerTabs = listOf(
+        "openai" to "OpenAI",
+        "gemini" to "Gemini",
+        "anthropic" to "Claude",
+        "deepseek" to "DeepSeek",
+        "groq" to "Groq",
+        "openrouter" to "OpenRouter",
+        "custom" to "Custom"
+    )
+    // Strictly isolate accounts for the selected provider only
+    val visibleAccounts = accounts.filter { it.provider.equals(selectedProvider, ignoreCase = true) }
+    val primaryQuota = visibleAccounts.find { it.isDefault } ?: visibleAccounts.firstOrNull()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = JarvisColors.Ice)
+            }
+            Text("Multi-Accounts (${selectedProvider.uppercase()})", color = JarvisColors.Ice, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+        Text(
+            "Kelola banyak akun secara terpisah untuk masing-masing provider (mis. Personal, Work, Research). Akun antar-provider dan Worker Secret diisolasi penuh.",
+            color = JarvisColors.TextMuted,
+            fontSize = 12.sp
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            providerTabs.forEach { (id, label) ->
+                val active = selectedProvider.equals(id, ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .clip(JarvisShapes.Chip)
+                        .background(if (active) Color(0xFF0E2B44) else JarvisColors.PanelSolid)
+                        .border(1.dp, if (active) JarvisColors.Cyan else JarvisColors.GlassBorder, JarvisShapes.Chip)
+                        .clickable {
+                            accountFeedbackBanner = ""
+                            onSelectProviderTab(id)
+                        }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(label, color = if (active) JarvisColors.Ice else JarvisColors.TextMuted, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        if (accountFeedbackBanner.isNotBlank()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF0B2238))
+                    .border(1.dp, JarvisColors.Cyan, RoundedCornerShape(8.dp))
+                    .padding(10.dp)
+            ) {
+                Text(accountFeedbackBanner, color = JarvisColors.Ice, fontSize = 12.sp)
+            }
+        }
+
+        if (visibleAccounts.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(JarvisShapes.Card)
+                    .background(JarvisColors.PanelSolid)
+                    .border(1.dp, JarvisColors.GlassBorder, JarvisShapes.Card)
+                    .padding(14.dp)
+            ) {
+                Text(
+                    text = "Belum ada akun pribadi untuk provider ${selectedProvider.uppercase()}. Ketuk tombol Tambah Akun di bawah untuk menambahkan.",
+                    color = JarvisColors.TextMuted,
+                    fontSize = 12.sp
+                )
+            }
+        }
+
+        visibleAccounts.forEach { acc ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(JarvisShapes.Card)
+                    .background(JarvisColors.PanelSolid)
+                    .border(
+                        1.dp,
+                        if (acc.isDefault) JarvisColors.Cyan else if (acc.active) JarvisColors.CyanBorder else JarvisColors.GlassBorder,
+                        JarvisShapes.Card
+                    )
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = JarvisColors.Cyan, modifier = Modifier.size(28.dp))
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(acc.label, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                if (acc.isDefault) {
+                                    Text(
+                                        text = "UTAMA",
+                                        color = JarvisColors.Cyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+                            Text("${acc.emailHint} · Key: ${acc.maskedKey}", color = JarvisColors.TextMuted, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace)
+                            Text(
+                                text = when {
+                                    acc.connectionVerified || acc.status == "working_live" -> "Status Koneksi: TERHUBUNG (Live Verified)"
+                                    acc.status == "connection_failed" -> "Status Koneksi: GAGAL (${acc.errorMessage.ifBlank { "Periksa API Key" }})"
+                                    else -> "Status Koneksi: BELUM DIUJI (Configured Unverified)"
+                                },
+                                color = when {
+                                    acc.connectionVerified || acc.status == "working_live" -> JarvisColors.Ok
+                                    acc.status == "connection_failed" -> JarvisColors.CoralDanger
+                                    else -> JarvisColors.Warn
+                                },
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.clickable { onToggleAccountActive(acc.accountId) }
+                    ) {
+                        Text(
+                            if (acc.active) "Aktif" else "Nonaktif",
+                            color = if (acc.active) JarvisColors.Ok else JarvisColors.TextMuted,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Icon(
+                            imageVector = if (acc.active) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                            contentDescription = null,
+                            tint = if (acc.active) JarvisColors.Ok else JarvisColors.TextMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                // Per-account action bar: Test Connection, Set Default, Edit, Delete
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (onTestAccountConnection != null) {
+                        TextButton(
+                            onClick = {
+                                accountFeedbackBanner = "Menguji koneksi akun '${acc.label}' (${acc.provider.uppercase()})..."
+                                onTestAccountConnection(acc.accountId, acc.provider) { _, msg ->
+                                    accountFeedbackBanner = msg
+                                }
+                            }
+                        ) {
+                            Text("Test Koneksi", color = JarvisColors.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    if (!acc.isDefault && onSetDefaultAccount != null) {
+                        TextButton(onClick = { onSetDefaultAccount(acc.accountId, acc.provider) }) {
+                            Text("Jadikan Utama", color = JarvisColors.Ice, fontSize = 11.sp)
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            editingAccountId = acc.accountId
+                            labelDraft = acc.label
+                            emailDraft = acc.emailHint
+                            keyDraft = ""
+                            modalError = ""
+                            showAddOrEditModal = true
+                        }
+                    ) {
+                        Text("Edit", color = JarvisColors.Ice, fontSize = 11.sp)
+                    }
+                    if (onDeleteAccount != null) {
+                        TextButton(onClick = { onDeleteAccount(acc.accountId, acc.provider) }) {
+                            Text("Hapus", color = JarvisColors.CoralDanger, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                editingAccountId = null
+                labelDraft = "${selectedProvider.replaceFirstChar { it.uppercase() }} Personal"
+                emailDraft = ""
+                keyDraft = ""
+                modalError = ""
+                showAddOrEditModal = true
+            },
+            modifier = Modifier.fillMaxWidth().height(46.dp),
+            shape = JarvisShapes.Chip,
+            border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.Cyan)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, tint = JarvisColors.Cyan)
+            Spacer(Modifier.width(6.dp))
+            Text("Tambah Akun ${selectedProvider.replaceFirstChar { it.uppercase() }}", color = JarvisColors.Ice, fontWeight = FontWeight.SemiBold)
+        }
+
+        if (primaryQuota != null) {
+            val pct = (primaryQuota.quotaUsedTokens.toFloat() / primaryQuota.quotaLimitTokens.coerceAtLeast(1)).coerceIn(0f, 1f)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(JarvisShapes.Card)
+                    .background(JarvisColors.PanelSolid)
+                    .border(1.dp, JarvisColors.GlassBorder, JarvisShapes.Card)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    "Kuota & Penggunaan (${primaryQuota.label} · ${selectedProvider.uppercase()})",
+                    color = JarvisColors.Ice,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Terpakai", color = JarvisColors.TextMuted, fontSize = 11.5.sp)
+                    Text("${(pct * 100).toInt()}%", color = JarvisColors.Cyan, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+                LinearProgressIndicator(
+                    progress = { pct },
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(JarvisShapes.Chip),
+                    color = JarvisColors.Cyan,
+                    trackColor = Color(0xFF06101B)
+                )
+                Text(
+                    "${primaryQuota.quotaUsedTokens} / ${primaryQuota.quotaLimitTokens} token",
+                    color = JarvisColors.TextMuted,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+
+    if (showAddOrEditModal) {
+        val isEditing = editingAccountId != null
+        AlertDialog(
+            onDismissRequest = { showAddOrEditModal = false },
+            containerColor = Color(0xFF0B1826),
+            title = {
+                Text(
+                    text = if (isEditing) "Edit Akun ${selectedProvider.uppercase()}" else "Tambah Akun ${selectedProvider.uppercase()}",
+                    color = JarvisColors.Ice,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = labelDraft,
+                        onValueChange = { labelDraft = it },
+                        singleLine = true,
+                        label = { Text("Nama Akun (mis. ${selectedProvider.uppercase()} Work)") }
+                    )
+                    OutlinedTextField(
+                        value = emailDraft,
+                        onValueChange = { emailDraft = it },
+                        singleLine = true,
+                        label = { Text("Email / Identitas") }
+                    )
+                    OutlinedTextField(
+                        value = keyDraft,
+                        onValueChange = { keyDraft = it },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        label = { Text(if (isEditing) "API Key Baru (Kosongkan jika tetap)" else "API Key Khusus ${selectedProvider.uppercase()}") }
+                    )
+                    if (modalError.isNotBlank()) {
+                        Text(modalError, color = JarvisColors.CoralDanger, fontSize = 11.5.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = labelDraft.isNotBlank() && (isEditing || keyDraft.isNotBlank()),
+                    onClick = {
+                        if (keyDraft.isNotBlank()) {
+                            val err = validateProviderKeyClientSide(selectedProvider, keyDraft)
+                            if (err != null) {
+                                modalError = err
+                                return@TextButton
+                            }
+                        }
+                        if (isEditing && onEditAccount != null) {
+                            onEditAccount(
+                                editingAccountId!!,
+                                selectedProvider,
+                                labelDraft.trim(),
+                                emailDraft.trim().ifBlank { "${selectedProvider}@user.jarvis" },
+                                keyDraft.trim()
+                            )
+                        } else {
+                            onAddAccount(
+                                selectedProvider,
+                                labelDraft.trim(),
+                                emailDraft.trim().ifBlank { "${selectedProvider}@user.jarvis" },
+                                keyDraft.trim()
+                            )
+                        }
+                        keyDraft = ""
+                        modalError = ""
+                        showAddOrEditModal = false
+                    }
+                ) { Text("Simpan", color = JarvisColors.Cyan) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddOrEditModal = false }) { Text("Batal", color = JarvisColors.TextMuted) }
+            }
+        )
+    }
+}
+
+private fun validateProviderKeyClientSide(providerId: String, rawKey: String): String? {
+    val clean = rawKey.trim()
+    if (clean.isEmpty()) return "API Key wajib diisi untuk provider $providerId."
+    if (clean.length < 8) return "API Key terlalu pendek."
+    val p = providerId.lowercase()
+    if (p == "gemini" && (clean.startsWith("sk-") || clean.startsWith("gsk_"))) {
+        return "API Key OpenAI/Claude/Groq ('sk-*' / 'gsk_*') tidak dapat digunakan untuk Google Gemini. Gunakan Google AI Studio Key ('AIza...')."
+    }
+    if (p == "anthropic" && (clean.startsWith("AIza") || clean.startsWith("gsk_") || clean.startsWith("sk-proj-") || clean.startsWith("sk-or-"))) {
+        return "API Key ini milik provider lain dan tidak dapat digunakan untuk Anthropic Claude ('sk-ant-...')."
+    }
+    if (p == "openai" && (clean.startsWith("AIza") || clean.startsWith("sk-ant-") || clean.startsWith("gsk_") || clean.startsWith("sk-or-"))) {
+        return "API Key ini milik provider lain dan tidak dapat digunakan untuk OpenAI."
+    }
+    if (p == "groq" && (clean.startsWith("AIza") || clean.startsWith("sk-ant-") || clean.startsWith("sk-proj-") || clean.startsWith("sk-or-"))) {
+        return "API Key ini milik provider lain dan tidak dapat digunakan untuk Groq ('gsk_...')."
+    }
+    return null
+}
+
+/**
+ * Storyboard Screen 31 (4.1): Model Selector (`Models`).
+ * Models are strictly bound to their owning provider and reflect real provider connection availability.
+ */
