@@ -100,43 +100,158 @@ export async function authenticateSupabaseUserDetailed(request, env, timeoutMs =
     return {
       ok: false,
       status: isAbort ? 504 : 502,
-      reason: isAbort ? "timeout" : "network_error",
-      error: isAbort ? "Supabase Auth request timed out." : "Failed to reach Supabase Auth."
+      reason: isAbort ? "supabase_timeout" : "supabase_unreachable",
+      error: isAbort ? "Supabase authentication timed out." : "Unable to reach Supabase authentication service."
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-export async function enforceAccountRateLimit(kv, subject, limit = 60, windowSeconds = 60, options = {}) {
-  const scope = options.scope || "default";
-  const window = Math.min(MAX_WINDOW_SECONDS, Math.max(1, Number(windowSeconds) || 60));
-  const keyBase = `rate:v2:${scope}:${subject}`;
-  const windowKey = `${keyBase}:${Math.floor(Date.now() / 1000 / window)}`;
+export async function authenticateSupabaseUser(request, env) {
+  const result = await authenticateSupabaseUserDetailed(request, env);
+  return result.ok ? result.user : null;
+}
 
-  return withRateLimitLock(windowKey, async () => {
-    let count = 0;
-    try {
-      const raw = await kv.get(windowKey);
-      count = raw ? parseInt(raw, 10) || 0 : 0;
-    } catch {}
-    if (count >= limit) {
-      return { allowed: false, remaining: 0, limit, resetIn: window };
+/**
+ * JARVIS-005 — Distributed-safe rate limiting across Worker isolates.
+ */
+export async function enforceAccountRateLimit(
+  kv,
+  scope,
+  userId,
+  limit,
+  nowMs = Date.now(),
+  options = {}
+) {
+  if (!kv) return { allowed: false, reason: "rate_limit_storage_unavailable" };
+  const numericLimit = Math.max(0, Math.floor(Number(limit) || 0));
+  const retryAfter = Math.max(1, MAX_WINDOW_SECONDS - Math.floor((nowMs / 1000) % MAX_WINDOW_SECONDS));
+  const window = Math.floor(nowMs / (MAX_WINDOW_SECONDS * 1000));
+  const windowResetAt = (window + 1) * MAX_WINDOW_SECONDS * 1000;
+
+  if (numericLimit <= 0) {
+    return { allowed: false, remaining: 0, retryAfter, resetAt: windowResetAt };
+  }
+
+  const safeScope = String(scope || "default").replace(/[^a-zA-Z0-9_-]/g, "");
+  const safeSubject = String(userId || "anonymous").replace(/[^a-zA-Z0-9_.:-]/g, "").slice(0, 80);
+  const key = "rate:v1:" + safeScope + ":" + safeSubject + ":" + window;
+  const slotPrefix = "rate-slot:v2:" + safeScope + ":" + safeSubject + ":" + window + ":";
+
+  const executeLimitCheck = async () => {
+    // 1. If a dedicated atomic coordinator or atomicIncrement method is provided, use it directly
+    const coordinator = options?.coordinator || kv?.rateLimitCoordinator;
+    if (coordinator && typeof coordinator.incrementAndCheck === "function") {
+      return coordinator.incrementAndCheck({ key, scope: safeScope, subject: safeSubject, window, limit: numericLimit, retryAfter, resetAt: windowResetAt });
     }
-    count += 1;
-    try {
-      await kv.put(windowKey, String(count), { expirationTtl: window + 5 });
-    } catch {}
-    return { allowed: true, remaining: Math.max(0, limit - count), limit, resetIn: window };
-  });
+    if (typeof kv.atomicIncrement === "function") {
+      const newCount = await kv.atomicIncrement(key, 1, { expirationTtl: MAX_WINDOW_SECONDS * 2 });
+      if (newCount > numericLimit) {
+        return { allowed: false, remaining: 0, retryAfter, resetAt: windowResetAt };
+      }
+      return { allowed: true, remaining: Math.max(0, numericLimit - newCount), resetAt: windowResetAt };
+    }
+
+    // 2. Check existing counter value first
+    const rawCurrent = await kv.get(key);
+    const currentCount = rawCurrent ? Number(rawCurrent) || 0 : 0;
+    if (currentCount >= numericLimit) {
+      return {
+        allowed: false,
+        remaining: 0,
+        retryAfter,
+        resetAt: windowResetAt
+      };
+    }
+
+    // 3. When kv.list is available, write a distinct per-request slot key so concurrent isolates
+    //    never lose increments to read-modify-write overwrites on the shared summary key.
+    if (typeof kv.list === "function") {
+      const seq = (++slotSequenceCounter).toString(36).padStart(6, "0");
+      const slotId = `${nowMs.toString(36)}_${seq}_${webCrypto.randomUUID().slice(0, 8)}`;
+      const mySlotKey = `${slotPrefix}${slotId}`;
+      await kv.put(mySlotKey, "1", { expirationTtl: MAX_WINDOW_SECONDS * 2 });
+
+      const listed = await kv.list({ prefix: slotPrefix });
+      const sortedSlots = (listed?.keys || [])
+        .map((k) => k.name)
+        .filter(Boolean)
+        .sort();
+      const myRank = sortedSlots.indexOf(mySlotKey);
+      const effectiveUsed = Math.max(currentCount + 1, myRank >= 0 ? myRank + 1 : sortedSlots.length);
+
+      if ((myRank >= 0 && myRank >= numericLimit) || effectiveUsed > numericLimit) {
+        await kv.put(key, String(Math.max(numericLimit, sortedSlots.length)), {
+          expirationTtl: MAX_WINDOW_SECONDS * 2
+        });
+        return {
+          allowed: false,
+          remaining: 0,
+          retryAfter,
+          resetAt: windowResetAt
+        };
+      }
+
+      await kv.put(key, String(Math.min(numericLimit, Math.max(currentCount + 1, sortedSlots.length))), {
+        expirationTtl: MAX_WINDOW_SECONDS * 2
+      });
+      return {
+        allowed: true,
+        remaining: Math.max(0, numericLimit - effectiveUsed),
+        resetAt: windowResetAt
+      };
+    }
+
+    // 4. Fallback for minimal KV mocks without .list()
+    await kv.put(key, String(currentCount + 1), { expirationTtl: MAX_WINDOW_SECONDS * 2 });
+    return {
+      allowed: true,
+      remaining: Math.max(0, numericLimit - currentCount - 1),
+      resetAt: windowResetAt
+    };
+  };
+
+  if (options?.bypassIsolateLock === true) {
+    return executeLimitCheck();
+  }
+  return withRateLimitLock(key, executeLimitCheck);
+}
+
+export function requestOriginAllowed(request, env) {
+  const origin = request?.headers?.get?.("Origin");
+  if (!origin) return true;
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return allowed.length === 0 || allowed.includes(origin);
+}
+
+export function corsHeadersForRequest(request, env) {
+  const origin = request?.headers?.get?.("Origin");
+  const allowed = String(env?.JARVIS_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  let allowOrigin = "*";
+  if (allowed.length > 0) {
+    allowOrigin = origin && allowed.includes(origin) ? origin : "null";
+  }
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Request-Id, X-Jarvis-Device-Token, X-Idempotency-Key",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
+  };
 }
 
 const PROMPT_INJECTION_PATTERNS = [
-  /ignore (all )?(previous|prior|above) (instructions|prompts)/i,
-  /you are now (a |an )?(different|new|evil)/i,
-  /system\s*:\s*override/i,
-  /\bDAN\b|do anything now/i,
-  /jailbreak|prompt injection/i
+  /ignore\s+(?:all\s+|any\s+)?(?:previous|prior|above|system|developer)\s+instructions/i,
+  /abaikan\s+(?:semua\s+|seluruh\s+)?(?:instruksi|aturan)\s+(?:sebelumnya|sistem|di\s+atas)/i,
+  /(?:reveal|print|show|dump|leak|tampilkan|bocorkan)\s+(?:your\s+|the\s+)?(?:system\s+prompt|developer\s+prompt|api\s*key|secret|token|device_token_secret)/i,
+  /system\s*override|developer\s*mode\s*enabled|jailbreak/i
 ];
 
 export function detectPromptInjectionSignals(text) {
