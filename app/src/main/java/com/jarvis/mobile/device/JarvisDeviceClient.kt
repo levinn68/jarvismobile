@@ -84,12 +84,16 @@ class JarvisDeviceClient(context: Context, private val baseUrl: String = DEFAULT
     fun storedAccountUserId(): String? = vault.accountUserId()
     fun clearAccountToken() = vault.clearAccountToken()
 
-    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null): JSONObject {
+    fun queueCommand(deviceId: String, action: String, params: JSONObject = JSONObject(), expectedSupabaseUserId: String? = null, idempotencyKey: String? = null): JSONObject {
         require(deviceId.matches(Regex("[A-Za-z0-9_-]{8,80}"))) { "Invalid device ID" }
         require(action.length in 1..80) { "Invalid action" }
         val accountToken = vault.accountToken(expectedSupabaseUserId) ?: throw IllegalStateException("Pair this device with the currently signed-in Google account first")
         val body = JSONObject().put("deviceId", deviceId).put("action", action).put("params", params)
-        return rawRequest("POST", "/v1/device/command", body, accountToken)
+        val result = rawRequest("POST", "/v1/device/command", body, accountToken)
+        if (idempotencyKey.isNullOrBlank()) return result
+        val expectedKey = idempotencyKey.trim()
+        require(expectedKey.length in 8..128) { "Invalid idempotency key" }
+        return result
     }
 
     fun enqueuePendingAck(commandId: String, result: JSONObject) {
