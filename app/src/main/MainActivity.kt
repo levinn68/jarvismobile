@@ -1,0 +1,4563 @@
+package com.jarvis.mobile
+
+import com.jarvis.mobile.device.JarvisDeviceClient
+import com.jarvis.mobile.device.JarvisDeviceSyncService
+import com.jarvis.mobile.device.DeviceSetupActivity
+import android.Manifest
+import android.content.Intent
+import android.media.AudioManager
+import android.net.NetworkRequest
+import android.net.NetworkCapabilities
+import android.net.Network
+import android.net.ConnectivityManager
+import android.media.AudioFocusRequest
+import android.media.AudioAttributes
+import android.content.IntentFilter
+import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.pm.PackageManager
+import android.content.ComponentName
+import android.media.MediaPlayer
+import android.graphics.BitmapFactory
+import android.util.Base64
+import java.io.File
+import java.io.FileOutputStream
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.app.ActivityCompat
+import androidx.core.view.WindowCompat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.ClickableText
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.foundation.Image
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import org.json.JSONObject
+import org.json.JSONArray
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.lifecycle.lifecycleScope
+import com.jarvis.mobile.account.SupabaseJarvisClient
+import com.jarvis.mobile.ui.VoiceOrbState
+import com.jarvis.mobile.ui.JarvisB8MasterShell
+import com.jarvis.mobile.stability.JarvisStabilityGuard
+import com.jarvis.mobile.ui.HolographicOrb
+import com.jarvis.mobile.ui.JarvisColors
+import com.jarvis.mobile.ui.JarvisUserBubble
+import com.jarvis.mobile.ui.JarvisAssistantBubble
+import com.jarvis.mobile.ui.JarvisChatComposer
+import com.jarvis.mobile.ui.JarvisChatErrorCard
+import com.jarvis.mobile.ui.JarvisThinkingBar
+import com.jarvis.mobile.ui.JarvisConversationChip
+import com.jarvis.mobile.ui.resolveVoiceOrbState
+import com.jarvis.mobile.account.SavedConversation
+import com.jarvis.mobile.account.SavedMessage
+import java.io.BufferedReader
+import java.io.InputStreamReader
+
+// --- SCI-FI HUD PALETTE ---
+private val Background = Color(0xFF040911)
+private val DeepCard = Color(0xFF081421)
+private val Panel = Color(0xFF0B1A2A)
+private val Cyan = Color(0xFF00E5FF)
+private val CyanGlow = Color(0xFF26F0FF)
+private val CyanBorder = Color(0xFF145674)
+private val TextMuted = Color(0xFF7B9EB2)
+private val Ice = Color(0xFFECF9FF)
+private val WarnAmber = Color(0xFFFFC56A)
+private val AlertRed = Color(0xFFFF5E6E)
+private val OkGreen = Color(0xFF00F59B)
+private val Glass = Color(0xE6081420)
+private val HudShape = RoundedCornerShape(16.dp)
+private val CardShape = RoundedCornerShape(14.dp)
+
+data class VisualProduct(
+    val title: String,
+    val image: String,
+    val price: String,
+    val source: String,
+    val rating: String,
+    val reviews: String,
+    val link: String,
+    val badge: String = "Rekomendasi"
+)
+
+data class ChatResponsePayload(
+    val answer: String,
+    val products: List<VisualProduct> = emptyList(),
+    val images: List<Pair<String, String>> = emptyList(),
+    val isError: Boolean = false
+)
+
+private const val MAX_VISUAL_CARDS = 5
+
+private fun extractInlineMarkdownImages(markdown: String): List<Pair<String, String>> {
+    val matches = Regex("!\\[([^]]*)\\]\\((https://[^ )]+)\\)").findAll(markdown)
+    return matches.mapNotNull { match ->
+        val title = match.groupValues[1].trim().ifBlank { "Referensi Visual JARVIS" }
+        val url = match.groupValues[2].trim()
+        if (url.startsWith("https://")) title to url else null
+    }.distinctBy { it.second }.take(MAX_VISUAL_CARDS).toList()
+}
+
+private fun extractConciseVoiceSummary(fullAnswer: String): String {
+    val cleaned = fullAnswer
+        .replace(Regex("```[\\s\\S]*?```"), " ")
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("(?m)^\\s*\\|.*\\|\\s*$"), " ")
+        .replace(Regex("[#*>_`~]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    if (cleaned.isBlank()) return "Respons visual telah ditampilkan pada layar HUD."
+    val afterConclusion = fullAnswer
+        .substringAfter("KESIMPULAN JARVIS", "")
+        .ifBlank { fullAnswer.substringAfter("JAWABAN AKHIR", "") }
+        .replace(Regex("!\\[[^]]*\\]\\([^)]*\\)"), " ")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("[#*>_`~|]"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+    val source = if (afterConclusion.length >= 24) afterConclusion else cleaned
+    val sentences = source.split(Regex("(?<=[.!?])\\s+")).filter { it.isNotBlank() }
+    val summary = sentences.take(2).joinToString(" ").ifBlank { source }
+    return if (summary.length > 260) summary.take(257).trimEnd() + "..." else summary
+}
+
+private fun defaultVisualFallbackFor(
+    query: String,
+    answer: String = "",
+    isError: Boolean = false
+): List<Pair<String, String>> {
+    val inlineFromAnswer = extractInlineMarkdownImages(answer)
+    if (inlineFromAnswer.isNotEmpty() && !isError) {
+        return inlineFromAnswer.take(MAX_VISUAL_CARDS)
+    }
+    val q = (query + " " + answer.take(400)).lowercase(Locale.ROOT)
+    return when {
+        isError -> listOf(
+            "Status Diagnostik Sistem JARVIS" to "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=900&q=80",
+            "Pemulihan Koneksi & Jaringan HUD" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("windows") || q.contains("laptop") || q.contains("pc") || q.contains("komputer") || q.contains("macos") || q.contains("linux") || q.contains("desktop") -> listOf(
+            "Kontrol Perangkat & Sistem Desktop" to "https://images.unsplash.com/photo-1517694712202-14dd9538aa97?auto=format&fit=crop&w=900&q=80",
+            "Telemetri Jaringan & Workstation" to "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("baterai") || q.contains("status") || q.contains("aplikasi") || q.contains("notifikasi") || q.contains("kalender") || q.contains("kontak") || q.contains("layar") || q.contains("android") || q.contains("rog") || q.contains("hp") -> listOf(
+            "Telemetri Perangkat Android" to "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=900&q=80",
+            "Integrasi Sistem JARVIS Mobile" to "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("kode") || q.contains("coding") || q.contains("python") || q.contains("kotlin") || q.contains("javascript") || q.contains("html") || q.contains("css") || q.contains("api") || q.contains("debug") || q.contains("program") -> listOf(
+            "Arsitektur Kode & Engineering" to "https://images.unsplash.com/photo-1461749280684-dccba630e2f6?auto=format&fit=crop&w=900&q=80",
+            "Analisis Algoritma & Terminal" to "https://images.unsplash.com/photo-1555066931-4365d14bab8c?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("harga") || q.contains("keuangan") || q.contains("anggaran") || q.contains("investasi") || q.contains("saham") || q.contains("crypto") || q.contains("rupiah") || q.contains("biaya") -> listOf(
+            "Analisis Finansial & Anggaran" to "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?auto=format&fit=crop&w=900&q=80",
+            "Strategi Portofolio & Ekonomi" to "https://images.unsplash.com/photo-1579532537598-459ecdaf39cc?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("travel") || q.contains("itinerary") || q.contains("bali") || q.contains("yogya") || q.contains("liburan") || q.contains("hotel") || q.contains("wisata") || q.contains("penerbangan") -> listOf(
+            "Eksplorasi Destinasi & Rute" to "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+            "Perencanaan Perjalanan Terpadu" to "https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("game") || q.contains("gaming") || q.contains("film") || q.contains("musik") || q.contains("roblox") || q.contains("esport") -> listOf(
+            "Performa Gaming & Hiburan Digital" to "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=900&q=80",
+            "Ekosistem Audio & Visual" to "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=900&q=80"
+        )
+        q.contains("belajar") || q.contains("materi") || q.contains("surya") || q.contains("sains") || q.contains("fisika") || q.contains("matematika") || q.contains("sejarah") || q.contains("soal") -> listOf(
+            "Eksplorasi Sains & Pengetahuan" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80",
+            "Modul Pembelajaran Terstruktur" to "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=900&q=80"
+        )
+        else -> listOf(
+            "Analisis Visual JARVIS HUD" to "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=900&q=80",
+            "Pusat Pemrosesan AI Council" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80"
+        )
+    }.take(MAX_VISUAL_CARDS)
+}
+
+private class ClapPatternDetector(
+    private val handler: Handler,
+    private val onDetected: (Int) -> Unit
+) {
+    private var baseline = 0f
+    private var previous = 0f
+    private var initialized = false
+    private var firstClapAt = 0L
+    private var lastSpikeAt = 0L
+    private var lastTriggeredAt = 0L
+    private var pendingCount = 0
+    private var pendingSingle: Runnable? = null
+
+    fun onRms(rmsDb: Float) {
+        if (!rmsDb.isFinite()) return
+        val now = SystemClock.elapsedRealtime()
+        val level = rmsDb.coerceIn(0f, 20f)
+        if (!initialized) {
+            baseline = level
+            previous = level
+            initialized = true
+            return
+        }
+
+        val jump = level - previous
+        if (pendingCount == 0 && level < baseline + 4f) {
+            baseline = baseline * 0.96f + level * 0.04f
+        }
+        previous = level
+
+        val threshold = maxOf(7.5f, baseline + 6f)
+        val isSharpTransient = level >= threshold && jump >= 3.5f
+        if (!isSharpTransient || now - lastSpikeAt < 180L || now - lastTriggeredAt < 1100L) return
+        lastSpikeAt = now
+
+        if (pendingCount == 1 && now - firstClapAt in 140L..650L) {
+            pendingSingle?.let(handler::removeCallbacks)
+            pendingSingle = null
+            pendingCount = 0
+            lastTriggeredAt = now
+            onDetected(2)
+            return
+        }
+
+        pendingSingle?.let(handler::removeCallbacks)
+        pendingCount = 1
+        firstClapAt = now
+        val task = Runnable {
+            if (pendingCount == 1) {
+                pendingCount = 0
+                pendingSingle = null
+                lastTriggeredAt = SystemClock.elapsedRealtime()
+                onDetected(1)
+            }
+        }
+        pendingSingle = task
+        handler.postDelayed(task, 650L)
+    }
+
+    fun reset() {
+        pendingSingle?.let(handler::removeCallbacks)
+        pendingSingle = null
+        pendingCount = 0
+        initialized = false
+        previous = 0f
+        baseline = 0f
+        lastSpikeAt = 0L
+    }
+}
+
+private fun detectEnglishContent(text: String): Boolean {
+    val q = text.lowercase(Locale.ROOT)
+    val en = listOf("the ", " and ", " what ", " how ", " why ", " please ", " find ", " search ", " explain ", " calculate ", " is ", " are ", " can ").count { q.contains(it) }
+    val id = listOf("yang ", " dan ", " untuk ", " saya ", " kamu ", " tolong ", " carikan ", " jelaskan ", " berapa ", " bagaimana ", " dengan ").count { q.contains(it) }
+    return en > id
+}
+
+class MainActivity : ComponentActivity() {
+    private lateinit var supabaseClient: SupabaseJarvisClient
+    private val accountEmail = mutableStateOf<String?>(null)
+    private val accountName = mutableStateOf<String?>(null)
+    private val accountBusy = mutableStateOf(false)
+    private val accountStatus = mutableStateOf("")
+    private val conversationsState = mutableStateOf<List<SavedConversation>>(emptyList())
+    private val historyBusy = mutableStateOf(false)
+    private val restoreConversation = mutableStateOf<Pair<String?, List<SavedMessage>>?>(null)
+    private var tts: TextToSpeech? = null
+    private var recognizer: SpeechRecognizer? = null
+    private val handler = Handler(Looper.getMainLooper())
+    private val listeningRestart = Runnable { startListening() }
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+    private var connectivityManager: ConnectivityManager? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val voiceModeState = mutableStateOf(false)
+    private val voiceStopReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == JarvisVoiceService.ACTION_STOP) {
+                stopVoiceMode()
+            }
+        }
+    }
+
+    private fun requestMicFocus(): Boolean {
+        val manager = audioManager ?: (getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.also { audioManager = it }
+            ?: return false
+        if (hasAudioFocus) return true
+        val granted = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val req = audioFocusRequest ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .setOnAudioFocusChangeListener { change ->
+                    if (change == AudioManager.AUDIOFOCUS_LOSS || change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT) {
+                        hasAudioFocus = false
+                    }
+                }
+                .build()
+                .also { audioFocusRequest = it }
+            manager.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        } else {
+            @Suppress("DEPRECATION")
+            manager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+        hasAudioFocus = granted
+        return granted
+    }
+
+    private fun abandonMicFocus() {
+        val manager = audioManager ?: return
+        if (!hasAudioFocus) return
+        hasAudioFocus = false
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { runCatching { manager.abandonAudioFocusRequest(it) } }
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { manager.abandonAudioFocus(null) }
+        }
+    }
+
+    private fun stopSpeaking(resumeListeningIfActive: Boolean = false) {
+        speechGeneration.incrementAndGet()
+        activeTtsConnection.getAndSet(null)?.let { conn -> runCatching { conn.disconnect() } }
+        geminiSpeechInProgress = false
+        suppressRecognizerCallbacks = false
+        runCatching { tts?.stop() }
+        runCatching { speechPlayer?.stop() }
+        runCatching { speechPlayer?.release() }
+        speechPlayer = null
+        if (resumeListeningIfActive && voiceModeEnabled && !isFinishing && !isDestroyed) {
+            voiceStatus.value = "SPEECH INTERRUPTED · LISTENING"
+            handler.post { restartListeningSession() }
+        } else if (!voiceModeEnabled) {
+            voiceStatus.value = "MIC OFF"
+        } else {
+            voiceStatus.value = "VOICE STANDBY"
+        }
+    }
+
+    private fun stopVoiceMode() {
+        voiceModeEnabled = false
+        voiceModeState.value = false
+        handler.removeCallbacks(listeningRestart)
+        stopSpeaking(resumeListeningIfActive = false)
+        recognitionActive = false
+        recognitionStartPending = false
+        clapDetector.reset()
+        runCatching { recognizer?.cancel() }
+        abandonMicFocus()
+        stopVoiceForegroundService()
+        voiceStatus.value = "MIC OFF"
+    }
+
+    private fun registerConnectivityFlush() {
+        val cm = (getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager) ?: return
+        connectivityManager = cm
+        if (networkCallback != null) return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (!::supabaseClient.isInitialized || isFinishing || isDestroyed || !supabaseClient.hasSession() || supabaseClient.pendingTurnCount() <= 0) return
+                lifecycleScope.launch {
+                    runCatching {
+                        supabaseClient.flushPendingTurns()
+                        conversationsState.value = supabaseClient.listConversations()
+                        accountStatus.value = "ANTREAN OFFLINE TERSINKRON"
+                    }.onFailure { err ->
+                        JarvisStabilityGuard.rethrowIfCancellation(err)
+                    }
+                }
+            }
+        }
+        networkCallback = callback
+        runCatching {
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            cm.registerNetworkCallback(request, callback)
+        }
+    }
+
+    private fun unregisterConnectivityFlush() {
+        val cm = connectivityManager ?: return
+        val callback = networkCallback ?: return
+        networkCallback = null
+        runCatching { cm.unregisterNetworkCallback(callback) }
+    }
+
+    private fun startVoiceForegroundService() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        runCatching {
+            val intent = Intent(this, JarvisVoiceService::class.java)
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+        }.onFailure { voiceStatus.value = "BACKGROUND VOICE SERVICE UNAVAILABLE" }
+    }
+
+    private fun stopVoiceForegroundService() {
+        runCatching { stopService(Intent(this, JarvisVoiceService::class.java)) }
+    }
+
+    private fun signInGoogle(openDeviceSetupAfter: Boolean = false) {
+        if (accountBusy.value) return
+        accountBusy.value = true
+        accountStatus.value = "[AUTH_CONFIG_VALIDATION] Memvalidasi konfigurasi Google OAuth & Supabase..."
+        lifecycleScope.launch {
+            try {
+                val session = supabaseClient.signInWithGoogle(this@MainActivity) { stage, label ->
+                    runOnUiThread {
+                        accountStatus.value = "[${stage.code}] $label"
+                    }
+                }
+                accountEmail.value = session.email
+                accountName.value = session.displayName
+                accountStatus.value = "[AUTH_SUCCESS] AKUN GOOGLE TERSAMBUNG (${session.email ?: session.userId})"
+                refreshHistory()
+                if (openDeviceSetupAfter) {
+                    startActivity(
+                        Intent(this@MainActivity, DeviceSetupActivity::class.java)
+                            .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, session.accessToken)
+                            .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_USER_ID, session.userId)
+                    )
+                }
+            } catch (error: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = error.message ?: "[GOOGLE_CREDENTIAL_REQUEST] GOOGLE SIGN-IN GAGAL"
+            } finally {
+                accountBusy.value = false
+            }
+        }
+    }
+
+    private fun openDeviceSetup() {
+        if (!supabaseClient.hasSession()) {
+            signInGoogle(openDeviceSetupAfter = true)
+            return
+        }
+        if (accountBusy.value) return
+        accountBusy.value = true
+        lifecycleScope.launch {
+            try {
+                val accessToken = withContext(Dispatchers.IO) { supabaseClient.currentAccessToken() }
+                startActivity(Intent(this@MainActivity, DeviceSetupActivity::class.java)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_ACCESS_TOKEN, accessToken)
+                    .putExtra(DeviceSetupActivity.EXTRA_SUPABASE_USER_ID, supabaseClient.currentUserId()))
+            } catch (error: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "GAGAL MENYIAPKAN AKSES PERANGKAT: " + (error.message ?: "error")
+            } finally { accountBusy.value = false }
+        }
+    }
+
+    private fun signOutGoogle() {
+        if (accountBusy.value) return
+        accountBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.signOut()
+                JarvisDeviceSyncService.stop(this@MainActivity)
+                JarvisDeviceClient(this@MainActivity).use { it.clearAccountToken() }
+                accountEmail.value = null
+                accountName.value = null
+                conversationsState.value = emptyList()
+                restoreConversation.value = null
+                accountStatus.value = "KELUAR DARI AKUN"
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = error.message ?: "GAGAL KELUAR"
+            }
+            finally { accountBusy.value = false }
+        }
+    }
+
+    private fun refreshHistory() {
+        if (historyBusy.value) return
+        if (!supabaseClient.hasSession()) { conversationsState.value = emptyList(); return }
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                                conversationsState.value = supabaseClient.listConversations()
+                if (!accountStatus.value.startsWith("[AUTH_SUCCESS]")) {
+                    accountStatus.value = "RIWAYAT CHAT DIPERBARUI"
+                }
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "GAGAL MEMUAT RIWAYAT: " + (error.message ?: "error")
+            }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun openConversation(id: String) {
+        if (!supabaseClient.hasSession() || historyBusy.value) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                val messages = supabaseClient.listMessages(id)
+                supabaseClient.setActiveConversation(id)
+                restoreConversation.value = id to messages
+                accountStatus.value = "PERCAKAPAN DIMUAT"
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "GAGAL MEMBUKA CHAT: " + (error.message ?: "error")
+            }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun newConversation() {
+        lifecycleScope.launch {
+            try {
+                supabaseClient.startNewConversation()
+                restoreConversation.value = null to emptyList()
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = error.message ?: "GAGAL MEMBUAT CHAT BARU"
+            }
+        }
+    }
+
+    private fun deleteConversation(id: String) {
+        if (historyBusy.value) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.deleteConversation(id)
+                conversationsState.value = conversationsState.value.filterNot { it.id == id }
+                accountStatus.value = "PERCAKAPAN DIHAPUS"
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "GAGAL MENGHAPUS CHAT: " + (error.message ?: "error")
+            }
+            finally { historyBusy.value = false }
+        }
+    }
+
+    private fun renameConversation(id: String, newTitle: String) {
+        val cleaned = newTitle.trim()
+        if (cleaned.isBlank() || historyBusy.value || !supabaseClient.hasSession()) return
+        historyBusy.value = true
+        lifecycleScope.launch {
+            try {
+                supabaseClient.renameConversation(id, cleaned)
+                conversationsState.value = supabaseClient.listConversations()
+                accountStatus.value = "JUDUL PERCAKAPAN DIPERBARUI"
+            } catch (error: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "GAGAL MENGUBAH JUDUL: " + (error.message ?: "error")
+            } finally {
+                historyBusy.value = false
+            }
+        }
+    }
+
+    private fun saveChatTurn(userText: String, assistantText: String) {
+        if (!supabaseClient.hasSession()) return
+        lifecycleScope.launch {
+            try {
+                supabaseClient.saveTurn(userText, assistantText)
+                accountStatus.value = "CHAT TERSIMPAN"
+                // Refresh list only after the successful write; no polling in the background.
+                conversationsState.value = supabaseClient.listConversations()
+            } catch (error: Exception) {
+                JarvisStabilityGuard.rethrowIfCancellation(error)
+                accountStatus.value = "CHAT BELUM TERSINKRON: " + (error.message ?: "error")
+            }
+        }
+    }
+    private val voiceText = mutableStateOf("")
+    private val voiceStatus = mutableStateOf("INITIALIZING VOICE CORE")
+    private val liveRms = mutableStateOf(2f)
+    private var permissionAsked = false
+    @Volatile private var clapActivationInProgress = false
+    private val clapDetector by lazy {
+        ClapPatternDetector(handler) { count ->
+            if (voiceModeEnabled) handler.post {
+                if (voiceModeEnabled && voiceText.value.isBlank()) {
+                    clapActivationInProgress = true
+                    recognizer?.cancel()
+                    voiceStatus.value = if (count == 2) "DOUBLE CLAP · JARVIS ACTIVATED" else "SINGLE CLAP · JARVIS ACTIVATED"
+                    voiceText.value = "JARVIS, OPEN"
+                }
+            }
+        }
+    }
+    @Volatile private var geminiSpeechInProgress = false
+    @Volatile private var recognitionActive = false
+    @Volatile private var recognitionStartPending = false
+    @Volatile private var suppressRecognizerCallbacks = false
+    @Volatile private var ttsInitialized = false
+    @Volatile private var activeTtsEngineSource = "NONE"
+    private val speechGeneration = java.util.concurrent.atomic.AtomicInteger(0)
+    private val activeTtsConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
+    @Volatile private var activeChatCancel: (() -> Unit)? = null
+    private var speechPlayer: MediaPlayer? = null
+    private var voiceModeEnabled = false
+    private var recognitionLanguage = "id-ID"
+    private val prefs by lazy { getSharedPreferences("jarvis_secure_settings", MODE_PRIVATE) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supabaseClient = SupabaseJarvisClient(this)
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        ContextCompat.registerReceiver(
+            this,
+            voiceStopReceiver,
+            IntentFilter(JarvisVoiceService.ACTION_STOP),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        registerConnectivityFlush()
+        accountEmail.value = supabaseClient.currentEmail()
+        accountName.value = supabaseClient.currentName()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        tts = TextToSpeech(this) { result ->
+            if (result == TextToSpeech.SUCCESS) {
+                ttsInitialized = true
+                val voices = tts?.voices.orEmpty()
+                val indoVoice = voices.firstOrNull { it.locale.toLanguageTag().equals("id-ID", true) }
+                if (indoVoice != null) tts?.voice = indoVoice else tts?.language = Locale("id", "ID")
+                tts?.setSpeechRate(0.88f)
+                tts?.setPitch(0.80f)
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        runOnUiThread {
+                            geminiSpeechInProgress = true
+                            voiceStatus.value = if (activeTtsEngineSource == "ANDROID_TTS_FALLBACK") {
+                                "FISH AUDIO FAILED · ANDROID TTS SPEAKING"
+                            } else {
+                                "JARVIS SPEAKING (ANDROID TTS)"
+                            }
+                        }
+                    }
+                    override fun onDone(utteranceId: String?) {
+                        runOnUiThread {
+                            geminiSpeechInProgress = false
+                            if (voiceModeEnabled) restartListeningSession()
+                        }
+                    }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        runOnUiThread {
+                            geminiSpeechInProgress = false
+                            if (voiceModeEnabled) restartListeningSession()
+                        }
+                    }
+                })
+                if (voiceStatus.value == "INITIALIZING VOICE CORE") voiceStatus.value = "VOICE CORE READY"
+            } else {
+                ttsInitialized = false
+                voiceStatus.value = "ANDROID TTS ENGINE UNAVAILABLE"
+            }
+        }
+        createSpeechRecognizer()
+        if (supabaseClient.hasSession()) {
+            lifecycleScope.launch {
+                if (supabaseClient.restoreSession()) {
+                    accountEmail.value = supabaseClient.currentEmail()
+                    accountName.value = supabaseClient.currentName()
+                    try {
+                        conversationsState.value = supabaseClient.listConversations()
+                        accountStatus.value = "SESI GOOGLE DIPULIHKAN"
+                    } catch (error: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(error)
+                        accountStatus.value = "RIWAYAT BELUM TERMUAT: " + (error.message ?: "error")
+                    }
+                } else {
+                    accountEmail.value = null
+                    accountName.value = null
+                    accountStatus.value = "SILAKAN MASUK KEMBALI DENGAN GOOGLE"
+                }
+            }
+        }
+
+        setContent {
+            var showB8MasterSuite by remember {
+                mutableStateOf(prefs.getBoolean("show_b8_master_suite", true))
+            }
+            LaunchedEffect(Unit) {
+                if (!prefs.contains("show_b8_master_suite")) {
+                    prefs.edit().putBoolean("show_b8_master_suite", true).apply()
+                }
+            }
+            if (showB8MasterSuite) {
+                JarvisB8MasterShell(
+                    userEmail = accountEmail.value,
+                    userName = accountName.value,
+                    liveVoiceStatus = voiceStatus.value,
+                    liveRecognizedText = voiceText.value,
+                    liveRmsLevel = liveRms.value,
+                    savedConversations = conversationsState.value,
+                    accessTokenProvider = { runCatching { supabaseClient.currentAccessToken() }.getOrDefault("") },
+                    onSendLiveChatPrompt = { promptText, cb ->
+                        askGemini(promptText, emptyList()) { payload ->
+                            if (accountEmail.value != null) saveChatTurn(promptText, payload.answer)
+                            cb(payload.answer, payload.isError)
+                        }
+                    },
+                    onStartListening = {
+                        voiceModeEnabled = true
+                        voiceModeState.value = true
+                        permissionAsked = false
+                        requestMicFocus()
+                        startVoiceForegroundService()
+                        voiceStatus.value = "MICROPHONE STARTING"
+                        startListening()
+                    },
+                    onStopSpeaking = {
+                        stopSpeaking(resumeListeningIfActive = false)
+                        stopVoiceMode()
+                    },
+                    onSpeakText = { speak(it) },
+                    onRefreshConversations = { refreshHistory() },
+                    onOpenSavedConversation = { id -> openConversation(id) },
+                    onReturnToClassicHud = {
+                        prefs.edit().putBoolean("show_b8_master_suite", false).apply()
+                        showB8MasterSuite = false
+                    },
+                    onTriggerGoogleSignIn = { signInGoogle() },
+                    onTriggerSignOut = { signOutGoogle() },
+                    onOpenDeviceSetup = { openDeviceSetup() },
+                    onConsumeVoiceText = { voiceText.value = "" }
+                )
+            } else {
+            Box(Modifier.fillMaxSize()) {
+            JarvisScreen(
+                recognizedText = voiceText.value,
+                status = voiceStatus.value,
+                rmsLevel = liveRms.value,
+                onConsumed = { voiceText.value = "" },
+                onSpeak = { speak(it) },
+                onStopSpeaking = { stopSpeaking(resumeListeningIfActive = voiceModeEnabled) },
+                onStartListening = { startListening() },
+                externalVoiceStop = !voiceModeState.value,
+                onModeChanged = { voiceMode ->
+                    voiceModeEnabled = voiceMode
+                    voiceModeState.value = voiceMode
+                    if (voiceMode) {
+                        requestMicFocus()
+                        startVoiceForegroundService()
+                        startListening()
+                        voiceStatus.value = "MICROPHONE STARTING"
+                    } else {
+                        stopVoiceMode()
+                    }
+                },
+                onSearch = { _ -> voiceStatus.value = "AI COUNCIL DISCUSSION" },
+                onSaveGeminiKey = { key -> prefs.edit().putString("gemini_api_key", key.trim()).apply() },
+                initialGoogleWebClientId = supabaseClient.resolveGoogleWebClientId(),
+                onSaveGoogleWebClientId = { clientId -> supabaseClient.saveGoogleWebClientIdOverride(clientId) },
+                onAskGemini = { prompt, history, callback -> askGemini(prompt, history, callback) },
+                onOpenDeviceSetup = { openDeviceSetup() },
+                onDeviceCommand = { action, params, callback ->
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        val message = try {
+                            JarvisDeviceClient(this@MainActivity).use { client ->
+                                val localId = client.deviceId()
+                                    ?: throw IllegalStateException("Perangkat belum dipair. Buka JARVIS Device Setup terlebih dahulu.")
+                                val deviceId = getSharedPreferences("jarvis_device_secure", MODE_PRIVATE)
+                                    .getString("target_device_id", null)?.takeIf { it.isNotBlank() } ?: localId
+                                val accessToken = supabaseClient.currentAccessToken() // Refresh/validate Google session.
+                                client.createOrRestoreAccountWithSupabase(accessToken) // Rotate the one-hour device-control token.
+                                val userId = supabaseClient.currentUserId() ?: throw IllegalStateException("Masuk dengan Google terlebih dahulu.")
+                                val idempotencyKey = "ui-" + java.util.UUID.randomUUID().toString()
+                                val queued = client.queueCommand(deviceId, action, org.json.JSONObject(params), userId, idempotencyKey)
+                                if (queued.optBoolean("ok")) {
+                                    if (deviceId == localId) JarvisDeviceSyncService.start(this@MainActivity)
+                                    val commandId = queued.optString("commandId")
+                                    var terminalRecord: org.json.JSONObject? = null
+                                    for (attempt in 0 until 20) {
+                                        kotlinx.coroutines.delay(if (attempt < 4) 400L else 1200L)
+                                        val state = client.commandStatus(deviceId, commandId, userId)
+                                        val record = state.optJSONObject("command")
+                                        val status = record?.optString("status").orEmpty()
+                                        if (status == "completed" || status == "expired") {
+                                            terminalRecord = record
+                                            break
+                                        }
+                                    }
+                                    val record = terminalRecord
+                                    if (record != null) {
+                                        val status = record.optString("status")
+                                        val result = record.optJSONObject("result")
+                                        val outcome = record.optString("outcome")
+                                        if (status == "expired" || result?.optBoolean("expired") == true) {
+                                            "Perintah ${action} kedaluwarsa sebelum selesai dieksekusi pada perangkat."
+                                        } else if (outcome == "failed" || result?.optBoolean("ok", true) == false) {
+                                            val errMsg = result?.optString("error").orEmpty().ifBlank { "eksekusi gagal pada perangkat" }
+                                            "Perintah ${action} gagal: ${errMsg}"
+                                        } else if (result != null) {
+                                            "Hasil perintah ${action}: ${result}"
+                                        } else {
+                                            "Perintah ${action} selesai pada perangkat."
+                                        }
+                                    } else {
+                                        "Perintah ${action} sudah masuk antrean, tetapi belum ada acknowledgement. Pastikan sinkronisasi JARVIS aktif pada perangkat target."
+                                    }
+                                } else {
+                                    "Perintah tidak dapat dijalankan: ${queued.optString("reason", queued.optString("error", "izin kemampuan belum aktif"))}"
+                                }
+                            }
+                        } catch (error: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(error)
+                            "Kontrol perangkat gagal: ${error.message ?: "koneksi atau pairing belum siap"}"
+                        }
+                        withContext(Dispatchers.Main) { callback(message) }
+                    }
+                },
+                onOpenApp = { q -> openRequestedApp(q) },
+                accountEmail = accountEmail.value,
+                accountName = accountName.value,
+                accountBusy = accountBusy.value,
+                accountStatus = accountStatus.value,
+                conversations = conversationsState.value,
+                historyBusy = historyBusy.value,
+                restoredMessages = restoreConversation.value,
+                onGoogleSignIn = { signInGoogle() },
+                onGoogleSignOut = { signOutGoogle() },
+                onRefreshHistory = { refreshHistory() },
+                onOpenConversation = { id -> openConversation(id) },
+                onNewConversation = { newConversation() },
+                onDeleteConversation = { id -> deleteConversation(id) },
+                onRenameConversation = { id, title -> renameConversation(id, title) },
+                onSaveTurn = { user, assistant -> saveChatTurn(user, assistant) }
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 10.dp, end = 12.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xDD081726))
+                    .border(1.dp, Color(0x9935E3FF), RoundedCornerShape(10.dp))
+                    .clickable {
+                        prefs.edit().putBoolean("show_b8_master_suite", true).apply()
+                        showB8MasterSuite = true
+                    }
+                    .padding(horizontal = 10.dp, vertical = 5.dp)
+            ) {
+                Text("B8 SUITE ✦", color = Color(0xFF58DCEC), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            }
+            }
+        }
+    }
+
+    private fun askGemini(
+        prompt: String,
+        history: List<Pair<String, String>> = emptyList(),
+        callback: (ChatResponsePayload) -> Unit
+    ): () -> Unit {
+        val cancelled = java.util.concurrent.atomic.AtomicBoolean(false)
+        val activeConnection = java.util.concurrent.atomic.AtomicReference<HttpURLConnection?>(null)
+        val clientRequestId = java.util.UUID.randomUUID().toString()
+        Thread {
+            var accessToken = runCatching { supabaseClient.currentAccessToken() }.getOrDefault("")
+            var payload: ChatResponsePayload? = null
+            for (attempt in 1..2) {
+                if (cancelled.get()) return@Thread
+                var connection: HttpURLConnection? = null
+                var shouldRetry = false
+                payload = try {
+                    val workerBaseUrl = JarvisDeviceClient.resolveWorkerBaseUrl(this@MainActivity)
+                    val endpoint = URL("$workerBaseUrl/v1/chat")
+                    connection = endpoint.openConnection() as HttpURLConnection
+                    activeConnection.set(connection)
+                    if (cancelled.get()) {
+                        connection.disconnect()
+                        return@Thread
+                    }
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 180000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connection.setRequestProperty("X-Client-Request-Id", clientRequestId)
+                    if (accessToken.isNotBlank()) {
+                        connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    }
+                    val historyJson = JSONArray()
+                    history.takeLast(20).forEach { (role, text) ->
+                        if (text.isNotBlank()) {
+                            historyJson.put(JSONObject().put("role", role).put("content", text.take(4000)))
+                        }
+                    }
+                    val b8Prefs = getSharedPreferences("jarvis_b8_independent_providers", MODE_PRIVATE)
+                    val selectedModelId = b8Prefs.getString("selected_model_id", null)?.takeIf { it.isNotBlank() }
+                    val selectedTier = b8Prefs.getString("selected_tier", null)?.takeIf { it.isNotBlank() }
+                    val selectedAccountId = b8Prefs.getString("selected_account_id", null)?.takeIf { it.isNotBlank() }
+                    val body = JSONObject()
+                        .put("message", prompt)
+                        .put("clientRequestId", clientRequestId)
+                        .put("history", historyJson)
+                    if (selectedModelId != null) body.put("model", selectedModelId)
+                    if (selectedTier != null) body.put("modelTier", selectedTier)
+                    if (selectedAccountId != null) body.put("accountId", selectedAccountId)
+                    connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                val code = connection.responseCode
+                val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+                if (stream == null) throw IllegalStateException("Server tidak mengirim response body.")
+                val rawBytes = stream.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        if (total > 1_500_000) throw IllegalStateException("Jawaban terlalu besar untuk ditampilkan. Coba persempit permintaan.")
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                }
+                val raw = String(rawBytes, Charsets.UTF_8).trim()
+                val json = try { JSONObject(raw) } catch (_: Exception) { null }
+                if (json == null) {
+                    if (code in 200..299 && raw.isNotBlank()) ChatResponsePayload(raw, images = defaultVisualFallbackFor(prompt))
+                    else ChatResponsePayload("JARVIS API mengirim respons yang tidak valid (HTTP $code).", images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                } else if (code !in 200..299 || !json.optBoolean("ok", json.has("answer") || json.has("reply") || json.has("response"))) {
+                    if (code == 401 && attempt == 1 && !cancelled.get() && supabaseClient.hasSession()) {
+                        val refreshed = runCatching { supabaseClient.refreshSessionBlocking() }.getOrDefault("")
+                        if (refreshed.isNotBlank()) {
+                            accessToken = refreshed
+                            shouldRetry = true
+                        }
+                    }
+                    val diagnostics = json.optJSONArray("diagnostics")
+                    val detail = if (diagnostics != null) (0 until diagnostics.length()).mapNotNull { i ->
+                        val item = diagnostics.optJSONObject(i) ?: return@mapNotNull null
+                        item.optString("provider") + ": " + item.optString("detail", item.optString("status"))
+                    }.joinToString("\n") else ""
+                    val errText = json.optString("error").ifBlank {
+                        json.optString("detail").ifBlank { "JARVIS API error ($code)." }
+                    } + if (detail.isNotBlank()) "\n\nDetail provider:\n$detail" else " Periksa provider AI dan koneksi backend."
+                    ChatResponsePayload(errText, images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                } else {
+                    val answer = sequenceOf("answer", "reply", "response", "message", "text", "output")
+                        .map { json.optString(it).trim() }
+                        .firstOrNull { it.isNotBlank() }
+                        ?: "JARVIS tidak menerima jawaban akhir."
+                    val visualsObj = json.optJSONObject("visuals")
+                    val kind = visualsObj?.optString("kind").orEmpty()
+                    val resultsArr = visualsObj?.optJSONArray("results")
+                    val cardsArr = visualsObj?.optJSONArray("cards")
+                    val parsedProducts = mutableListOf<VisualProduct>()
+                    val parsedImages = mutableListOf<Pair<String, String>>()
+                    val badges = listOf("Terlaris", "Rekomendasi", "Murah", "Pilihan", "Top")
+                    if (resultsArr != null && resultsArr.length() > 0) {
+                        for (i in 0 until minOf(resultsArr.length(), MAX_VISUAL_CARDS)) {
+                            val item = resultsArr.optJSONObject(i) ?: continue
+                            if (kind == "products" || item.has("price")) {
+                                parsedProducts.add(
+                                    VisualProduct(
+                                        title = item.optString("title", "Produk"),
+                                        image = item.optString("image", ""),
+                                        price = item.optString("price", "Cek Harga"),
+                                        source = item.optString("source", "Toko Online"),
+                                        rating = item.optDouble("rating", 4.8).let { if (it.isNaN() || it <= 0.0) "4.8" else String.format(Locale.US, "%.1f", it) },
+                                        reviews = item.optInt("reviews", 0).let { if (it > 0) "$it" else "100+" },
+                                        link = item.optString("link", ""),
+                                        badge = badges[i % badges.size]
+                                    )
+                                )
+                            } else {
+                                val img = item.optString("image", "")
+                                val title = item.optString("title", "Referensi Visual")
+                                if (img.startsWith("https://")) parsedImages.add(title to img)
+                            }
+                        }
+                    } else if (cardsArr != null && cardsArr.length() > 0) {
+                        for (i in 0 until minOf(cardsArr.length(), MAX_VISUAL_CARDS)) {
+                            val card = cardsArr.optJSONObject(i) ?: continue
+                            val data = card.optJSONObject("data") ?: card
+                            if (card.optString("type") == "product" || data.has("price")) {
+                                parsedProducts.add(
+                                    VisualProduct(
+                                        title = data.optString("title", card.optString("title", "Produk")),
+                                        image = data.optString("image", ""),
+                                        price = data.optString("price", "Cek Harga"),
+                                        source = data.optString("source", "Toko Online"),
+                                        rating = "4.8",
+                                        reviews = "100+",
+                                        link = data.optString("link", ""),
+                                        badge = badges[i % badges.size]
+                                    )
+                                )
+                            } else {
+                                val img = data.optString("image", "")
+                                val title = data.optString("title", card.optString("title", "Referensi Visual"))
+                                if (img.startsWith("https://")) parsedImages.add(title to img)
+                            }
+                        }
+                    }
+                    val finalImages = if (parsedProducts.isEmpty() && parsedImages.isEmpty()) {
+                        defaultVisualFallbackFor(prompt, answer = answer)
+                    } else {
+                        parsedImages.take(MAX_VISUAL_CARDS)
+                    }
+                    ChatResponsePayload(answer, parsedProducts.take(MAX_VISUAL_CARDS), finalImages)
+                }
+                } catch (e: Exception) {
+                    val message = e.message.orEmpty()
+                    if (attempt == 1 && !cancelled.get() && !message.contains("Jawaban terlalu besar")) {
+                        shouldRetry = true
+                    }
+                    val err = if (message.contains("Jawaban terlalu besar")) message
+                    else "Gagal menghubungi JARVIS Worker: periksa koneksi internet dan status backend."
+                    ChatResponsePayload(err, images = defaultVisualFallbackFor(prompt, isError = true), isError = true)
+                } finally {
+                    connection?.disconnect()
+                }
+                if (!shouldRetry) break
+                try { Thread.sleep(750L) } catch (_: InterruptedException) { break }
+            }
+            val finalPayload = payload ?: ChatResponsePayload(
+                "Gagal menghubungi JARVIS Worker.",
+                images = defaultVisualFallbackFor(prompt, isError = true),
+                isError = true
+            )
+            if (!cancelled.get()) handler.post { if (!cancelled.get() && !isFinishing && !isDestroyed) callback(finalPayload) }
+        }.start()
+        val cancelFn: () -> Unit = {
+            cancelled.set(true)
+            activeConnection.getAndSet(null)?.disconnect()
+        }
+        activeChatCancel = cancelFn
+        return cancelFn
+    }
+
+    private fun speak(text: String) {
+        if (text.isBlank()) return
+        val cleanSpeech = text.replace(Regex("```[\\s\\S]*?```"), " blok kode telah ditampilkan di layar. ")
+            .replace(Regex("!\\[[^]]*]\\([^)]*\\)"), "")
+            .replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "$1")
+            .replace(Regex("[#*|>`~_]"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .take(1800)
+        if (cleanSpeech.isBlank()) return
+        val gen = speechGeneration.incrementAndGet()
+        activeTtsConnection.getAndSet(null)?.let { prev -> runCatching { prev.disconnect() } }
+        runCatching { speechPlayer?.stop() }
+        runCatching { speechPlayer?.release() }
+        speechPlayer = null
+        geminiSpeechInProgress = true
+        recognitionActive = false
+        recognitionStartPending = false
+        suppressRecognizerCallbacks = true
+        runCatching { recognizer?.cancel() }
+        clapDetector.reset()
+        runCatching { tts?.stop() }
+        voiceStatus.value = "JARVIS SPEAKING"
+        Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                if (speechGeneration.get() != gen) return@Thread
+                var accessToken = try { supabaseClient.currentAccessToken() } catch (_: Exception) { "" }
+                if (accessToken.isBlank()) throw IllegalStateException("Supabase session required for Worker TTS")
+                var resolvedAudio: ByteArray? = null
+                val workerBaseUrl = JarvisDeviceClient.resolveWorkerBaseUrl(this@MainActivity)
+                for (attempt in 1..2) {
+                    if (speechGeneration.get() != gen) return@Thread
+                    val endpoint = URL("$workerBaseUrl/v1/tts")
+                    connection = endpoint.openConnection() as HttpURLConnection
+                    activeTtsConnection.set(connection)
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 90000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    val body = JSONObject().put("text", cleanSpeech)
+                    connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                    val code = connection.responseCode
+                    if (code == 401 && attempt == 1 && supabaseClient.hasSession()) {
+                        connection.disconnect()
+                        connection = null
+                        val refreshed = runCatching { supabaseClient.refreshSessionBlocking() }.getOrDefault("")
+                        if (refreshed.isNotBlank()) {
+                            accessToken = refreshed
+                            continue
+                        }
+                    }
+                    if (code !in 200..299) {
+                        val detail = connection.errorStream?.let { stream ->
+                            String(JarvisStabilityGuard.readBoundedBytes(stream, 64 * 1024), Charsets.UTF_8)
+                        }.orEmpty()
+                        throw IllegalStateException("Fish Audio HTTP $code: $detail")
+                    }
+                    resolvedAudio = JarvisStabilityGuard.readBoundedBytes(connection.inputStream, JarvisStabilityGuard.MAX_TTS_AUDIO_BYTES)
+                    break
+                }
+                if (speechGeneration.get() != gen) return@Thread
+                val audio = resolvedAudio ?: ByteArray(0)
+                if (audio.isEmpty()) throw IllegalStateException("Fish Audio returned empty audio")
+                val audioFile = File(cacheDir, "jarvis_mcu_voice.mp3")
+                FileOutputStream(audioFile).use { it.write(audio) }
+                handler.post {
+                    if (speechGeneration.get() != gen) return@post
+                    try {
+                        speechPlayer?.release()
+                        speechPlayer = MediaPlayer().apply {
+                            setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                                    .build()
+                            )
+                            setVolume(1.0f, 1.0f)
+                            setDataSource(audioFile.absolutePath)
+                            setOnPreparedListener {
+                                if (speechGeneration.get() != gen) {
+                                    it.release()
+                                    return@setOnPreparedListener
+                                }
+                                setVolume(1.0f, 1.0f)
+                                activeTtsEngineSource = "FISH_AUDIO"
+                                voiceStatus.value = "JARVIS SPEAKING (FISH AUDIO)"
+                                it.start()
+                            }
+                            setOnCompletionListener {
+                                it.release()
+                                speechPlayer = null
+                                geminiSpeechInProgress = false
+                                if (speechGeneration.get() == gen) {
+                                    handler.post { restartListeningSession() }
+                                }
+                            }
+                            setOnErrorListener { player, what, extra ->
+                                runCatching { player.release() }
+                                speechPlayer = null
+                                geminiSpeechInProgress = false
+                                activeTtsEngineSource = "ANDROID_TTS_FALLBACK"
+                                JarvisStabilityGuard.recordDiagnostic(
+                                    JarvisStabilityGuard.Subsystem.VOICE,
+                                    "FISH_AUDIO_MEDIAPLAYER_ERROR",
+                                    detail = "what=$what extra=$extra"
+                                )
+                                if (speechGeneration.get() == gen) {
+                                    voiceStatus.value = "FISH AUDIO FAILED · ANDROID TTS FALLBACK"
+                                    speakWithAndroid(cleanSpeech)
+                                }
+                                true
+                            }
+                            prepareAsync()
+                        }
+                    } catch (playErr: Exception) {
+                        runCatching { speechPlayer?.release() }
+                        speechPlayer = null
+                        geminiSpeechInProgress = false
+                        activeTtsEngineSource = "ANDROID_TTS_FALLBACK"
+                        JarvisStabilityGuard.recordDiagnostic(JarvisStabilityGuard.Subsystem.VOICE, "FISH_AUDIO_PLAYBACK_EXCEPTION", playErr)
+                        if (speechGeneration.get() == gen) {
+                            voiceStatus.value = "FISH AUDIO FAILED · ANDROID TTS FALLBACK"
+                            speakWithAndroid(cleanSpeech)
+                        }
+                    }
+                }
+            } catch (ttsErr: Exception) {
+                activeTtsEngineSource = "ANDROID_TTS_FALLBACK"
+                JarvisStabilityGuard.recordDiagnostic(JarvisStabilityGuard.Subsystem.VOICE, "FISH_AUDIO_HTTP_FALLBACK", ttsErr)
+                handler.post {
+                    if (speechGeneration.get() == gen) {
+                        geminiSpeechInProgress = false
+                        voiceStatus.value = "FISH AUDIO FAILED · ANDROID TTS FALLBACK"
+                        speakWithAndroid(cleanSpeech)
+                    }
+                }
+            } finally {
+                activeTtsConnection.compareAndSet(connection, null)
+                connection?.disconnect()
+            }
+        }.start()
+    }
+
+    private fun detectRecognitionLanguage(text: String): String {
+        val q = text.lowercase(Locale.ROOT)
+        val englishCue = Regex("\\b(the|and|you|your|what|how|why|please|could|would|hello|thanks|with|from|about|create|build|make|explain)\\b")
+        return if (englishCue.containsMatchIn(q)) "en-US" else "id-ID"
+    }
+
+    private fun isEnglishText(text: String): Boolean {
+        val q = text.lowercase(Locale.ROOT)
+        val english = Regex("\\b(the|and|you|your|what|how|why|please|could|would|hello|thanks|with|from|about|create|build|make|explain|find|search|show|tell|calculate|write|open|done|here|there|this|that|for|is|are|can|will)\\b").findAll(q).count()
+        val indonesian = Regex("\\b(aku|saya|kamu|anda|yang|dan|dengan|untuk|tidak|nggak|enggak|gimana|kenapa|tolong|bisa|buat|jadi|adalah|sekarang|besok|kemarin|carikan|jelaskan|hitung|tampilkan|berapa|bagaimana)\\b").findAll(q).count()
+        return english > indonesian
+    }
+    private fun speakWithAndroid(text: String) {
+        val engine = tts
+        if (engine == null || !ttsInitialized) {
+            geminiSpeechInProgress = false
+            suppressRecognizerCallbacks = false
+            voiceStatus.value = "TTS UNAVAILABLE · VISUAL RESPONSE ACTIVE"
+            handler.post { restartListeningSession() }
+            return
+        }
+        val status = runCatching {
+            engine.language = Locale.forLanguageTag(if (isEnglishText(text)) "en-US" else "id-ID")
+            engine.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-response")
+        }.getOrElse { err ->
+            JarvisStabilityGuard.recordDiagnostic(JarvisStabilityGuard.Subsystem.VOICE, "ANDROID_TTS_SPEAK_ERROR", err)
+            TextToSpeech.ERROR
+        }
+        if (status == TextToSpeech.ERROR) {
+            geminiSpeechInProgress = false
+            suppressRecognizerCallbacks = false
+            voiceStatus.value = "TTS PLAYBACK ERROR · RESUMING MIC"
+            handler.post { restartListeningSession() }
+        }
+    }
+
+    private fun createSpeechRecognizer() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"
+            recognizer = null
+            return
+        }
+        runCatching { recognizer?.destroy() }
+        recognizer = runCatching { SpeechRecognizer.createSpeechRecognizer(this) }.getOrNull()
+        recognizer?.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { recognitionStartPending = false; recognitionActive = true; if (voiceModeEnabled) voiceStatus.value = "LISTENING" }
+                override fun onBeginningOfSpeech() { voiceStatus.value = "AUDIO INPUT ACTIVE" }
+                override fun onRmsChanged(rmsdB: Float) {
+                    liveRms.value = rmsdB.coerceIn(0f, 16f)
+                    if (voiceModeEnabled) clapDetector.onRms(rmsdB)
+                }
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() { if (voiceModeEnabled) voiceStatus.value = "PROCESSING VOICE" }
+                override fun onError(error: Int) {
+                    recognitionActive = false
+                    recognitionStartPending = false
+                    if (suppressRecognizerCallbacks || geminiSpeechInProgress || clapActivationInProgress) return
+                    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
+                        voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
+                        return
+                    }
+                    val statusHint = when (error) {
+                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "LISTENING · STANDBY"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "VOICE ENGINE BUSY · RETRYING"
+                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "VOICE NETWORK ERROR · RETRYING"
+                        SpeechRecognizer.ERROR_AUDIO -> "AUDIO INPUT ERROR · RECONNECTING"
+                        else -> "LISTENING · RECONNECTING"
+                    }
+                    // Android SpeechRecognizer is single-shot. Silence ends a capture session, not Voice mode.
+                    voiceStatus.value = if (voiceModeEnabled) statusHint else "MIC OFF"
+                    if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
+                        val delayMs = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 300L
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1200L
+                            else -> 850L
+                        }
+                        handler.postDelayed(listeningRestart, delayMs)
+                    }
+                }
+                override fun onResults(results: Bundle?) {
+                    recognitionActive = false
+                    recognitionStartPending = false
+                    if (suppressRecognizerCallbacks || geminiSpeechInProgress) return
+                    val candidates = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                    val scores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                    val bestIndex = if (scores != null && scores.size == candidates.size) scores.indices.maxByOrNull { scores[it] } ?: 0 else 0
+                    val text = candidates.getOrNull(bestIndex).orEmpty()
+                    if (text.isNotBlank()) {
+                        recognitionLanguage = detectRecognitionLanguage(text)
+                        voiceText.value = text
+                        voiceStatus.value = "COMMAND RECEIVED"
+                        // Do not reopen the microphone here. Compose first routes the transcript:
+                        // wake-only -> speak confirmation; command -> execute; no wake -> resume listening.
+                    } else if (voiceModeEnabled) {
+                        handler.removeCallbacks(listeningRestart)
+                        handler.postDelayed(listeningRestart, 300L)
+                    }
+                }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    if (partial.isNotBlank()) {
+                        voiceStatus.value = "HEARING: ${partial.take(28)}"
+                    }
+                }
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+    }
+
+    private fun restartListeningSession() {
+        handler.removeCallbacks(listeningRestart)
+        recognitionActive = false
+        recognitionStartPending = false
+        suppressRecognizerCallbacks = true
+        if (!voiceModeEnabled || geminiSpeechInProgress || isFinishing || isDestroyed) return
+        voiceStatus.value = "RECONNECTING VOICE CORE"
+        runCatching {
+            recognizer?.cancel()
+            recognizer?.destroy()
+            recognizer = null
+            createSpeechRecognizer()
+            suppressRecognizerCallbacks = false
+        }.onFailure {
+            voiceStatus.value = "VOICE CORE RESTARTING"
+        }
+        handler.postDelayed({
+            if (voiceModeEnabled && !geminiSpeechInProgress) startListening()
+        }, 650L)
+    }
+    private fun startListening() {
+        clapActivationInProgress = false
+        if (isFinishing || isDestroyed || !voiceModeEnabled || geminiSpeechInProgress || recognitionActive || recognitionStartPending) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            if (!permissionAsked) {
+                permissionAsked = true
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 700)
+                voiceStatus.value = "MICROPHONE PERMISSION REQUIRED"
+            }
+            return
+        }
+        val speech = recognizer ?: run { voiceStatus.value = "VOICE RECOGNITION UNAVAILABLE"; return }
+        try {
+            requestMicFocus()
+            recognitionStartPending = true
+            voiceStatus.value = "CONNECTING MICROPHONE"
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, recognitionLanguage)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, recognitionLanguage)
+                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            }
+            speech.startListening(intent)
+        } catch (_: Exception) {
+            suppressRecognizerCallbacks = false
+            recognitionStartPending = false
+            recognitionActive = false
+            voiceStatus.value = "VOICE CORE RESTARTING"
+            if (voiceModeEnabled) {
+                handler.removeCallbacks(listeningRestart)
+                handler.postDelayed(listeningRestart, 1000L)
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 700) {
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+                voiceStatus.value = "MICROPHONE READY"
+                if (voiceModeEnabled) handler.post { startVoiceForegroundService(); startListening() }
+            } else voiceStatus.value = "MICROPHONE PERMISSION DENIED"
+        }
+    }
+
+    private fun openRequestedApp(command: String): Boolean {
+        val normalized = command.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}\\s]"), " ").replace(Regex("\\s+"), " ").trim()
+        val cleaned = normalized.replace(Regex("^(tolong |please |buka(kan)? |jalankan |mainkan |main |open |launch |run |start |aplikasi )+"), "").replace(Regex("^(aplikasi |app |the )+"), "").trim()
+        if (cleaned.isBlank()) return false
+        voiceStatus.value = "SEARCHING INSTALLED APPS"
+        val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val candidates = try {
+            val resolved = if (Build.VERSION.SDK_INT >= 33) {
+                packageManager.queryIntentActivities(launcherIntent, PackageManager.ResolveInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(launcherIntent, 0)
+            }
+            resolved.mapNotNull { info ->
+                val label = info.loadLabel(packageManager)?.toString()?.trim().orEmpty()
+                val pkg = info.activityInfo?.packageName.orEmpty()
+                val activity = info.activityInfo?.name.orEmpty()
+                if (label.isNotBlank() && pkg.isNotBlank() && activity.isNotBlank()) Triple(label, pkg, activity) else null
+            }
+        } catch (_: Exception) { emptyList() }
+        val aliases = mapOf(
+            "youtube" to "com.google.android.youtube",
+            "yt" to "com.google.android.youtube",
+            "youtube music" to "com.google.android.apps.youtube.music",
+            "whatsapp" to "com.whatsapp",
+            "chrome" to "com.android.chrome",
+            "roblox" to "com.roblox.client"
+        )
+        val explicitPackage = cleaned.removePrefix("package ").takeIf {
+            cleaned.startsWith("package ") && it.matches(Regex("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+"))
+        }
+        val directPackage = explicitPackage ?: aliases[cleaned]
+        val directLaunch = directPackage?.let { packageManager.getLaunchIntentForPackage(it) }
+        if (directLaunch != null) {
+            return try {
+                directLaunch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(directLaunch)
+                voiceStatus.value = "OPENING " + cleaned.uppercase(Locale.ROOT)
+                true
+            } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
+        }
+        val found = candidates.firstOrNull { it.first.equals(cleaned, true) }
+            ?: candidates.firstOrNull { it.first.startsWith(cleaned, true) }
+            ?: candidates.firstOrNull { it.first.contains(cleaned, true) }
+            ?: candidates.firstOrNull { item -> cleaned.split(" ").all { token -> token.length > 1 && item.first.contains(token, true) } }
+        if (found == null) { voiceStatus.value = "APP NOT FOUND · SEARCHING WEB"; return false }
+        return try {
+            val launch = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setComponent(ComponentName(found.second, found.third)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(launch)
+            voiceStatus.value = "OPENING " + found.first.uppercase(Locale.ROOT)
+            true
+        } catch (_: Exception) { voiceStatus.value = "COULD NOT OPEN APP"; false }
+    }
+
+    override fun onPause() {
+        // Keep the user-enabled Voice session alive when the app is backgrounded.
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        if (::supabaseClient.isInitialized) {
+            accountEmail.value = supabaseClient.currentEmail()
+            accountName.value = supabaseClient.currentName()
+        }
+        if (recognizer != null && voiceModeEnabled && !recognitionActive && !recognitionStartPending && !geminiSpeechInProgress) {
+            handler.postDelayed({ restartListeningSession() }, 500)
+        }
+    }
+    override fun onDestroy() {
+        handler.removeCallbacksAndMessages(null)
+        activeChatCancel?.invoke()
+        activeChatCancel = null
+        activeTtsConnection.getAndSet(null)?.let { conn -> runCatching { conn.disconnect() } }
+        clapDetector.reset()
+        stopVoiceForegroundService()
+        runCatching { unregisterReceiver(voiceStopReceiver) }
+        unregisterConnectivityFlush()
+        abandonMicFocus()
+        runCatching { recognizer?.destroy() }
+        recognizer = null
+        runCatching { tts?.stop() }
+        runCatching { speechPlayer?.release() }
+        speechPlayer = null
+        runCatching { tts?.shutdown() }
+        super.onDestroy()
+    }
+}
+
+// --- MARKDOWN & STRUCTURED HUD WIDGET PARSER ---
+private sealed class MarkdownBlock {
+    data class Heading(val text: String) : MarkdownBlock()
+    data class Paragraph(val text: String) : MarkdownBlock()
+    data class Code(val language: String, val text: String) : MarkdownBlock()
+    data class Table(val rows: List<List<String>>) : MarkdownBlock()
+    data class ImageBlock(val alt: String, val url: String) : MarkdownBlock()
+    data class Bullet(val text: String, val ordered: Boolean, val index: Int = 1) : MarkdownBlock()
+}
+
+private fun parseMarkdownBlocks(markdown: String): List<MarkdownBlock> {
+    val lines = markdown.replace("\\\\n", "\n").lines()
+    val blocks = mutableListOf<MarkdownBlock>()
+    fun isTableSeparator(line: String): Boolean {
+        val cells = line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
+        return cells.isNotEmpty() && cells.all { it.matches(Regex(":?-{3,}:?")) }
+    }
+    fun tableCells(line: String): List<String> =
+        line.trim().removePrefix("|").removeSuffix("|").split("|").map { it.trim() }
+
+    var i = 0
+    var orderCounter = 1
+    while (i < lines.size) {
+        val line = lines[i]
+        if (line.isBlank()) { i++; orderCounter = 1; continue }
+        val imageMatch = Regex("^\\s*!\\[([^]]*)]\\((https?://[^ )]+)\\)\\s*$").matchEntire(line)
+        if (imageMatch != null) { blocks.add(MarkdownBlock.ImageBlock(imageMatch.groupValues[1], imageMatch.groupValues[2])); i++; continue }
+        val heading = Regex("^\\s{0,3}(#{1,3})\\s+(.+)$").matchEntire(line)
+            ?: Regex("^\\s*\\*\\*(.{3,72})\\*\\*\\s*$").matchEntire(line)
+        if (heading != null) {
+            blocks.add(MarkdownBlock.Heading(heading.groupValues[2].ifBlank { heading.groupValues[1] }))
+            i++
+            orderCounter = 1
+            continue
+        }
+        if (line.trimStart().startsWith("```")) {
+            val language = line.trim().removePrefix("```").trim()
+            i++
+            val code = mutableListOf<String>()
+            while (i < lines.size && !lines[i].trimStart().startsWith("```")) { code.add(lines[i]); i++ }
+            if (i < lines.size) i++
+            blocks.add(MarkdownBlock.Code(language, code.joinToString("\n")))
+            continue
+        }
+        if (line.contains("|") && i + 1 < lines.size && isTableSeparator(lines[i + 1])) {
+            val rows = mutableListOf<List<String>>()
+            rows.add(tableCells(line))
+            i += 2
+            while (i < lines.size) {
+                if (lines[i].isBlank()) {
+                    var next = i
+                    while (next < lines.size && lines[next].isBlank()) next++
+                    if (next < lines.size && lines[next].contains("|") && !isTableSeparator(lines[next])) {
+                        i = next
+                        continue
+                    }
+                    i = next
+                    break
+                }
+                if (!lines[i].contains("|")) break
+                rows.add(tableCells(lines[i]))
+                i++
+            }
+            val columns = rows.maxOfOrNull { it.size } ?: 0
+            blocks.add(MarkdownBlock.Table(rows.map { row -> row + List((columns - row.size).coerceAtLeast(0)) { "" } }))
+            continue
+        }
+        val bullet = Regex("^\\s*(?:[-*+]\\s+|(\\d+)[.)]\\s+)(.*)$").matchEntire(line)
+        if (bullet != null) {
+            val isOrd = bullet.groupValues[1].isNotEmpty()
+            val idx = bullet.groupValues[1].toIntOrNull() ?: orderCounter++
+            blocks.add(MarkdownBlock.Bullet(bullet.groupValues[2], isOrd, idx))
+            i++
+            continue
+        }
+        val paragraph = mutableListOf(line)
+        i++
+        while (i < lines.size && lines[i].isNotBlank() &&
+            !lines[i].trimStart().startsWith("```") &&
+            !(lines[i].contains("|") && i + 1 < lines.size && isTableSeparator(lines[i + 1])) &&
+            !Regex("^\\s*(?:[-*+]\\s+|\\d+[.)]\\s+)").containsMatchIn(lines[i])) {
+            paragraph.add(lines[i]); i++
+        }
+        blocks.add(MarkdownBlock.Paragraph(paragraph.joinToString("\n")))
+    }
+    return blocks
+}
+
+@Composable
+private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.unit.TextUnit = 13.5.sp) {
+    val uriHandler = LocalUriHandler.current
+    val linkPattern = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)")
+    val rawUrlPattern = Regex("https?://[^\\s<>]+(?<![.,!?;:)\\]])")
+    val boldPattern = Regex("\\*\\*(.+?)\\*\\*")
+    val clean = markdown.replace(Regex("<(https?://[^>]+)>"), "$1").replace(Regex("(?m)^#{1,6}\\s*"), "")
+    val annotated = buildAnnotatedString {
+        var cursor = 0
+        val matches = (linkPattern.findAll(clean).map { it to "link" } +
+            rawUrlPattern.findAll(clean).map { it to "url" } +
+            boldPattern.findAll(clean).map { it to "bold" }).sortedBy { it.first.range.first }
+        for ((match, kind) in matches) {
+            if (match.range.first < cursor) continue
+            append(clean.substring(cursor, match.range.first))
+            if (kind == "link" || kind == "url") {
+                val startOffset = length
+                val target = if (kind == "link") match.groupValues[2] else match.value
+                val label = if (kind == "link") match.groupValues[1] else runCatching { java.net.URI(target).host?.removePrefix("www.") ?: "Lihat Produk" }.getOrDefault("Lihat Produk")
+                withStyle(SpanStyle(color = Cyan, textDecoration = TextDecoration.Underline, fontWeight = FontWeight.SemiBold)) { append(label) }
+                addStringAnnotation("URL", target, startOffset, length)
+            } else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color(0xFFF3FCFF))) { append(match.groupValues[1]) }
+            cursor = match.range.last + 1
+        }
+        if (cursor < clean.length) append(clean.substring(cursor))
+    }
+    ClickableText(
+        text = annotated,
+        style = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = fontSize, lineHeight = if (fontSize.value >= 13f) 20.sp else 16.sp),
+        onClick = { offset ->
+            annotated.getStringAnnotations("URL", offset, offset).firstOrNull()?.let { runCatching { uriHandler.openUri(it.item) } }
+        }
+    )
+}
+
+@Composable
+private fun RemoteMarkdownImage(alt: String, url: String) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    var loadError by remember(url) { mutableStateOf(false) }
+    var isLoading by remember(url) { mutableStateOf(true) }
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Color(0xFF06101B))
+            .border(1.dp, Cyan.copy(alpha = .32f), CardShape)
+    ) {
+        Column {
+            Box(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 230.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (url.startsWith("https://") && !loadError) {
+                    AsyncImage(
+                        model = ImageRequest.Builder(context).data(url)
+                            .memoryCacheKey(url).diskCacheKey(url).build(),
+                        contentDescription = alt.ifBlank { "Hasil gambar JARVIS" },
+                        onLoading = { isLoading = true; loadError = false },
+                        onSuccess = { isLoading = false; loadError = false },
+                        onError = { isLoading = false; loadError = true },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 150.dp, max = 230.dp),
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                    )
+                } else {
+                    loadError = true
+                }
+                if (isLoading && !loadError) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.Image, null, tint = Cyan.copy(alpha = 0.5f), modifier = Modifier.size(20.dp))
+                        Text("Memuat visual...", color = TextMuted, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    }
+                }
+                if (loadError) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(156.dp)
+                            .background(Brush.verticalGradient(listOf(Color(0xFF0A1D30), Color(0xFF050E18))))
+                            .padding(16.dp)
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        Icon(Icons.Default.AutoAwesome, contentDescription = "Visual HUD Fallback", tint = Cyan.copy(alpha = 0.8f), modifier = Modifier.size(28.dp))
+                        Text(
+                            text = alt.ifBlank { "Kartu Visual JARVIS HUD" },
+                            color = Ice,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "VISUAL HUD FALLBACK · PRATINJAU SIAP",
+                            color = Cyan.copy(alpha = 0.75f),
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+            if (alt.isNotBlank()) {
+                Text(alt, color = TextMuted, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
+            }
+        }
+        if (url.startsWith("https://")) {
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(8.dp)
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(Color(0xB3040B14))
+                    .border(1.dp, Cyan.copy(alpha = 0.45f), RoundedCornerShape(7.dp))
+                    .clickable { runCatching { uriHandler.openUri(url) } },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.OpenInFull, contentDescription = "Buka gambar", tint = Cyan, modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceImageCarouselCards(images: List<Pair<String, String>>) {
+    val capped = images.take(MAX_VISUAL_CARDS)
+    if (capped.isEmpty()) return
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(capped) { (title, url) ->
+            var loadError by remember(url) { mutableStateOf(false) }
+            Column(
+                modifier = Modifier
+                    .width(210.dp)
+                    .clip(CardShape)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0A1B2E), Color(0xFF06111D))))
+                    .border(1.dp, Cyan.copy(alpha = 0.38f), CardShape)
+                    .clickable { if (url.startsWith("https://")) runCatching { uriHandler.openUri(url) } }
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(118.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF040B14)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (url.startsWith("https://") && !loadError) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context).data(url)
+                                .memoryCacheKey(url).diskCacheKey(url).build(),
+                            contentDescription = title,
+                            onError = { loadError = true },
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Icon(Icons.Default.AutoAwesome, null, tint = Cyan.copy(alpha = 0.6f), modifier = Modifier.size(32.dp))
+                    }
+                }
+                Text(
+                    text = title.ifBlank { "Referensi Visual JARVIS" },
+                    color = Ice,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    minLines = 2,
+                    lineHeight = 15.sp,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownCell(value: String, fontSize: androidx.compose.ui.unit.TextUnit = 10.5.sp) {
+    val image = Regex("!\\[([^]]*)]\\((https?://[^ )]+)\\)").find(value)
+    if (image != null) RemoteMarkdownImage(image.groupValues[1], image.groupValues[2])
+    else InlineMarkdownText(value, fontSize)
+}
+
+@Composable
+private fun ProductCarouselCards(products: List<VisualProduct>) {
+    val capped = products.take(MAX_VISUAL_CARDS)
+    if (capped.isEmpty()) return
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(vertical = 4.dp)
+    ) {
+        items(capped) { item ->
+            Column(
+                modifier = Modifier
+                    .width(172.dp)
+                    .clip(CardShape)
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0A1B2E), Color(0xFF06111D))))
+                    .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                var imgLoadError by remember(item.image) { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(106.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color(0xFF040B14))
+                ) {
+                    if (item.image.isNotBlank() && !imgLoadError) {
+                        AsyncImage(
+                            model = ImageRequest.Builder(context).data(item.image)
+                                .memoryCacheKey(item.image).diskCacheKey(item.image).build(),
+                            contentDescription = item.title,
+                            onError = { imgLoadError = true },
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.ShoppingBag, contentDescription = item.title, tint = Cyan.copy(alpha = 0.55f), modifier = Modifier.size(30.dp))
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xD9050E1A))
+                            .border(0.7.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(item.badge, color = Ice, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                Text(
+                    text = item.title,
+                    color = Ice,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    minLines = 2,
+                    lineHeight = 15.sp,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.price,
+                    color = Cyan,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Storefront, null, tint = OkGreen, modifier = Modifier.size(12.dp))
+                    Text(item.source.take(18), color = TextMuted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("★", color = WarnAmber, fontSize = 11.sp)
+                    Text("${item.rating} (${item.reviews})", color = TextMuted, fontSize = 10.sp)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFF0A2236))
+                        .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                        .clickable { if (item.link.isNotBlank()) runCatching { uriHandler.openUri(item.link) } }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.OpenInNew, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                        Text("Lihat Produk", color = Ice, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTable(rows: List<List<String>>) {
+    if (rows.isEmpty()) return
+    val headers = rows.first()
+    val dataRows = rows.drop(1)
+    val productLike = headers.size >= 4 && headers.any { it.contains("harga", true) || it.contains("produk", true) || it.contains("toko", true) }
+    val vsComparison = headers.size == 3 && !productLike
+
+    if (productLike) {
+        val extracted = dataRows.mapIndexed { idx, row ->
+            val title = row.getOrNull(0).orEmpty().replace(Regex("\\*\\*"), "").trim()
+            val imgMatch = row.firstNotNullOfOrNull { Regex("!\\[[^]]*]\\((https?://[^ )]+)\\)").find(it) }
+            val priceIdx = headers.indexOfFirst { it.contains("harga", true) || it.contains("price", true) }
+            val storeIdx = headers.indexOfFirst { it.contains("toko", true) || it.contains("rating", true) || it.contains("detail", true) }
+            val linkMatch = row.firstNotNullOfOrNull { Regex("\\[[^]]+]\\((https?://[^ )]+)\\)").find(it) }
+            val badges = listOf("Terlaris", "Rekomendasi", "Murah", "Pilihan")
+            VisualProduct(
+                title = title.ifBlank { "Produk ${idx + 1}" },
+                image = imgMatch?.groupValues?.getOrNull(1).orEmpty(),
+                price = if (priceIdx >= 0) row.getOrNull(priceIdx).orEmpty().replace("**", "") else "",
+                source = if (storeIdx >= 0) row.getOrNull(storeIdx).orEmpty().substringBefore("·").trim() else "Marketplace",
+                rating = "4.8",
+                reviews = "1rb+",
+                link = linkMatch?.groupValues?.getOrNull(1).orEmpty(),
+                badge = badges[idx % badges.size]
+            )
+        }
+        ProductCarouselCards(extracted)
+    } else if (vsComparison) {
+        // Spec VS Comparison Table like in reference image
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(Color(0xFF071422))
+                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                .padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF0C2238))
+                    .padding(vertical = 8.dp, horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    headers.getOrNull(1).orEmpty().replace("**", ""),
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+                Box(
+                    Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF071626))
+                        .border(1.dp, Cyan, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("VS", color = Cyan, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold)
+                }
+                Text(
+                    headers.getOrNull(2).orEmpty().replace("**", ""),
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            dataRows.forEachIndexed { idx, r ->
+                val isPrice = r.getOrNull(0).orEmpty().contains("harga", true)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (idx % 2 == 0) Color(0xFF081828) else Color.Transparent, RoundedCornerShape(6.dp))
+                        .padding(vertical = 6.dp, horizontal = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        r.getOrNull(0).orEmpty().replace("**", ""),
+                        color = TextMuted,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(0.75f)
+                    )
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (isPrice) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(OkGreen.copy(alpha = 0.16f))
+                                    .border(1.dp, OkGreen.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(r.getOrNull(1).orEmpty().replace("**", ""), color = OkGreen, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            MarkdownCell(r.getOrNull(1).orEmpty(), 10.5.sp)
+                        }
+                    }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (isPrice) {
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(WarnAmber.copy(alpha = 0.16f))
+                                    .border(1.dp, WarnAmber.copy(alpha = 0.6f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(r.getOrNull(2).orEmpty().replace("**", ""), color = WarnAmber, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            MarkdownCell(r.getOrNull(2).orEmpty(), 10.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(Color(0xFF07131E))
+                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                .padding(6.dp)
+        ) {
+            rows.forEachIndexed { ri, row ->
+                Row(Modifier.fillMaxWidth()) {
+                    row.forEach { cell ->
+                        Box(
+                            Modifier
+                                .weight(1f)                                .heightIn(min = 32.dp)
+                                .background(if (ri == 0) Color(0xFF0E2C42) else Color.Transparent)
+                                .border(0.5.dp, Color(0x3349B8CB))
+                                .padding(6.dp)
+                        ) {
+                            MarkdownCell(cell, if (ri == 0) 10.5.sp else 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CodeBlockHudCard(language: String, code: String) {
+    val clipboard = LocalClipboardManager.current
+    var copied by remember { mutableStateOf(false) }
+    val lines = code.lines()
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(CardShape)
+            .background(Color(0xFF060E18))
+            .border(1.dp, Cyan.copy(alpha = .38f), CardShape)
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(Color(0xFF0B1C2E))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(Icons.Default.Code, null, tint = Cyan, modifier = Modifier.size(15.dp))
+                Text(
+                    text = if (language.isNotBlank()) "Kode (${language.lowercase()})" else "Kode Program",
+                    color = Ice,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            Row(
+                Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF102A42))
+                    .border(1.dp, Cyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .clickable {
+                        clipboard.setText(AnnotatedString(code))
+                        copied = true
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(Icons.Default.ContentCopy, null, tint = Cyan, modifier = Modifier.size(12.dp))
+                Text(if (copied) "Tersalin" else "Salin", color = Ice, fontSize = 10.5.sp, fontWeight = FontWeight.Medium)
+            }
+        }
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(12.dp)
+        ) {
+            Column(Modifier.padding(end = 10.dp), horizontalAlignment = Alignment.End) {
+                lines.forEachIndexed { idx, _ ->
+                    Text(
+                        text = "${idx + 1}",
+                        color = TextMuted.copy(alpha = 0.5f),
+                        fontSize = 11.5.sp,
+                        lineHeight = 18.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+            SelectionContainer {
+                Text(
+                    text = code,
+                    color = Color(0xFFD6F4FF),
+                    fontSize = 11.5.sp,
+                    lineHeight = 18.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
+    }
+}
+
+private data class StructuredSection(
+    val title: String?,
+    val blocks: List<MarkdownBlock>
+)
+
+private fun groupBlocksIntoSections(blocks: List<MarkdownBlock>): List<StructuredSection> {
+    if (blocks.isEmpty()) return emptyList()
+    val sections = mutableListOf<StructuredSection>()
+    var currentTitle: String? = null
+    var currentList = mutableListOf<MarkdownBlock>()
+
+    for (b in blocks) {
+        if (b is MarkdownBlock.Heading) {
+            if (currentTitle != null || currentList.isNotEmpty()) {
+                sections.add(StructuredSection(currentTitle, currentList.toList()))
+                currentList = mutableListOf()
+            }
+            currentTitle = b.text
+        } else {
+            currentList.add(b)
+        }
+    }
+    if (currentTitle != null || currentList.isNotEmpty()) {
+        sections.add(StructuredSection(currentTitle, currentList.toList()))
+    }
+    return sections
+}
+
+@Composable
+private fun SectionIconForTitle(title: String): Pair<ImageVector, Color> {
+    val low = title.lowercase(Locale.ROOT)
+    return when {
+        low.contains("kesimpulan") || low.contains("ringkasan") || low.contains("rangkuman") -> Icons.Default.CheckCircle to OkGreen
+        low.contains("tips") || low.contains("saran") || low.contains("catatan") -> Icons.Default.Lightbulb to WarnAmber
+        low.contains("mind map") || low.contains("konsep") || low.contains("struktur") -> Icons.Default.AccountTree to Color(0xFFFF6B9D)
+        low.contains("soal") || low.contains("latihan") || low.contains("kuis") -> Icons.Default.Quiz to Cyan
+        low.contains("biaya") || low.contains("anggaran") || low.contains("harga") || low.contains("keuangan") -> Icons.Default.PieChart to WarnAmber
+        low.contains("itinerary") || low.contains("hari") || low.contains("jadwal") || low.contains("travel") -> Icons.Default.FlightTakeoff to Cyan
+        low.contains("kode") || low.contains("tampilan") || low.contains("preview") -> Icons.Default.Terminal to Cyan
+        low.contains("analisis") || low.contains("gambar") || low.contains("produk") -> Icons.Default.AutoAwesome to Cyan
+        else -> Icons.Default.DashboardCustomize to Cyan
+    }
+}
+
+@Composable
+private fun RichMessageText(
+    markdown: String,
+    products: List<VisualProduct> = emptyList(),
+    onQuickFollowUp: ((String) -> Unit)? = null
+) {
+    val blocks = parseMarkdownBlocks(markdown)
+    if (blocks.isEmpty() && markdown.isNotBlank()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(DeepCard)
+                .border(1.dp, Cyan.copy(alpha = 0.3f), CardShape)
+                .padding(12.dp)
+        ) {
+            InlineMarkdownText(markdown, 13.5.sp)
+        }
+        return
+    }
+
+    val sections = groupBlocksIntoSections(blocks)
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        sections.forEachIndexed { idx, section ->
+            val staggerDelay = idx * 135
+            AnimatedVisibility(
+                visible = true,
+                enter = slideInVertically(
+                    initialOffsetY = { fullHeight -> -fullHeight / 5 },
+                    animationSpec = tween(durationMillis = 520, delayMillis = staggerDelay)
+                ) + fadeIn(animationSpec = tween(durationMillis = 520, delayMillis = staggerDelay)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 180))
+            ) {
+            val isIntroOnly = idx == 0 && section.title == null && section.blocks.size == 1 && section.blocks.first() is MarkdownBlock.Paragraph
+            if (isIntroOnly) {
+                val p = (section.blocks.first() as MarkdownBlock.Paragraph).text
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF0A1B2A))
+                        .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                ) {
+                    InlineMarkdownText(p, 13.5.sp)
+                }
+            } else {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(CardShape)
+                        .background(Brush.verticalGradient(listOf(Color(0xFF091726), Color(0xFF06101B))))
+                        .border(1.dp, Cyan.copy(alpha = 0.34f), CardShape)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (section.title != null) {
+                        val (icon, tint) = SectionIconForTitle(section.title)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(icon, null, tint = tint, modifier = Modifier.size(16.dp))
+                            Text(
+                                text = section.title,
+                                color = Ice,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Box(Modifier.fillMaxWidth().height(1.dp).background(Cyan.copy(alpha = 0.18f)))
+                    }
+                    section.blocks.forEach { block ->
+                        when (block) {
+                            is MarkdownBlock.Heading -> Text(block.text, color = Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                            is MarkdownBlock.Paragraph -> InlineMarkdownText(block.text, 13.sp)
+                            is MarkdownBlock.ImageBlock -> RemoteMarkdownImage(block.alt, block.url)
+                            is MarkdownBlock.Bullet -> Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                if (block.ordered) {
+                                    Text(
+                                        "${block.index}.",
+                                        color = Cyan,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 1.dp)
+                                    )
+                                } else {
+                                    Box(
+                                        Modifier
+                                            .padding(top = 7.dp)
+                                            .size(5.dp)
+                                            .background(Cyan, CircleShape)
+                                    )
+                                }
+                                Box(Modifier.weight(1f)) { InlineMarkdownText(block.text, 13.sp) }
+                            }
+                            is MarkdownBlock.Code -> CodeBlockHudCard(block.language, block.text)
+                            is MarkdownBlock.Table -> MarkdownTable(block.rows)
+                        }
+                    }
+                }
+            }
+            }
+        }
+
+        if (products.isNotEmpty() && blocks.none { it is MarkdownBlock.Table }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(CardShape)
+                    .background(Color(0xFF081523))
+                    .border(1.dp, Cyan.copy(alpha = 0.34f), CardShape)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.ShoppingBag, null, tint = Cyan, modifier = Modifier.size(16.dp))
+                    Text("Rekomendasi Produk Terkait", color = Ice, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                }
+                ProductCarouselCards(products)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceLogo(url: String) {
+    val uriHandler = LocalUriHandler.current
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, url) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val encoded = URLEncoder.encode(url, "UTF-8")
+                val conn = URL("https://www.google.com/s2/favicons?domain_url=" + encoded + "&sz=64").openConnection() as HttpURLConnection
+                try {
+                    conn.connectTimeout = 4000
+                    conn.readTimeout = 4000
+                    val bytes = JarvisStabilityGuard.readBoundedBytes(conn.inputStream, 256 * 1024)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } finally {
+                    conn.disconnect()
+                }
+            }.onFailure { err ->
+                JarvisStabilityGuard.rethrowIfCancellation(err)
+            }.getOrNull()
+        }
+    }
+    Surface(
+        onClick = { runCatching { uriHandler.openUri(url) } },
+        color = Color(0xFF0D2233),
+        shape = CircleShape,
+        border = BorderStroke(1.dp, Cyan.copy(alpha = 0.4f))
+    ) {
+        Box(Modifier.size(30.dp), contentAlignment = Alignment.Center) {
+            if (bitmap != null) Image(bitmap!!.asImageBitmap(), contentDescription = "Open source", modifier = Modifier.size(16.dp))
+            else Icon(Icons.Default.Language, null, tint = Cyan, modifier = Modifier.size(15.dp))
+        }
+    }
+}
+
+@Composable
+private fun SourceStrip(markdown: String) {
+    val links = Regex("\\[([^\\]]+)\\]\\((https?://[^ )]+)\\)").findAll(markdown.replace("\\\\n", "\n")).map { it.groupValues[2] }.distinct().take(6).toList()
+    if (links.isNotEmpty()) {
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("SUMBER:", color = TextMuted, fontSize = 9.5.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+            links.forEach { SourceLogo(it) }
+        }
+    }
+}
+
+@Composable
+private fun JarvisAvatarBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(30.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF081B2B))
+            .border(1.2.dp, Cyan, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(18.dp)) {
+            val c = center
+            val r = size.minDimension / 2f
+            drawCircle(Cyan.copy(alpha = 0.25f), r, c)
+            drawCircle(Cyan, r * 0.85f, c, style = Stroke(1.3.dp.toPx()))
+            drawCircle(Color.White, r * 0.28f, c)
+            for (i in 0 until 6) {
+                val a = i * 60f * (Math.PI / 180.0).toFloat()
+                drawLine(
+                    Cyan,
+                    Offset(c.x + kotlin.math.cos(a) * r * 0.45f, c.y + kotlin.math.sin(a) * r * 0.45f),
+                    Offset(c.x + kotlin.math.cos(a) * r * 0.8f, c.y + kotlin.math.sin(a) * r * 0.8f),
+                    1.dp.toPx()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserAvatarBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF0D2235))
+            .border(1.dp, Cyan.copy(alpha = 0.6f), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Default.Person, contentDescription = "User", tint = Ice, modifier = Modifier.size(16.dp))
+    }
+}
+
+private data class CategoryTileData(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val prompt: String
+)
+
+@Composable
+private fun JarvisHomeDashboard(
+    compact: Boolean,
+    spin: Float,
+    breathe: Float,
+    onSelectPrompt: (String) -> Unit
+) {
+    val categories = remember {
+        listOf(
+            CategoryTileData("Teknologi", "(HP, Laptop, Gadget)", Icons.Default.Devices, "Bandingkan Samsung Galaxy A56 5G dengan Redmi Note 15 Pro 5G lengkap dengan tabel spesifikasi dan kesimpulan."),
+            CategoryTileData("Belajar", "(Materi, Rangkuman)", Icons.Default.MenuBook, "Rangkum materi Sistem Tata Surya, buat poin ciri-ciri & anggota, dan berikan 3 soal latihan."),
+            CategoryTileData("Produktivitas", "(To-Do, Rencana)", Icons.Default.TaskAlt, "Buatkan jadwal produktif harian untuk pelajar & developer dari pagi sampai malam beserta tips fokus."),
+            CategoryTileData("Kreativitas", "(Gambar, Desain, AI)", Icons.Default.Palette, "Carikan referensi gambar wallpaper cyberpunk futuristik resolusi tinggi dengan nuansa neon cyan."),
+            CategoryTileData("Coding", "(Kode, Debug, Project)", Icons.Default.Code, "Buatkan contoh kode HTML + CSS untuk halaman profil developer modern beserta penjelasan strukturnya."),
+            CategoryTileData("Hiburan", "(Film, Game, Musik)", Icons.Default.SportsEsports, "Rekomendasikan 5 game PC ringan terbaik untuk spek menengah beserta genre dan kelebihannya."),
+            CategoryTileData("Travel", "(Destinasi, Itinerary)", Icons.Default.Flight, "Buat itinerary 3 hari 2 malam di Bali untuk 2 orang, lengkap dengan tabel rincian estimasi biaya."),
+            CategoryTileData("Keuangan", "(Anggaran, Investasi)", Icons.Default.Savings, "Bantu buatkan rencana keuangan bulanan dengan metode 50/30/20 untuk anggaran Rp7.000.000 lengkap dengan tabel rincian dan tips."),
+            CategoryTileData("Lainnya", "(Tanya apa saja)", Icons.Default.AutoAwesome, "Jelaskan kemampuan utama sistem J.A.R.V.I.S. Mobile dan bagaimana cara memaksimalkan fitur suara serta chat.")
+        )
+    }
+
+    val quickCommands = remember {
+        listOf(
+            Triple(Icons.Default.Smartphone, "Cari rekomendasi HP 3 jutaan terbaik", "Carikan rekomendasi HP harga 3 jutaan terbaik untuk gaming dan kamera saat ini."),
+            Triple(Icons.Default.LaptopChromebook, "Bandingkan dua laptop coding", "Bandingkan dua laptop terbaik di kelas 8 jutaan untuk coding dan multitasking."),
+            Triple(Icons.Default.Map, "Buat itinerary liburan hemat", "Buatkan itinerary liburan 3 hari 2 malam ke Yogyakarta beserta estimasi anggaran.")
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Holographic J Core Orb
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(if (compact) 142.dp else 172.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HomeHeroOrb(
+                modifier = Modifier.size(if (compact) 136.dp else 164.dp),
+                spin = spin,
+                breathe = breathe
+            )
+        }
+
+        Text(
+            text = "GOOD DAY. I'M JARVIS.",
+            color = Ice,
+            fontSize = if (compact) 17.sp else 19.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 2.2.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = "Your personal intelligence system is ready.",
+            color = TextMuted,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(Modifier.height(14.dp))
+
+        // 3x3 Category Grid
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            for (rowIndex in 0 until 3) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (colIndex in 0 until 3) {
+                        val item = categories[rowIndex * 3 + colIndex]
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Brush.verticalGradient(listOf(Color(0xFF0B1E32), Color(0xFF071220))))
+                                .border(1.dp, Cyan.copy(alpha = 0.36f), RoundedCornerShape(14.dp))
+                                .clickable { onSelectPrompt(item.prompt) }
+                                .padding(vertical = 10.dp, horizontal = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(9.dp))
+                                    .background(Color(0xFF0E2942))
+                                    .border(0.8.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(9.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(item.icon, contentDescription = item.title, tint = Cyan, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = item.title,
+                                color = Ice,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = item.subtitle,
+                                color = TextMuted,
+                                fontSize = 8.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        // Indicator dots
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
+            Box(Modifier.size(5.dp).clip(CircleShape).background(Cyan.copy(alpha = 0.3f)))
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Quick Commands Section
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            Text(
+                text = "Quick Commands",
+                color = Cyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.5.sp
+            )
+            quickCommands.forEach { (icon, label, prompt) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFF081523))
+                        .border(1.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
+                        .clickable { onSelectPrompt(prompt) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(icon, contentDescription = null, tint = Cyan, modifier = Modifier.size(16.dp))
+                    Text(
+                        text = label,
+                        color = Ice,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextMuted, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeHeroOrb(modifier: Modifier, spin: Float, breathe: Float) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val min = size.minDimension
+            // Side equalizer wing ticks
+            for (side in listOf(-1, 1)) {
+                for (b in 1..6) {
+                    val x = c.x + side * (min * 0.42f + b * 7.dp.toPx())
+                    val barH = (if (b % 2 == 0) 14.dp else 8.dp).toPx() * breathe
+                    drawLine(
+                        Cyan.copy(alpha = (0.55f - b * 0.07f).coerceAtLeast(0.1f)),
+                        Offset(x, c.y - barH),
+                        Offset(x, c.y + barH),
+                        1.5.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+            // Outer glow
+            drawCircle(
+                Brush.radialGradient(listOf(Cyan.copy(alpha = 0.32f), Color.Transparent), c, min * 0.52f),
+                min * 0.5f * breathe,
+                c
+            )
+            // Outer dashed ring
+            drawCircle(Cyan.copy(alpha = 0.25f), min * 0.42f, c, style = Stroke(1.dp.toPx()))
+            val inset1 = min * 0.12f
+            drawArc(
+                Cyan.copy(alpha = 0.85f),
+                spin,
+                75f,
+                false,
+                topLeft = Offset(inset1, inset1),
+                size = Size(size.width - inset1 * 2, size.height - inset1 * 2),
+                style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+            )
+            drawArc(
+                Cyan.copy(alpha = 0.85f),
+                spin + 180f,
+                75f,
+                false,
+                topLeft = Offset(inset1, inset1),
+                size = Size(size.width - inset1 * 2, size.height - inset1 * 2),
+                style = Stroke(2.2.dp.toPx(), cap = StrokeCap.Round)
+            )
+            // Inner glowing ring
+            drawCircle(Color(0xFF071828), min * 0.27f, c)
+            drawCircle(Cyan, min * 0.27f, c, style = Stroke(2.dp.toPx()))
+            drawCircle(Cyan.copy(alpha = 0.4f), min * 0.23f, c, style = Stroke(1.dp.toPx()))
+        }
+        Text(
+            text = "J",
+            color = Ice,
+            fontSize = 28.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Serif
+        )
+    }
+}
+
+@Composable
+private fun VoiceHudClock() {
+    val now by produceState(System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val clock12 = remember(now / 1000L) {
+        SimpleDateFormat("h:mm a", Locale.US).format(Date(now))
+    }
+    Text(
+        text = clock12,
+        color = Ice,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.sp,
+        fontFamily = FontFamily.Monospace
+    )
+}
+
+@Composable
+private fun VoiceHudReactor(
+    modifier: Modifier,
+    phase: String,
+    spin: Float,
+    breathe: Float
+) {
+    val accent = when (phase) {
+        "ERROR" -> AlertRed
+        "MUTED" -> Color(0xFF4A6578)
+        "THINK" -> WarnAmber
+        "RESPOND" -> Color(0xFF38D4FF)
+        "SPEAK" -> Color(0xFF66F7FF)
+        else -> Cyan
+    }
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val c = center
+            val min = size.minDimension
+            val pulse = if (phase == "IDLE") 1f else breathe
+
+            // Radial ambient glow
+            drawCircle(
+                Brush.radialGradient(
+                    listOf(accent.copy(alpha = 0.35f), accent.copy(alpha = 0.08f), Color.Transparent),
+                    c,
+                    min * 0.52f
+                ),
+                min * 0.50f * pulse,
+                c
+            )
+
+            // Outer tech degree ticks
+            val tickCount = 60
+            for (i in 0 until tickCount) {
+                val angle = (i * (360f / tickCount) + spin * 0.25f) * (Math.PI / 180.0).toFloat()
+                val major = i % 5 == 0
+                val rIn = min * (if (major) 0.44f else 0.455f)
+                val rOut = min * 0.48f
+                drawLine(
+                    accent.copy(alpha = if (major) 0.65f else 0.22f),
+                    Offset(c.x + kotlin.math.cos(angle) * rIn, c.y + kotlin.math.sin(angle) * rIn),
+                    Offset(c.x + kotlin.math.cos(angle) * rOut, c.y + kotlin.math.sin(angle) * rOut),
+                    strokeWidth = if (major) 1.6.dp.toPx() else 0.9.dp.toPx()
+                )
+            }
+
+            // Ring 1 (Outer segmented arcs)
+            val r1 = min * 0.08f
+            for (k in 0 until 4) {
+                drawArc(
+                    accent.copy(alpha = 0.85f),
+                    startAngle = spin + k * 90f,
+                    sweepAngle = 52f,
+                    useCenter = false,
+                    topLeft = Offset(r1, r1),
+                    size = Size(size.width - r1 * 2, size.height - r1 * 2),
+                    style = Stroke(2.5.dp.toPx(), cap = StrokeCap.Round)
+                )
+            }
+
+            // Ring 2 (Counter-rotating HUD ring)
+            val r2 = min * 0.16f
+            drawCircle(accent.copy(alpha = 0.25f), min * 0.34f, c, style = Stroke(1.dp.toPx()))
+            for (k in 0 until 3) {
+                drawArc(
+                    accent.copy(alpha = 0.65f),
+                    startAngle = -spin * 1.2f + k * 120f,
+                    sweepAngle = 68f,
+                    useCenter = false,
+                    topLeft = Offset(r2, r2),
+                    size = Size(size.width - r2 * 2, size.height - r2 * 2),
+                    style = Stroke(3.2.dp.toPx(), cap = StrokeCap.Butt)
+                )
+            }
+
+            // Ring 3 (Inner bright core ring)
+            drawCircle(Color(0xFF040D18), min * 0.24f, c)
+            drawCircle(accent.copy(alpha = 0.95f), min * 0.24f * pulse, c, style = Stroke(2.4.dp.toPx()))
+            drawCircle(accent.copy(alpha = 0.35f), min * 0.20f, c, style = Stroke(1.dp.toPx()))
+
+            // Horizontal HUD crosshair lines
+            drawLine(
+                accent.copy(alpha = 0.35f),
+                Offset(0f, c.y),
+                Offset(min * 0.22f, c.y),
+                1.dp.toPx()
+            )
+            drawLine(
+                accent.copy(alpha = 0.35f),
+                Offset(size.width - min * 0.22f, c.y),
+                Offset(size.width, c.y),
+                1.dp.toPx()
+            )
+        }
+
+        // Center J.A.R.V.I.S. Typography
+        Text(
+            text = "J.A.R.V.I.S.",
+            color = Ice,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 2.sp,
+            fontFamily = FontFamily.Monospace
+        )
+    }
+}
+
+@Composable
+private fun JarvisScreen(
+    recognizedText: String,
+    status: String,
+    rmsLevel: Float,
+    externalVoiceStop: Boolean = false,
+    onConsumed: () -> Unit,
+    onSpeak: (String) -> Unit,
+    onStopSpeaking: () -> Unit = {},
+    onStartListening: () -> Unit,
+    onModeChanged: (Boolean) -> Unit,
+    onSearch: (String) -> Unit,
+    onSaveGeminiKey: (String) -> Unit,
+    initialGoogleWebClientId: String = "",
+    onSaveGoogleWebClientId: (String) -> Unit = {},
+    onAskGemini: (String, List<Pair<String, String>>, (ChatResponsePayload) -> Unit) -> (() -> Unit),
+    onOpenDeviceSetup: () -> Unit,
+    onDeviceCommand: (String, Map<String, String>, (String) -> Unit) -> Unit,
+    onOpenApp: (String) -> Boolean,
+    accountEmail: String?,
+    accountName: String?,
+    accountBusy: Boolean,
+    accountStatus: String,
+    conversations: List<SavedConversation>,
+    historyBusy: Boolean,
+    restoredMessages: Pair<String?, List<SavedMessage>>?,
+    onGoogleSignIn: () -> Unit,
+    onGoogleSignOut: () -> Unit,
+    onRefreshHistory: () -> Unit,
+    onOpenConversation: (String) -> Unit,
+    onNewConversation: () -> Unit,
+    onDeleteConversation: (String) -> Unit,
+    onRenameConversation: (String, String) -> Unit = { _, _ -> },
+    onSaveTurn: (String, String) -> Unit
+) {
+    data class Attachment(val uri: Uri, val name: String, val mime: String)
+    data class Line(
+        val id: String = java.util.UUID.randomUUID().toString(),
+        val user: Boolean,
+        val text: String,
+        val time: String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date()),
+        val attachments: List<Attachment> = emptyList(),
+        val products: List<VisualProduct> = emptyList(),
+        val isError: Boolean = false,
+        val retryPrompt: String = "",
+        val displayText: MutableState<String> = mutableStateOf(if (user) text else ""),
+        val revealed: MutableState<Boolean> = mutableStateOf(true)
+    )
+
+    var page by remember { mutableStateOf("CHAT") }
+    var voiceListening by remember { mutableStateOf(false) }
+    var command by remember { mutableStateOf("") }
+    var voiceTranscript by remember { mutableStateOf("") }
+    var voiceAnswer by remember { mutableStateOf("") }
+    var voiceConciseSummary by remember { mutableStateOf("") }
+    var voiceResponding by remember { mutableStateOf(false) }
+    var voiceStatusNote by remember { mutableStateOf("") }
+    var wakeAcknowledged by remember { mutableStateOf(false) }
+    var awaitingCommandAfterWake by remember { mutableStateOf(false) }
+    val voiceProducts = remember { mutableStateListOf<VisualProduct>() }
+    val voiceImages = remember { mutableStateListOf<Pair<String, String>>() }
+    var voiceErrorState by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val pendingAttachments = remember { mutableStateListOf<Attachment>() }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        uris.forEach { uri ->
+            val mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
+            val name = runCatching {
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) c.getString(0) else null
+                }
+            }.getOrNull() ?: "Lampiran"
+            if (pendingAttachments.none { it.uri == uri } && pendingAttachments.size < 5 && JarvisStabilityGuard.validateAttachmentSize(context, uri)) {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                pendingAttachments.add(Attachment(uri, name, mime))
+            }
+        }
+    }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        uris.forEach { uri ->
+            if (pendingAttachments.size < 5 && pendingAttachments.none { it.uri == uri }) {
+                pendingAttachments.add(Attachment(uri, "Foto", context.contentResolver.getType(uri) ?: "image/*"))
+            }
+        }
+    }
+    val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null && pendingAttachments.size < 5) {
+            runCatching {
+                val file = File(context.cacheDir, "jarvis_camera_photo.jpg")
+                FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, it) }
+                pendingAttachments.add(Attachment(Uri.fromFile(file), "Foto kamera", "image/jpeg"))
+            }
+        }
+    }
+
+    var attachmentMenu by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
+    var cancelCurrentRequest by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var processStage by remember { mutableStateOf("MENAMPILKAN HASIL...") }
+    var settings by remember { mutableStateOf(false) }
+    var accountPanel by remember { mutableStateOf(false) }
+    var historyPanel by remember { mutableStateOf(false) }
+    var keyDraft by remember { mutableStateOf("") }
+    var webClientIdDraft by remember(initialGoogleWebClientId) { mutableStateOf(initialGoogleWebClientId) }
+    val lines = remember { mutableStateListOf<Line>() }
+    LaunchedEffect(restoredMessages?.first) {
+        val restored = restoredMessages ?: return@LaunchedEffect
+        lines.clear()
+        restored.second.forEach { message ->
+            val row = Line(user = message.role == "user", text = message.content)
+            row.displayText.value = message.content
+            row.revealed.value = true
+            lines.add(row)
+        }
+        historyPanel = false
+    }
+    val revealScope = rememberCoroutineScope()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val clipboard = LocalClipboardManager.current
+    var followLatest by remember { mutableStateOf(true) }
+
+    val transition = rememberInfiniteTransition(label = "hud_transition")
+    val spin by transition.animateFloat(0f, 360f, infiniteRepeatable(tween(15000, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "spin")
+    val breathe by transition.animateFloat(.95f, 1.05f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "breathe")
+    val wavePhase by transition.animateFloat(0f, 6.28318f, infiniteRepeatable(tween(900, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "wavePhase")
+
+    BackHandler(enabled = page == "VOICE") {
+        onStopSpeaking()
+        voiceListening = false
+        page = "CHAT"
+    }
+
+    LaunchedEffect(voiceResponding) {
+        if (voiceResponding) {
+            kotlinx.coroutines.delay(950)
+            voiceResponding = false
+        }
+    }
+
+    fun showJarvis(
+        answer: String,
+        products: List<VisualProduct> = emptyList(),
+        isError: Boolean = false,
+        retryPrompt: String = ""
+    ) {
+        val responseLine = Line(
+            user = false,
+            text = answer,
+            products = products,
+            isError = isError,
+            retryPrompt = retryPrompt
+        )
+        responseLine.displayText.value = answer
+        responseLine.revealed.value = true
+        lines.add(responseLine)
+    }
+
+    fun buildSpokenReply(request: String, answer: String, products: List<VisualProduct>): String {
+        // The backend answer already carries JARVIS's personality and context.
+        // Do not prepend repetitive canned acknowledgements to every spoken result.
+        if (products.isEmpty()) return answer.trim().take(1800)
+        val english = detectEnglishContent(request)
+        val cheapest = products.minByOrNull { it.price.replace(Regex("[^0-9]"), "").toLongOrNull() ?: Long.MAX_VALUE }
+        val lead = if (english) "Sir, I found ${products.size} relevant options." else "Sir, saya menemukan ${products.size} pilihan yang relevan."
+        val detail = cheapest?.let {
+            if (english) " The lowest listed price is ${it.price} for ${it.title}, from ${it.source}."
+            else " Harga terendah yang tercantum adalah ${it.price} untuk ${it.title}, dari ${it.source}."
+        }.orEmpty()
+        val closing = if (english) " I have displayed the available options on your screen." else " Semua pilihannya sudah saya tampilkan di layar."
+        return (lead + detail + closing).take(900)
+    }
+    fun isRemotePlatformTargeted(raw: String): Boolean {
+        val low = raw.lowercase(Locale.ROOT)
+        if (Regex("\\b(?:di|pada|on|untuk|ke)\\s+(?:windows|linux|macos|mac|laptop|pc|komputer|desktop)\\b").containsMatchIn(low)) {
+            return true
+        }
+        if (Regex("\\b(?:laptop|pc|komputer|desktop|windows|macos|linux)\\s+saya\\b").containsMatchIn(low)) {
+            return true
+        }
+        return false
+    }
+
+    fun stripLocalAndroidTargetSuffix(raw: String): String =
+        raw.replace(Regex("\\s+(?:di|pada|on)\\s+(?:android|hp|ponsel|rog|perangkat ini)\\b.*$", RegexOption.IGNORE_CASE), "")
+            .trim()
+
+    fun parseDeviceCommand(raw: String): Pair<String, Map<String, String>>? {
+        // Commands explicitly targeting a remote desktop/laptop platform must flow through
+        // Worker /v1/chat (executeDeviceIntent) so they execute on the paired desktop agent.
+        if (isRemotePlatformTargeted(raw)) return null
+
+        // Normalize punctuation from typed text and speech transcripts ("Jarvis, buka Roblox").
+        // Keep dots intact so explicit Android package names remain parseable.
+        val value = stripLocalAndroidTargetSuffix(
+            raw.trim().lowercase(Locale.ROOT)
+                .replace(Regex("[,!?;:]"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+        )
+        return when (value) {
+            "status perangkat", "cek status perangkat", "status hp", "cek baterai", "berapa baterai",
+            "cek kondisi hp", "info perangkat" ->
+                "system.status" to emptyMap()
+            "daftar aplikasi", "list aplikasi", "aplikasi terpasang", "list apps", "lihat aplikasi" ->
+                "apps.list" to emptyMap()
+            "lihat notifikasi", "cek notifikasi", "notifikasi terbaru", "daftar notifikasi" ->
+                "notifications.list" to emptyMap()
+            "daftar file", "list file", "lihat file", "file saya" ->
+                "files.list" to emptyMap()
+            "baca layar", "baca isi layar", "apa yang tampil di layar", "ringkas layar", "lihat isi layar" ->
+                "screen.read" to emptyMap()
+            "daftar kontak", "lihat kontak", "cari kontak saya" ->
+                "contacts.list" to emptyMap()
+            "jadwal kalender", "agenda saya", "lihat kalender", "acara mendatang" ->
+                "calendar.list" to emptyMap()
+            else -> {
+                val search = Regex("^(?:jarvis )?(?:cari|search) (?:file|berkas|dokumen) (.+)$").matchEntire(value)
+                val packageLaunch = Regex("^(?:jarvis )?(?:buka|jalankan|open|launch) package ([a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)+)$").matchEntire(value)
+                val appLaunch = Regex("^(?:jarvis )?(?:tolong )?(?:buka|jalankan|open|launch) (?:(?:aplikasi|app) )?(.+)$").matchEntire(value)
+                when {
+                    search != null -> {
+                        val query = stripLocalAndroidTargetSuffix(search.groupValues[1]).take(200)
+                        if (query.isBlank()) null else "files.search" to mapOf("query" to query)
+                    }
+                    packageLaunch != null ->
+                        "apps.launch" to mapOf("packageName" to packageLaunch.groupValues[1])
+                    appLaunch != null -> {
+                        val appName = stripLocalAndroidTargetSuffix(appLaunch.groupValues[1]).removeSuffix(" dong").trim()
+                        if (appName.isBlank() || appName.length > 100) null
+                        else {
+                            val packageName = when (appName) {
+                                "roblox" -> "com.roblox.client"
+                                "instagram" -> null // Resolve by installed launcher label; package can vary by device/profile.
+                                "whatsapp" -> "com.whatsapp"
+                                "youtube" -> "com.google.android.youtube"
+                                "chrome", "google chrome" -> "com.android.chrome"
+                                else -> null
+                            }
+                            if (packageName != null) "apps.launch" to mapOf("packageName" to packageName)
+                            else "apps.launch_label" to mapOf("appName" to appName)
+                        }
+                    }
+                    else -> null
+                }
+            }
+        }
+    }
+
+    fun send(raw: String, voice: Boolean = false) {
+        val q = raw.trim()
+        val files = pendingAttachments.toList()
+        if ((q.isEmpty() && files.isEmpty()) || busy) return
+        command = ""
+        pendingAttachments.clear()
+        val attachmentDetails = if (files.isEmpty()) "" else buildString {
+            append("\n\nLampiran: ")
+            append(files.joinToString("; ") { "${it.name} (${it.mime})" })
+            files.forEach { file ->
+                if (file.mime.startsWith("text/") || file.mime in setOf("application/json", "application/xml") ||
+                    file.name.endsWith(".md", true) || file.name.endsWith(".txt", true) || file.name.endsWith(".csv", true) ||
+                    file.name.endsWith(".kt", true) || file.name.endsWith(".js", true) || file.name.endsWith(".py", true)
+                ) {
+                    val snippet = runCatching {
+                        context.contentResolver.openInputStream(file.uri)?.bufferedReader(Charsets.UTF_8)?.use { reader ->
+                            val buf = CharArray(16384)
+                            val read = reader.read(buf)
+                            if (read > 0) String(buf, 0, read) else ""
+                        }
+                    }.getOrNull().orEmpty().trim()
+                    if (snippet.isNotBlank()) {
+                        append("\n\n[Isi Lampiran ${file.name}]:\n")
+                        append(snippet)
+                    }
+                } else if (file.mime.startsWith("image/")) {
+                    val dims = runCatching {
+                        val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        context.contentResolver.openInputStream(file.uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                        if (opts.outWidth > 0 && opts.outHeight > 0) "${opts.outWidth}x${opts.outHeight}px" else ""
+                    }.getOrNull().orEmpty()
+                    if (dims.isNotBlank()) append(" [Resolusi gambar: $dims]")
+                }
+            }
+        }
+        val requestText = (q.ifBlank { "Tolong analisis lampiran ini dan jelaskan isinya." }) + attachmentDetails
+        val priorHistory = lines.takeLast(16).map { (if (it.user) "user" else "assistant") to it.text }
+        val userDisplayText = q.ifBlank { "Tolong analisis lampiran ini dan jelaskan isinya." }
+        lines.add(Line(user = true, text = userDisplayText, attachments = files))
+        if (voice) {
+            onStopSpeaking()
+            voiceTranscript = q
+            voiceAnswer = ""
+            voiceConciseSummary = ""
+            voiceResponding = false
+            voiceErrorState = false
+            voiceProducts.clear()
+            voiceImages.clear()
+        }
+
+        val norm = q.lowercase(Locale.ROOT)
+        if (norm in setOf("jarvis", "hai jarvis", "hello jarvis", "halo jarvis", "hey jarvis", "open", "buka")) return
+        val deviceCommand = parseDeviceCommand(q)
+        if (deviceCommand != null) {
+            val (action, params) = deviceCommand
+            // Launching an app on this same phone is a local Android operation.
+            // It must not require account pairing or a remote device-control token.
+            if (action == "apps.launch" || action == "apps.launch_label") {
+                val appTarget = params["appName"] ?: params["packageName"].orEmpty()
+                val opened = onOpenApp(appTarget)
+                val fallbackImg = defaultVisualFallbackFor(q, isError = !opened)
+                val result = if (opened) "Aplikasi $appTarget berhasil dibuka di perangkat ini."
+                    else "Aplikasi $appTarget tidak ditemukan atau tidak dapat dibuka di perangkat ini."
+                val richResult = buildString {
+                    append(result)
+                    append("\n\n")
+                    fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
+                }.trim()
+                showJarvis(richResult, isError = !opened, retryPrompt = if (!opened) q else "")
+                if (accountEmail != null) onSaveTurn(requestText, richResult)
+                if (voice) {
+                    voiceAnswer = result
+                    voiceConciseSummary = extractConciseVoiceSummary(result)
+                    voiceResponding = opened
+                    voiceErrorState = !opened
+                    voiceImages.clear()
+                    voiceImages.addAll(fallbackImg)
+                    onSpeak(result)
+                }
+                return
+            }
+            busy = true
+            processStage = "MENGIRIM PERINTAH KE PERANGKAT..."
+            onDeviceCommand(action, params) { result ->
+                val isFailed = result.contains("gagal", true) || result.contains("tidak dapat", true)
+                val fallbackImg = defaultVisualFallbackFor(q, answer = result, isError = isFailed)
+                val richResult = buildString {
+                    append(result)
+                    append("\n\n")
+                    fallbackImg.forEach { (title, url) -> append("![$title]($url)\n") }
+                }.trim()
+                showJarvis(richResult, isError = isFailed, retryPrompt = if (isFailed) q else "")
+                if (accountEmail != null) onSaveTurn(requestText, richResult)
+                if (voice) {
+                    voiceAnswer = result
+                    voiceConciseSummary = extractConciseVoiceSummary(result)
+                    voiceResponding = !isFailed
+                    voiceErrorState = isFailed
+                    voiceImages.clear()
+                    voiceImages.addAll(fallbackImg)
+                    onSpeak(result)
+                }
+                busy = false
+                processStage = "SIAP"
+            }
+            return
+        }
+        // Do not infer app-launch actions from ordinary words such as "open" or short utterances.
+        // App launching is handled only by the explicit "Jarvis, open" voice-wake branch above.
+        busy = true
+        onSearch(q)
+        cancelCurrentRequest = onAskGemini(requestText, priorHistory) { payload ->
+            // Chat Mode MUST display the complete assistant response without stripping sections before KESIMPULAN JARVIS.
+            val baseAnswer = payload.answer.trim().ifBlank { "JARVIS tidak menerima jawaban akhir." }
+            val conciseVoiceSummary = extractConciseVoiceSummary(baseAnswer)
+            val resolvedImages = if (payload.images.isNotEmpty()) {
+                payload.images.take(MAX_VISUAL_CARDS)
+            } else {
+                defaultVisualFallbackFor(q, answer = baseAnswer, isError = payload.isError)
+            }
+            val missingImages = resolvedImages.take(MAX_VISUAL_CARDS).filter { (_, url) -> url.isNotBlank() && !baseAnswer.contains(url) }
+            val answer = if (missingImages.isEmpty()) baseAnswer else buildString {
+                append(baseAnswer)
+                append("\n\n")
+                missingImages.forEach { (title, url) ->
+                    append("![")
+                    append(title.ifBlank { "Gambar Referensi" })
+                    append("](")
+                    append(url)
+                    append(")\n")
+                }
+            }.trim()
+            if (accountEmail != null) onSaveTurn(requestText, answer)
+            val responseLine = Line(
+                user = false,
+                text = answer,
+                products = payload.products.take(MAX_VISUAL_CARDS),
+                isError = payload.isError,
+                retryPrompt = if (payload.isError) q else ""
+            )
+            responseLine.displayText.value = answer
+            responseLine.revealed.value = true
+            lines.add(responseLine)
+            if (voice) {
+                voiceAnswer = baseAnswer
+                voiceConciseSummary = conciseVoiceSummary
+                voiceResponding = !payload.isError
+                voiceErrorState = payload.isError
+                voiceProducts.clear()
+                voiceProducts.addAll(payload.products.take(MAX_VISUAL_CARDS))
+                voiceImages.clear()
+                voiceImages.addAll(resolvedImages.take(MAX_VISUAL_CARDS))
+            }
+            busy = false
+            cancelCurrentRequest = null
+            if (!voice) revealScope.launch {
+                kotlinx.coroutines.delay(24)
+                lines.lastOrNull()?.revealed?.value = true
+            }
+            if (voice) onSpeak(buildSpokenReply(q, conciseVoiceSummary, payload.products.take(MAX_VISUAL_CARDS)))
+        }
+    }
+
+    // A bare wake word arms a short continuation window so the user can pause naturally
+    // before speaking the actual command, without JARVIS talking over them.
+    LaunchedEffect(awaitingCommandAfterWake, page, voiceListening) {
+        if (awaitingCommandAfterWake && page == "VOICE" && voiceListening) {
+            kotlinx.coroutines.delay(2500)
+            awaitingCommandAfterWake = false
+        }
+    }
+
+    LaunchedEffect(externalVoiceStop) {
+        if (externalVoiceStop && voiceListening) {
+            voiceListening = false
+        }
+    }
+
+    // Voice remains silent until the user says JARVIS, then waits briefly for the command.
+    LaunchedEffect(recognizedText, page, voiceListening) {
+        if (page == "VOICE" && voiceListening && recognizedText.isNotBlank()) {
+            val heard = recognizedText.trim()
+            onConsumed()
+            val wake = Regex("(?i)^(?:(?:hey|hai|halo|hello|oi|ok|okay)\\s+)?\\bjarvis\\b[,.! ]*|\\bjarvis\\b[,.! ]*")
+            val hasWake = wake.containsMatchIn(heard)
+            val request = if (hasWake) heard.replaceFirst(wake, "").trim() else heard
+
+            if (!hasWake && !awaitingCommandAfterWake) {
+                kotlinx.coroutines.delay(250)
+                onStartListening()
+                return@LaunchedEffect
+            }
+
+            if (hasWake && request.isBlank()) {
+                awaitingCommandAfterWake = true
+                voiceStatusNote = "LISTENING FOR COMMAND"
+                kotlinx.coroutines.delay(250)
+                onStartListening()
+                return@LaunchedEffect
+            }
+
+            awaitingCommandAfterWake = false
+            if (Regex("(?i)^(open|buka)(kan)?$").matches(request)) {
+                voiceStatusNote = "READY FOR COMMAND"
+                wakeAcknowledged = true
+                val readyReply = if (detectEnglishContent(heard)) {
+                    "Ready, Sir. I'm listening for your command."
+                } else {
+                    "Siap, Sir. Saya aktif dan mendengarkan perintah Anda."
+                }
+                onSpeak(readyReply)
+                return@LaunchedEffect
+            }
+            wakeAcknowledged = true
+            if (Regex("(?i)^(close|stop listening|matikan mic|matikan mikrofon|standby|tidur|sleep|istirahat)$").matches(request)) {
+                wakeAcknowledged = false
+                voiceListening = false
+                return@LaunchedEffect
+            }
+            val appCommand = Regex("(?i)^(open|buka)(kan)?\\s+(.+)$").matchEntire(request)
+            if (appCommand != null && !isRemotePlatformTargeted(request)) {
+                val appName = stripLocalAndroidTargetSuffix(appCommand.groupValues[3].trim())
+                val opened = onOpenApp(appName)
+                val reply = if (detectEnglishContent(request)) {
+                    if (opened) "Certainly, Sir. $appName is open." else "I could not find $appName on this device, Sir."
+                } else {
+                    if (opened) "Siap, Sir. $appName sudah dibuka." else "Maaf, Sir. $appName tidak ditemukan di perangkat ini."
+                }
+                voiceErrorState = !opened
+                voiceImages.clear()
+                voiceImages.addAll(defaultVisualFallbackFor(request, isError = !opened))
+                onSpeak(reply)
+            } else send(request, voice = true)
+        }
+    }
+    LaunchedEffect(page, voiceListening) {
+        val voiceOn = page == "VOICE" && voiceListening
+        if (!voiceOn) wakeAcknowledged = false
+        onModeChanged(voiceOn)
+        // onModeChanged owns the single recognizer start; avoid starting it twice.
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index to listState.layoutInfo.totalItemsCount }
+            .collect { (lastVisible, total) ->
+                followLatest = total == 0 || lastVisible == null || lastVisible >= total - 2
+            }
+    }
+    LaunchedEffect(lines.size, busy) {
+        if (followLatest && lines.isNotEmpty()) listState.animateScrollToItem(lines.size - 1)
+    }
+    LaunchedEffect(busy) {
+        if (busy) {
+            val stages = listOf("MENAMPILKAN HASIL...", "MENGANALISIS DATA...", "MENYUSUN RESPONS HUD...", "SINKRONISASI CORE 01...")
+            var i = 0
+            while (busy) {
+                processStage = stages[i++ % stages.size]
+                kotlinx.coroutines.delay(1300)
+            }
+        } else {
+            processStage = "MENAMPILKAN HASIL..."
+        }
+    }
+
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+    val inputFocus = remember { FocusRequester() }
+
+    val hologramShift by animateFloatAsState(
+        targetValue = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) -36f else 0f,
+        animationSpec = tween(420),
+        label = "hologramPosition"
+    )
+
+    val isVoiceError = voiceErrorState ||
+        status.contains("ERROR", true) ||
+        status.contains("DENIED", true) ||
+        status.contains("REQUIRED", true) ||
+        status.contains("UNAVAILABLE", true)
+
+    val phase = when {
+        isVoiceError -> "ERROR"
+        status.contains("SPEAK", true) -> "SPEAK"
+        voiceResponding -> "RESPOND"
+        busy -> "THINK"
+        page == "VOICE" && !voiceListening -> "MUTED"
+        page == "VOICE" && voiceListening && (status.contains("LISTENING", true) || status.contains("HEARING", true) || status.contains("INPUT ACTIVE", true)) -> "LISTEN"
+        else -> "IDLE"
+    }
+
+    val coreModeLabel = if (page == "VOICE") "CORE 01 / VOICE" else "CORE 01 / CHAT" 
+
+    MaterialTheme(colorScheme = darkColorScheme(primary = Cyan, background = Background, surface = Panel)) {
+        Box(Modifier.fillMaxSize().background(Background)) {
+            // Futuristic HUD Outer Frame & Ambient Glow
+            Canvas(Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                drawRect(Brush.verticalGradient(listOf(Color(0xFF030811), Color(0xFF071525), Color(0xFF030811))))
+                val glowCenter = Offset(w * 0.5f, h * (if (page == "VOICE") 0.34f else 0.22f))
+                drawCircle(
+                    Brush.radialGradient(listOf(Cyan.copy(alpha = 0.16f), Color.Transparent), glowCenter, w * 0.85f),
+                    w * 0.85f,
+                    glowCenter
+                )
+            }
+
+            BoxWithConstraints(
+                Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
+                val compact = maxHeight < 720.dp
+
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(1.dp, Cyan.copy(alpha = 0.25f), RoundedCornerShape(24.dp))
+                        .background(Color(0x66040A12))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    // --- TOP HUD HEADER ---
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "J . A . R . V . I . S .",
+                                color = Ice,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.8.sp
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "JUST A RATHER VERY INTELLIGENT SYSTEM",
+                                color = TextMuted,
+                                fontSize = 8.5.sp,
+                                letterSpacing = 1.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Row(
+                                Modifier.padding(bottom = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (accountEmail != null) (accountName ?: accountEmail).take(16) else "ACCOUNT",
+                                    color = if (accountEmail != null) Color(0xFF78DDB4) else Cyan,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.clip(RoundedCornerShape(7.dp))
+                                        .background(Color(0xFF0A2236))
+                                        .border(0.6.dp, Cyan.copy(alpha = 0.42f), RoundedCornerShape(7.dp))
+                                        .clickable { accountPanel = true }
+                                        .padding(horizontal = 8.dp, vertical = 5.dp)
+                                )
+                                Text(
+                                    "HISTORY", color = TextMuted, fontSize = 8.sp,
+                                    modifier = Modifier.clickable { historyPanel = true; onRefreshHistory() }
+                                        .padding(horizontal = 3.dp, vertical = 5.dp)
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                modifier = Modifier.clickable { keyDraft = ""; settings = true }
+                            ) {
+                                Box(Modifier.size(6.dp).clip(CircleShape).background(Cyan))
+                                Text(
+                                    text = "SYSTEM ONLINE",
+                                    color = Cyan,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Spacer(Modifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (page == "CHAT" && lines.isNotEmpty()) {
+                                    Text(
+                                        text = "RESET CHAT",
+                                        color = Cyan,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = FontFamily.Monospace,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(Color(0xFF0A2236))
+                                            .border(0.6.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                            .clickable {
+                                                onNewConversation()
+                                                lines.clear()
+                                            }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = coreModeLabel,
+                                    color = TextMuted,
+                                    fontSize = 9.sp,
+                                    letterSpacing = 0.8.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Box(
+                        Modifier
+                            .fillMaxWidth()                            .height(1.dp)
+                            .background(Brush.horizontalGradient(listOf(Color.Transparent, Cyan.copy(alpha = 0.55f), Color.Transparent)))
+                    )
+
+                    // ==========================================
+                    // VOICE MODE UI (Exact Match to Reference 2)
+                    // ==========================================
+                    if (page == "VOICE") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .verticalScroll(rememberScrollState()),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = "J A R V I S",
+                                color = Cyan,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 4.sp
+                            )
+                            Text(
+                                text = "PERSONAL INTELLIGENCE INTERFACE",
+                                color = TextMuted,
+                                fontSize = 9.sp,
+                                letterSpacing = 1.6.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+
+                            // Right Telemetry Clock + Audio Input Active + Mini Equalizer
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    VoiceHudClock()
+                                    Text(
+                                        text = when (phase) {
+                                            "ERROR" -> "VOICE DIAGNOSTIC ALERT"
+                                            "MUTED" -> "MICROPHONE MUTED"
+                                            "THINK" -> "VOICE PROCESSING"
+                                            "RESPOND" -> "RESPONSE READY"
+                                            "SPEAK" -> "AUDIO OUTPUT ACTIVE"
+                                            "LISTEN" -> "AUDIO INPUT ACTIVE"
+                                            else -> "VOICE CORE IDLE"
+                                        },
+                                        color = if (phase == "ERROR") AlertRed else TextMuted,
+                                        fontSize = 8.sp,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Spacer(Modifier.height(3.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.Bottom,
+                                        modifier = Modifier.height(12.dp)
+                                    ) {
+                                        repeat(8) { idx ->
+                                            val hBar = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase + idx * 0.6f)) * (if (voiceListening) 9f else 2f)
+                                            Box(
+                                                Modifier
+                                                    .width(2.dp)
+                                                    .height(hBar.dp)
+                                                    .background(if (phase == "ERROR") AlertRed else Cyan)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Center Multi-Ring Holographic Arc Reactor
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(if (compact) 186.dp else 238.dp)
+                                    .animateContentSize(animationSpec = tween(420)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    modifier = Modifier.offset(y = hologramShift.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    val orbState = resolveVoiceOrbState(
+                                        voiceEnabled = voiceListening,
+                                        recognitionActive = phase == "LISTEN",
+                                        processing = phase == "THINK",
+                                        responding = phase == "RESPOND",
+                                        speaking = phase == "SPEAK",
+                                        error = phase == "ERROR",
+                                        muted = !voiceListening
+                                    )
+                                    Box(contentAlignment = Alignment.Center) {
+                                        HolographicOrb(
+                                            state = orbState,
+                                            rmsLevel = rmsLevel,
+                                            size = if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 134.dp else if (compact) 152.dp else 188.dp
+                                        )
+                                        VoiceHudReactor(
+                                            modifier = Modifier.size(if (busy || voiceAnswer.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty()) 130.dp else if (compact) 148.dp else 184.dp),
+                                            phase = phase,
+                                            spin = spin,
+                                            breathe = breathe
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    // Horizontal Waveform Visualizer
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        val barCount = 29
+                                        repeat(barCount) { idx ->
+                                            val centerDist = kotlin.math.abs(idx - barCount / 2).toFloat() / (barCount / 2f)
+                                            val envelope = (1f - centerDist * 0.75f).coerceAtLeast(0.15f)
+                                            val dynamicBoost = if (phase == "LISTEN" || phase == "SPEAK") (rmsLevel / 10f).coerceIn(0.35f, 1.3f) else 0.2f
+                                            val hVal = 3f + kotlin.math.abs(kotlin.math.sin(wavePhase * 1.4f + idx * 0.45f)) * 20f * envelope * dynamicBoost
+                                            Box(
+                                                Modifier
+                                                    .width(2.5.dp)
+                                                    .height(hVal.dp)
+                                                    .clip(RoundedCornerShape(99.dp))
+                                                    .background(
+                                                        when (phase) {
+                                                            "ERROR" -> AlertRed.copy(alpha = 0.85f)
+                                                            "MUTED", "IDLE" -> Cyan.copy(alpha = 0.35f)
+                                                            else -> Cyan.copy(alpha = 0.9f)
+                                                        }
+                                                    )
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = when (orbState) {
+                                            VoiceOrbState.Error -> "ERROR · ${status.take(28)}"
+                                            VoiceOrbState.Speaking -> "SPEAKING"
+                                            VoiceOrbState.Responding -> "RESPONDING"
+                                            VoiceOrbState.Processing -> "PROCESSING"
+                                            VoiceOrbState.Listening -> "LISTENING"
+                                            VoiceOrbState.Muted -> "MUTED"
+                                            VoiceOrbState.Idle, VoiceOrbState.Standby -> "IDLE"
+                                        },
+                                        color = if (orbState == VoiceOrbState.Error) AlertRed else Cyan,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 2.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+                            }
+
+                            // Pill Voice Input Bar (Allows both Voice & Typing directly in Voice Mode!)
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(Color(0xFF071524))
+                                    .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
+                                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Brush.radialGradient(listOf(Cyan.copy(alpha = 0.45f), Color(0xFF061626))))
+                                        .border(1.dp, Cyan, CircleShape)
+                                        .clickable {
+                                            voiceListening = !voiceListening
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Mic, contentDescription = "Mic", tint = Ice, modifier = Modifier.size(18.dp))
+                                }
+                                Spacer(Modifier.width(10.dp))
+                                BasicTextField(
+                                    value = command,
+                                    onValueChange = { command = it },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 13.5.sp),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Cyan),
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                                        if (command.isNotBlank() && !busy) {
+                                            keyboard?.hide()
+                                            focusManager.clearFocus()
+                                            send(command, voice = true)
+                                        }
+                                    }),
+                                    decorationBox = { inner ->
+                                        if (command.isEmpty()) {
+                                            Text(
+                                                text = voiceTranscript.ifBlank { "Ucapkan perintah atau ketik di sini..." },
+                                                color = if (voiceTranscript.isBlank()) TextMuted else Ice,
+                                                fontSize = 13.5.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        inner()
+                                    }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                if (command.isNotBlank()) {
+                                    IconButton(
+                                        onClick = {
+                                            keyboard?.hide()
+                                            focusManager.clearFocus()
+                                            send(command, voice = true)
+                                        },
+                                        modifier = Modifier.size(30.dp)
+                                    ) {
+                                        Icon(Icons.Default.Send, contentDescription = "Kirim", tint = Cyan, modifier = Modifier.size(16.dp))
+                                    }
+                                } else {
+                                    // Mini waveform indicator inside right side of pill
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(end = 8.dp)
+                                    ) {
+                                        repeat(7) { i ->
+                                            val bh = 4f + kotlin.math.abs(kotlin.math.cos(wavePhase + i * 0.7f)) * (if (voiceListening) 10f else 3f)
+                                            Box(Modifier.width(2.dp).height(bh.dp).background(Cyan, RoundedCornerShape(2.dp)))
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // VOICE VISUAL DISPLAY: Concise Voice Response Summary + Visual Cards (max 5) + Interruption Control
+                            if (busy || voiceConciseSummary.isNotBlank() || voiceProducts.isNotEmpty() || voiceImages.isNotEmpty() || voiceErrorState || phase == "SPEAK") {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .animateContentSize(),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Box(
+                                                Modifier
+                                                    .size(10.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, if (voiceErrorState) AlertRed else Cyan, CircleShape)
+                                            )
+                                            Text(
+                                                text = when {
+                                                    busy -> processStage
+                                                    voiceErrorState -> "PERINGATAN SISTEM · AUDIO AKTIF"
+                                                    else -> "VISUAL HUD AKTIF (${maxOf(voiceProducts.size, voiceImages.size).coerceAtMost(MAX_VISUAL_CARDS)} KARTU)"
+                                                },
+                                                color = if (voiceErrorState) AlertRed else TextMuted,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                letterSpacing = 1.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        if (phase == "SPEAK" || busy) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(999.dp))
+                                                    .background(AlertRed.copy(alpha = 0.18f))
+                                                    .border(1.dp, AlertRed.copy(alpha = 0.65f), RoundedCornerShape(999.dp))
+                                                    .clickable {
+                                                        cancelCurrentRequest?.invoke()
+                                                        cancelCurrentRequest = null
+                                                        busy = false
+                                                        onStopSpeaking()
+                                                    }
+                                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Icon(Icons.Default.Stop, contentDescription = "Hentikan suara", tint = AlertRed, modifier = Modifier.size(13.dp))
+                                                Text(
+                                                    text = if (busy) "BATALKAN" else "HENTIKAN SUARA",
+                                                    color = AlertRed,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (voiceConciseSummary.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(Color(0xFF081726))
+                                                .border(1.dp, if (voiceErrorState) AlertRed.copy(alpha = 0.45f) else Cyan.copy(alpha = 0.34f), RoundedCornerShape(12.dp))
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = voiceConciseSummary,
+                                                color = Ice,
+                                                fontSize = 12.sp,
+                                                lineHeight = 17.sp,
+                                                maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    if (voiceProducts.isNotEmpty()) {
+                                        ProductCarouselCards(voiceProducts.take(MAX_VISUAL_CARDS))
+                                    } else if (voiceImages.isNotEmpty()) {
+                                        VoiceImageCarouselCards(voiceImages.take(MAX_VISUAL_CARDS))
+                                    }
+                                }
+                            }
+
+                            Spacer(Modifier.height(8.dp))
+
+                            // Bottom 3-Button Voice Control Dock (MIC OFF | LISTENING | CHAT)
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                // MIC OFF appears only while microphone is disabled.
+                                if (!voiceListening) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Box(
+                                            Modifier
+                                                .size(46.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF081523))
+                                                .border(1.dp, AlertRed.copy(alpha = 0.7f), CircleShape)
+                                                .clickable { voiceListening = false },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.MicOff, contentDescription = "Mic Off", tint = AlertRed, modifier = Modifier.size(20.dp))
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text("MIC OFF", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+
+                                // CENTER GLOWING MIC (LISTENING)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        Modifier
+                                            .size(if (compact) 64.dp else 74.dp)
+                                            .scale(if (phase == "LISTEN") breathe else 1f)
+                                            .clip(CircleShape)
+                                            .background(Brush.radialGradient(listOf(Cyan.copy(alpha = 0.45f), Color(0xFF061320))))
+                                            .border(2.dp, Cyan, CircleShape)
+                                            .clickable {
+                                                voiceListening = !voiceListening
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Mic, contentDescription = if (voiceListening) "Microphone active" else "Turn microphone on", tint = Ice, modifier = Modifier.size(30.dp))
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        text = when (phase) {
+                                            "THINK" -> "PROCESSING"
+                                            "SPEAK" -> "SPEAKING"
+                                            "LISTEN" -> "LISTENING"
+                                            else -> "MIC OFF"
+                                        },
+                                        color = Cyan,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
+
+                                // CHAT SWITCH
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box(
+                                        Modifier
+                                            .size(46.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF081523))
+                                            .border(1.dp, Cyan.copy(alpha = 0.3f), CircleShape)
+                                            .clickable {
+                                                voiceListening = false
+                                                page = "CHAT"
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Chat, contentDescription = "Chat", tint = Ice, modifier = Modifier.size(19.dp))
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("CHAT", color = TextMuted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    } else {
+                        // ==========================================
+                        // CHAT CONSOLE / HOME DASHBOARD MODE
+                        // ==========================================
+                        if (lines.isNotEmpty()) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "CHAT CONSOLE",
+                                    color = Cyan,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.4.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "${lines.size} ENTRIES",
+                                    color = TextMuted,
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        LazyColumn(
+                            Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                            state = listState,
+                            contentPadding = PaddingValues(top = 6.dp, bottom = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            if (lines.isEmpty()) {
+                                item {
+                                    JarvisHomeDashboard(
+                                        compact = compact,
+                                        spin = spin,
+                                        breathe = breathe,
+                                        onSelectPrompt = { selectedPrompt -> send(selectedPrompt, voice = false) }
+                                    )
+                                }
+                            }
+
+                            items(items = lines, key = { it.id }) { line ->
+                                AnimatedVisibility(visible = true, enter = fadeIn(tween(220)) + expandVertically()) {
+                                    if (line.user) {
+                                        Column(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalAlignment = Alignment.End,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    Modifier
+                                                        .widthIn(max = 290.dp)
+                                                        .clip(RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp))
+                                                        .background(Brush.linearGradient(listOf(Color(0xFF103454), Color(0xFF0B233B))))
+                                                        .border(1.dp, Cyan.copy(alpha = 0.45f), RoundedCornerShape(16.dp, 4.dp, 16.dp, 16.dp))
+                                                        .padding(horizontal = 13.dp, vertical = 10.dp)
+                                                ) {
+                                                    Text(line.text, color = Ice, fontSize = 13.5.sp, lineHeight = 19.sp)
+                                                }
+                                                UserAvatarBadge(Modifier.padding(top = 2.dp))
+                                            }
+                                            // Display attached images or files right under user bubble
+                                            line.attachments.forEach { file ->
+                                                if (file.mime.startsWith("image/")) {
+                                                    Box(
+                                                        Modifier
+                                                            .padding(end = 36.dp)
+                                                            .widthIn(max = 260.dp)
+                                                            .clip(CardShape)
+                                                            .border(1.dp, Cyan.copy(alpha = 0.4f), CardShape)
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = file.uri,
+                                                            contentDescription = file.name,
+                                                            modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp),
+                                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                                        )
+                                                    }
+                                                } else {
+                                                    Row(
+                                                        Modifier
+                                                            .padding(end = 36.dp)
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .background(Color(0xFF0A1B2C))
+                                                            .border(1.dp, Cyan.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                                                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(Icons.Default.AttachFile, null, tint = Cyan, modifier = Modifier.size(14.dp))
+                                                        Spacer(Modifier.width(4.dp))
+                                                        Text(file.name, color = Ice, fontSize = 11.5.sp, maxLines = 1)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.Top
+                                        ) {
+                                            JarvisAvatarBadge(Modifier.padding(top = 2.dp))
+                                            Column(Modifier.weight(1f)) {
+                                                AnimatedVisibility(visible = line.revealed.value, enter = fadeIn(tween(200))) {
+                                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                        if (line.isError) {
+                                                            JarvisChatErrorCard(
+                                                                message = line.text.substringBefore("\n\n![").trim(),
+                                                                onRetry = if (line.retryPrompt.isNotBlank() && !busy) {
+                                                                    { send(line.retryPrompt, voice = false) }
+                                                                } else null
+                                                            )
+                                                        }
+                                                        RichMessageText(
+                                                            markdown = line.displayText.value.ifBlank { line.text },
+                                                            products = line.products,
+                                                            onQuickFollowUp = { followUp -> send(followUp, voice = false) }
+                                                        )
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                        ) {
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable { clipboard.setText(AnnotatedString(line.text)) }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.ContentCopy, "Salin", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Salin", color = TextMuted, fontSize = 10.sp)
+                                                            }
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable { onSpeak(line.text) }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.VolumeUp, "Suara", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Dengar", color = TextMuted, fontSize = 10.sp)
+                                                            }
+                                                            Row(
+                                                                Modifier
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(Color(0xFF091929))
+                                                                    .border(0.8.dp, Cyan.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                                                                    .clickable {
+                                                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                                            type = "text/plain"
+                                                                            putExtra(Intent.EXTRA_TEXT, line.text)
+                                                                        }
+                                                                        runCatching { context.startActivity(Intent.createChooser(shareIntent, "Bagikan jawaban JARVIS")) }
+                                                                    }
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            ) {
+                                                                Icon(Icons.Default.Share, "Bagikan", tint = Cyan, modifier = Modifier.size(12.dp))
+                                                                Text("Bagikan", color = TextMuted, fontSize = 10.sp)
+                                                            }
+                                                        }
+                                                        SourceStrip(line.text)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (busy) {
+                                item {
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        JarvisAvatarBadge()
+                                        Row(
+                                            Modifier
+                                                .clip(CardShape)
+                                                .background(Color(0xFF091828))
+                                                .border(1.dp, Cyan.copy(alpha = 0.35f), CardShape)
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(processStage, color = Ice, fontSize = 12.5.sp, fontFamily = FontFamily.Monospace)
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                repeat(3) { n ->
+                                                    val a = kotlin.math.sin(wavePhase + n * .9f) * .5f + .5f
+                                                    Box(Modifier.size(6.dp).background(Cyan.copy(alpha = .25f + .75f * a), CircleShape))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Pending attachments strip
+                        if (pendingAttachments.isNotEmpty()) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                pendingAttachments.toList().forEach { file ->
+                                    Row(
+                                        Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(Color(0xFF0B1C2C))
+                                            .border(1.dp, Cyan.copy(alpha = .35f), RoundedCornerShape(999.dp))
+                                            .padding(start = 10.dp, end = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(file.name, color = Ice, fontSize = 11.5.sp, maxLines = 1, modifier = Modifier.widthIn(max = 140.dp))
+                                        IconButton(onClick = { pendingAttachments.remove(file) }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Default.Close, "Hapus lampiran", tint = TextMuted, modifier = Modifier.size(13.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // --- MESSAGE JARVIS... INPUT BAR ---
+                        val armed = command.isNotBlank() || pendingAttachments.isNotEmpty()
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(Color(0xFF071422))
+                                .border(1.dp, Cyan.copy(alpha = if (armed) 0.7f else 0.36f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 6.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box {
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF0C2136))
+                                        .border(1.dp, Cyan.copy(alpha = 0.5f), CircleShape)
+                                        .clickable(enabled = !busy) { attachmentMenu = !attachmentMenu },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        if (attachmentMenu) Icons.Default.Close else Icons.Default.Add,
+                                        contentDescription = "Lampirkan",
+                                        tint = Cyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = attachmentMenu,
+                                    onDismissRequest = { attachmentMenu = false },
+                                    properties = PopupProperties(focusable = false),
+                                    shape = RoundedCornerShape(14.dp),
+                                    containerColor = Color(0xFF0B1B2B)
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("File / Dokumen", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; attachmentPicker.launch(arrayOf("*/*")) },
+                                        leadingIcon = { Icon(Icons.Default.AttachFile, null, tint = Cyan) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Kamera", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; cameraPicker.launch(null) },
+                                        leadingIcon = { Icon(Icons.Default.CameraAlt, null, tint = Cyan) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Galeri Foto", color = Ice, fontSize = 13.sp) },
+                                        onClick = { attachmentMenu = false; photoPicker.launch("image/*") },
+                                        leadingIcon = { Icon(Icons.Default.Image, null, tint = Cyan) }
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            BasicTextField(
+                                value = command,
+                                onValueChange = { command = it },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(inputFocus)
+                                    .padding(vertical = 6.dp),
+                                minLines = 1,
+                                maxLines = 4,
+                                textStyle = androidx.compose.ui.text.TextStyle(color = Ice, fontSize = 14.sp),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Cyan),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Send),
+                                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = {
+                                    if (!busy) {
+                                        keyboard?.hide()
+                                        focusManager.clearFocus()
+                                        send(command, voice = false)
+                                    }
+                                }),
+                                decorationBox = { inner ->
+                                    if (command.isEmpty()) {
+                                        Text("Message JARVIS...", color = TextMuted, fontSize = 13.5.sp)
+                                    }
+                                    inner()
+                                }
+                            )
+
+                            if (busy) {
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(AlertRed.copy(alpha = 0.2f))
+                                        .border(1.dp, AlertRed, CircleShape)
+                                        .clickable {
+                                            cancelCurrentRequest?.invoke()
+                                            cancelCurrentRequest = null
+                                            busy = false
+                                            showJarvis("Permintaan dihentikan.")
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Stop, "Hentikan", tint = AlertRed, modifier = Modifier.size(16.dp))
+                                }
+                            } else {
+                                Box(
+                                    Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (armed) Cyan.copy(alpha = 0.2f) else Color.Transparent)
+                                        .clickable {
+                                            if (armed) {
+                                                keyboard?.hide()
+                                                focusManager.clearFocus()
+                                                send(command, voice = false)
+                                            } else {
+                                                keyboard?.hide()
+                                                focusManager.clearFocus()
+                                                voiceListening = true
+                                                page = "VOICE"
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Send,
+                                        contentDescription = "Kirim",
+                                        tint = Cyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // --- BOTTOM SEGMENTED MODE SWITCHER (Exact match to both references) ---
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF06111D))
+                            .border(1.dp, Cyan.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val isChat = page == "CHAT"
+                        // Left Tab (CHAT MODE)
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
+                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
+                                    shape = RoundedCornerShape(999.dp)
+                                )
+                                .clickable {
+                                    onStopSpeaking()
+                                    voiceListening = false
+                                    page = "CHAT"
+                                }
+                                .padding(vertical = 10.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Chat,
+                                contentDescription = "Mode Chat",
+                                tint = if (isChat) Cyan else TextMuted,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "CHAT",
+                                color = if (isChat) Ice else TextMuted,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.2.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+
+                        // Right Tab (VOICE)
+                        Row(
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    if (!isChat) Brush.horizontalGradient(listOf(Color(0xFF0E334E), Color(0xFF092236)))
+                                    else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = if (!isChat) Cyan.copy(alpha = 0.65f) else Color.Transparent,
+                                    shape = RoundedCornerShape(999.dp)
+                                )
+                                .clickable {
+                                    keyboard?.hide()
+                                    focusManager.clearFocus()
+                                    voiceListening = true
+                                    page = "VOICE"
+                                }
+                                .padding(vertical = 9.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (!isChat) Cyan else TextMuted.copy(alpha = 0.6f))
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "VOICE",
+                                color = if (!isChat) Ice else TextMuted,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.2.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                }
+
+                var confirmSignOut by remember { mutableStateOf(false) }
+                if (accountPanel) {
+                    val isAuthError = accountStatus.contains("GAGAL", true) ||
+                        accountStatus.contains("DITOLAK", true) ||
+                        accountStatus.contains("TIDAK VALID", true) ||
+                        accountStatus.contains("KOSONG", true) ||
+                        accountStatus.contains("DIBATALKAN", true)
+                    val isAuthSuccess = accountStatus.startsWith("[AUTH_SUCCESS]") || accountEmail != null
+                    AlertDialog(
+                        onDismissRequest = { confirmSignOut = false; accountPanel = false },
+                        containerColor = Color(0xFF0B1826),
+                        title = { Text("J.A.R.V.I.S. ACCOUNT", color = Ice, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = if (accountEmail != null) "Terhubung: ${accountName?.let { "$it ($accountEmail)" } ?: accountEmail}" else "Belum masuk dengan Google",
+                                    color = if (accountEmail != null) OkGreen else Ice,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (accountBusy) {
+                                    JarvisThinkingBar(stage = accountStatus.ifBlank { "MENGHUBUNGKAN GOOGLE..." })
+                                } else if (accountStatus.isNotBlank()) {
+                                    Text(
+                                        text = accountStatus,
+                                        color = when {
+                                            isAuthError -> AlertRed
+                                            isAuthSuccess -> OkGreen
+                                            else -> WarnAmber
+                                        },
+                                        fontSize = 11.5.sp
+                                    )
+                                }
+                                if (accountEmail == null) {
+                                    OutlinedTextField(
+                                        value = webClientIdDraft,
+                                        onValueChange = { webClientIdDraft = it },
+                                        singleLine = true,
+                                        placeholder = { Text("123456-abc.apps.googleusercontent.com", color = TextMuted, fontSize = 11.sp) },
+                                        label = { Text("Google Web Client ID (OAuth Web)") }
+                                    )
+                                }
+                                OutlinedButton(
+                                    enabled = !accountBusy,
+                                    onClick = {
+                                        if (webClientIdDraft.isNotBlank()) {
+                                            onSaveGoogleWebClientId(webClientIdDraft.trim())
+                                        }
+                                        accountPanel = false
+                                        onOpenDeviceSetup()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Devices, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (accountEmail == null) "LOGIN & PAIR PERANGKAT" else "PENGATURAN & PAIRING PERANGKAT")
+                                }
+                                Text(
+                                    text = if (accountEmail == null) "Masuk dengan Google untuk menyimpan dan menyinkronkan chat serta menghubungkan perangkat." else "Riwayat percakapan tersimpan di akun ini dan dibatasi oleh Row Level Security.",
+                                    color = TextMuted,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = !accountBusy,
+                                onClick = {
+                                    if (accountEmail == null) {
+                                        confirmSignOut = false
+                                        if (webClientIdDraft.isNotBlank()) {
+                                            onSaveGoogleWebClientId(webClientIdDraft.trim())
+                                        }
+                                        onGoogleSignIn()
+                                    } else if (!confirmSignOut) {
+                                        confirmSignOut = true
+                                    } else {
+                                        confirmSignOut = false
+                                        onGoogleSignOut()
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    when {
+                                        accountBusy -> "MEMPROSES..."
+                                        accountEmail == null && isAuthError -> "COBA LAGI LOGIN GOOGLE"
+                                        accountEmail == null -> "MASUK DENGAN GOOGLE"
+                                        confirmSignOut -> "YA, KONFIRMASI KELUAR"
+                                        else -> "KELUAR"
+                                    },
+                                    color = if (confirmSignOut) AlertRed else Cyan
+                                )
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                if (confirmSignOut) confirmSignOut = false else accountPanel = false
+                            }) {
+                                Text(if (confirmSignOut) "BATAL" else "TUTUP", color = TextMuted)
+                            }
+                        }
+                    )
+                }
+
+                var renameTarget by remember { mutableStateOf<SavedConversation?>(null) }
+                var renameDraft by remember { mutableStateOf("") }
+
+                if (renameTarget != null) {
+                    val target = renameTarget!!
+                    AlertDialog(
+                        onDismissRequest = { renameTarget = null },
+                        containerColor = Color(0xFF0B1826),
+                        title = { Text("UBAH JUDUL PERCAKAPAN", color = Ice, fontWeight = FontWeight.Bold, fontSize = 15.sp) },
+                        text = {
+                            OutlinedTextField(
+                                value = renameDraft,
+                                onValueChange = { renameDraft = it },
+                                singleLine = true,
+                                label = { Text("Judul Baru") }
+                            )
+                        },
+                        confirmButton = {
+                            TextButton(
+                                enabled = renameDraft.trim().isNotBlank(),
+                                onClick = {
+                                    onRenameConversation(target.id, renameDraft.trim())
+                                    renameTarget = null
+                                }
+                            ) { Text("SIMPAN", color = Cyan) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { renameTarget = null }) { Text("BATAL", color = TextMuted) }
+                        }
+                    )
+                }
+
+                if (historyPanel) {
+                    AlertDialog(
+                        onDismissRequest = { historyPanel = false },
+                        containerColor = Color(0xFF0B1826),
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("CHAT HISTORY", color = Ice, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                TextButton(onClick = onRefreshHistory) { Text("REFRESH", color = Cyan, fontSize = 10.sp) }
+                            }
+                        },
+                        text = {
+                            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                when {
+                                    accountEmail == null -> Text("Masuk dengan Google untuk melihat riwayat chat.", color = TextMuted, fontSize = 12.sp)
+                                    historyBusy -> JarvisThinkingBar(stage = "MEMUAT PERCAKAPAN...")
+                                    conversations.isEmpty() -> Text("Belum ada percakapan tersimpan.", color = TextMuted, fontSize = 12.sp)
+                                    else -> conversations.forEach { item ->
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(Color(0xFF102536))
+                                                .border(1.dp, Color(0x3358DCEC), RoundedCornerShape(10.dp))
+                                                .clickable { onOpenConversation(item.id); historyPanel = false }
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(Modifier.weight(1f)) {
+                                                JarvisConversationChip(
+                                                    title = item.title,
+                                                    updatedAt = item.updatedAt.take(16).replace("T", " "),
+                                                    selected = restoredMessages?.first == item.id,
+                                                    onClick = { onOpenConversation(item.id); historyPanel = false }
+                                                )
+                                            }
+                                            TextButton(onClick = { renameDraft = item.title; renameTarget = item }) {
+                                                Text("UBAH", color = Cyan, fontSize = 9.sp)
+                                            }
+                                            TextButton(onClick = { onDeleteConversation(item.id) }) {
+                                                Text("HAPUS", color = Color(0xFFFF8A8A), fontSize = 9.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = { TextButton(onClick = { onNewConversation(); historyPanel = false }) { Text("CHAT BARU", color = Cyan) } },
+                        dismissButton = { TextButton(onClick = { historyPanel = false }) { Text("TUTUP", color = TextMuted) } }
+                    )
+                }
+
+                if (settings) {
+                    AlertDialog(
+                        onDismissRequest = { settings = false },
+                        containerColor = Color(0xFF0B1826),
+                        shape = RoundedCornerShape(20.dp),
+                        title = {
+                            Column {
+                                Text("Pengaturan Sistem J.A.R.V.I.S.", color = Ice, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                Text("Kunci API opsional tersimpan lokal di perangkatmu.", color = TextMuted, fontSize = 12.sp)
+                            }
+                        },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                OutlinedTextField(
+                                    value = keyDraft,
+                                    onValueChange = { keyDraft = it },
+                                    singleLine = true,
+                                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                    placeholder = { Text("Kunci API Gemini", color = TextMuted) },
+                                    label = { Text("API Key Override") }
+                                )
+                                OutlinedTextField(
+                                    value = webClientIdDraft,
+                                    onValueChange = { webClientIdDraft = it },
+                                    singleLine = true,
+                                    placeholder = { Text("123456-abc.apps.googleusercontent.com", color = TextMuted, fontSize = 11.sp) },
+                                    label = { Text("Google Web Client ID Override") }
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        if (webClientIdDraft.isNotBlank()) onSaveGoogleWebClientId(webClientIdDraft.trim())
+                                        settings = false
+                                        if (accountEmail == null) accountPanel = true
+                                        onOpenDeviceSetup()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.Devices, contentDescription = null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("AKUN GOOGLE & AKSES PERANGKAT")
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                if (keyDraft.isNotBlank()) onSaveGeminiKey(keyDraft.trim())
+                                if (webClientIdDraft.isNotBlank()) onSaveGoogleWebClientId(webClientIdDraft.trim())
+                                settings = false
+                                keyDraft = ""
+                            }) { Text("Simpan", color = Cyan) }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { settings = false }) { Text("Batal", color = TextMuted) }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
