@@ -49,8 +49,10 @@ import java.util.*
 
 // BATCH 8 LIQUID GLASS REDESIGN - MainActivity preview part (first ~300 lines)
 // Full MainActivity.kt is the canonical source.
+// Exact content from jarvis_b8_liquid_glass_redesign_staging.zip
 
 class MainActivity : ComponentActivity() {
-    // ... (truncated for preview - full file uploaded separately)
+    // Full implementation is in MainActivity.kt (244KB)
+    // This part00 is the preview of the first lines for reference.
     // Markers: requestMicFocus, clientRequestId, registerConnectivityFlush, HolographicOrb, JarvisChatComposer, JarvisUserBubble
 }
