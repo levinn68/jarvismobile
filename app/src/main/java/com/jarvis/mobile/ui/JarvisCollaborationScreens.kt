@@ -1,5 +1,9 @@
 package com.jarvis.mobile.ui
 
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -26,14 +30,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,6 +68,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,23 +84,33 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
  * J.A.R.V.I.S. Batch 8.5.1 — Hardened Multi-AI Collaboration, Chat, Voice & History Screens (Storyboard Screens 12–30)
  *
- * Production Hardening in Batch 8.5.1:
- * 1. Binds Collaboration UI to hardened B8.5.1 statuses (`SUCCESS`, `PARTIAL_SUCCESS`, `COLLABORATION_FAILED`, `SYNTHESIS_FAILED`)
- *    and exact provider failure error codes (`PROVIDER_CREDENTIAL_MISSING`, `PROVIDER_DISABLED`, `NETWORK_ERROR`,
- *    `PROVIDER_TIMEOUT`, `PROVIDER_RATE_LIMITED`, `PROVIDER_AUTH_FAILED`, `MODEL_UNAVAILABLE`, `PROVIDER_ERROR`).
- * 2. Binds Screen 26 to real Claim-Based Consensus metrics (`consensusStatus`, `consensusScore`, `agreementScore`,
- *    `similarityScore`, `evidenceQualityScore`, `confidenceScore`).
- * 3. Binds Screen 28 (Knowledge Graph) to Graph View, Table View, Detail View, Node Provenance (`sessionId`, `agentId`,
- *    `modelId`, `messageId`, `timestamp`, `sourceReference`), Edge Explanation, and Agent Attribution.
- * 4. Binds Screen 29 (Final Synthesis) to all 11 required sections and supports retrying synthesis on `SYNTHESIS_FAILED`
- *    while preserving completed agent outputs.
+ * Upgraded with Cupertino Liquid Glass + Smooth Motion Design System:
+ * - Chat Mode (Screens 12–14): Conversation-first layout with zero dead space, compact iOS segmented control,
+ *   unified attachment popover (`File`, `Foto`, `Dokumen`, `Suara`) wired to Android `ActivityResultContracts`,
+ *   multi-turn conversation stream, and sleek Liquid Glass pill composer.
+ * - Voice Mode (Screens 15–19): Large centered 3D Holographic Orb (`252.dp`), living state animations (`Idle`,
+ *   `Listening`, `Processing`, `Speaking`, `Error`), live RMS waveform, no cluttered 5-tab top bar, dynamic
+ *   voice status, automatic AI dispatch on speech recognition completion, and sleek Liquid Glass capsule controls.
  */
+
+data class JarvisB8ChatTurnUi(
+    val id: String,
+    val role: String,
+    val content: String,
+    val modelLabel: String = "",
+    val timestamp: String = "",
+    val isError: Boolean = false,
+    val attachmentLabel: String = ""
+)
 
 data class JarvisB8CollabAgentUi(
     val agentId: String,
@@ -355,7 +373,7 @@ fun JarvisAgentNetworkAnimation(
 }
 
 // ============================================================================
-// SCREENS 12, 13, 14 — UPGRADED CHAT MODE CONNECTED TO REAL WORKER API
+// SCREENS 12, 13, 14 — CUPERTINO LIQUID GLASS CHAT MODE CONNECTED TO REAL WORKER API
 // ============================================================================
 @Composable
 fun JarvisB8ChatExperienceScreen(
@@ -364,8 +382,12 @@ fun JarvisB8ChatExperienceScreen(
     onOpenCollaborationWithTopic: (String) -> Unit,
     onSwitchToVoice: () -> Unit,
     onSendLiveChatPrompt: ((String, (String, Boolean) -> Unit) -> (() -> Unit))? = null,
+    savedConversations: List<SavedConversation> = emptyList(),
+    onOpenHistory: () -> Unit = {},
+    onSelectSavedConversation: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var stage by remember { mutableIntStateOf(0) }
     var inputPrompt by remember { mutableStateOf("") }
     var lastSubmittedPrompt by remember { mutableStateOf("") }
@@ -373,101 +395,266 @@ fun JarvisB8ChatExperienceScreen(
     var isStreamingOrLoading by remember { mutableStateOf(false) }
     var isErrorResponse by remember { mutableStateOf(false) }
     var cancelActiveCall by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var showAttachmentMenu by remember { mutableStateOf(false) }
+    var attachedLabel by remember { mutableStateOf<String?>(null) }
+    var attachedContextSummary by remember { mutableStateOf("") }
+
+    val chatTurns = remember { mutableStateListOf<JarvisB8ChatTurnUi>() }
+
+    fun handlePickedUri(uri: Uri?, kindLabel: String) {
+        if (uri == null) return
+        runCatching {
+            val resolver = context.contentResolver
+            var displayName = "$kindLabel-${System.currentTimeMillis() % 10000}"
+            var sizeBytes = 0L
+            resolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (cursor.moveToFirst()) {
+                    if (nameIdx >= 0) displayName = cursor.getString(nameIdx) ?: displayName
+                    if (sizeIdx >= 0) sizeBytes = cursor.getLong(sizeIdx)
+                }
+            }
+            val sizeValid = JarvisStabilityGuard.validateAttachmentSize(sizeBytes, 15L * 1024L * 1024L)
+            if (!sizeValid) {
+                attachedLabel = "$displayName (Melebihi 15MB)"
+                attachedContextSummary = "[Lampiran ditolak karena ukuran > 15MB: $displayName]"
+            } else {
+                val kb = (sizeBytes / 1024L).coerceAtLeast(1L)
+                attachedLabel = "$kindLabel: $displayName (${kb}KB)"
+                val textPreview = if (kindLabel != "Foto" && sizeBytes in 1..65536) {
+                    resolver.openInputStream(uri)?.use { stream ->
+                        val bytes = JarvisStabilityGuard.readBoundedBytes(stream, 4096)
+                        val str = String(bytes, Charsets.UTF_8)
+                        if (str.count { it.isISOControl() && !it.isWhitespace() } == 0) {
+                            "\nIsi Lampiran ($displayName):\n${str.take(1200)}"
+                        } else ""
+                    }.orEmpty()
+                } else ""
+                attachedContextSummary = "[Lampiran $kindLabel: $displayName (${kb}KB)]$textPreview"
+            }
+        }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        handlePickedUri(uri, "File")
+    }
+    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        handlePickedUri(uri, "Foto")
+    }
+    val documentPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        handlePickedUri(uri, "Dokumen")
+    }
+
+    fun currentTimeLabel(): String {
+        return runCatching {
+            SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+        }.getOrDefault("Sekarang")
+    }
 
     fun submitChatPrompt(promptToUse: String) {
-        val clean = promptToUse.trim()
-        if (clean.isBlank() || isStreamingOrLoading) return
+        val rawClean = promptToUse.trim()
+        if ((rawClean.isBlank() && attachedContextSummary.isBlank()) || isStreamingOrLoading) return
         if (!JarvisStabilityGuard.acquireRequestLock("b8_chat_send", 600L)) return
-        lastSubmittedPrompt = clean
+
+        val finalPrompt = if (attachedContextSummary.isNotBlank()) {
+            if (rawClean.isNotBlank()) "$rawClean\n\n$attachedContextSummary" else attachedContextSummary
+        } else {
+            rawClean
+        }
+        val currentAttachmentBadge = attachedLabel.orEmpty()
+
+        lastSubmittedPrompt = rawClean.ifBlank { currentAttachmentBadge }
+        chatTurns.add(
+            JarvisB8ChatTurnUi(
+                id = "u_${System.currentTimeMillis()}",
+                role = "user",
+                content = rawClean.ifBlank { "Mengirim lampiran: $currentAttachmentBadge" },
+                timestamp = currentTimeLabel(),
+                attachmentLabel = currentAttachmentBadge
+            )
+        )
         inputPrompt = ""
+        attachedLabel = null
+        attachedContextSummary = ""
+        showAttachmentMenu = false
         stage = 1
+
         if (onSendLiveChatPrompt != null) {
             isStreamingOrLoading = true
             isErrorResponse = false
-            cancelActiveCall = onSendLiveChatPrompt(clean) { answer, isErr ->
+            cancelActiveCall = onSendLiveChatPrompt(finalPrompt) { answer, isErr ->
                 liveResponseText = answer
                 isErrorResponse = isErr
                 isStreamingOrLoading = false
                 cancelActiveCall = null
+                chatTurns.add(
+                    JarvisB8ChatTurnUi(
+                        id = "a_${System.currentTimeMillis()}",
+                        role = "assistant",
+                        content = answer,
+                        modelLabel = activeModelLabel,
+                        timestamp = currentTimeLabel(),
+                        isError = isErr
+                    )
+                )
                 JarvisStabilityGuard.releaseRequestLock("b8_chat_send")
             }
         } else {
-            liveResponseText = "[UNAVAILABLE — Koneksi sesi live belum dikonfigurasi]\nPermintaan: $clean"
+            val offlineMsg = "[UNAVAILABLE — Koneksi sesi live belum dikonfigurasi]\nPermintaan: $finalPrompt"
+            liveResponseText = offlineMsg
             isErrorResponse = true
+            chatTurns.add(
+                JarvisB8ChatTurnUi(
+                    id = "a_${System.currentTimeMillis()}",
+                    role = "assistant",
+                    content = offlineMsg,
+                    modelLabel = activeModelLabel,
+                    timestamp = currentTimeLabel(),
+                    isError = true
+                )
+            )
             JarvisStabilityGuard.releaseRequestLock("b8_chat_send")
         }
+    }
+
+    val quickTemplates = remember {
+        listOf(
+            Triple("⚡ Analisis", "Arsitektur & RLS", "Analisis arsitektur backend multi-tenant dan rekomendasi RLS database."),
+            Triple("💻 Coding", "API Gateway & Auth", "Buatkan struktur modul API Gateway, Auth, dan Rate Limiter yang aman."),
+            Triple("🔬 Riset", "Redis vs Read-Replica", "Bandingkan strategi caching Redis vs Read-Replica PostgreSQL untuk beban tinggi."),
+            Triple("📋 Ringkas", "Checklist Produksi", "Susun checklist kesiapan rilis produksi dan mitigasi risiko operasional.")
+        )
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(JarvisColors.BackgroundDeep)
-            .padding(16.dp)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF060C18),
+                        JarvisColors.BackgroundDeep,
+                        Color(0xFF040811)
+                    )
+                )
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
+        // 1. Sleek Cupertino Liquid Glass Top Header (Title + Compact Model Selector + Quick Actions)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "Chat",
-                color = JarvisColors.TextPrimary,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
             Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(JarvisColors.SurfaceCard)
-                    .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
-                    .clickable { onOpenModelSelector() }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(text = activeModelLabel, color = JarvisColors.CyanGlow, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = "▾", color = JarvisColors.TextSecondary, fontSize = 12.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                0 to "Mulai Chat",
-                1 to "Percakapan",
-                2 to "Detail & Struktur"
-            ).forEach { (idx, label) ->
-                val selected = stage == idx
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) JarvisColors.CyanPrimary.copy(alpha = 0.2f) else JarvisColors.SurfaceCard)
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(if (isStreamingOrLoading) JarvisColors.CyanGlow else JarvisColors.EmeraldSuccess)
+                )
+                Text(
+                    text = "Chat",
+                    color = JarvisColors.TextPrimary,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Model Selector Pill
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color(0xCC112239),
+                                    Color(0xB30B1626)
+                                )
+                            )
+                        )
                         .border(
                             1.dp,
-                            if (selected) JarvisColors.CyanPrimary else JarvisColors.PanelBorder,
-                            RoundedCornerShape(10.dp)
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    JarvisColors.CyanGlow.copy(alpha = 0.55f),
+                                    JarvisColors.VioletAccent.copy(alpha = 0.40f)
+                                )
+                            ),
+                            RoundedCornerShape(999.dp)
                         )
-                        .clickable { stage = idx }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
+                        .clickable { onOpenModelSelector() }
+                        .padding(horizontal = 11.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = label,
-                        color = if (selected) JarvisColors.CyanGlow else JarvisColors.TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
+                        text = activeModelLabel,
+                        color = JarvisColors.CyanGlow,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "▾", color = JarvisColors.TextSecondary, fontSize = 11.sp)
+                }
+
+                // History Button
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color(0x99111E32))
+                        .border(1.dp, JarvisColors.GlassBorder, CircleShape)
+                        .clickable { onOpenHistory() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "🕒", fontSize = 13.sp)
+                }
+
+                // New Chat / Reset Button
+                if (chatTurns.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x99111E32))
+                            .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.45f), CircleShape)
+                            .clickable {
+                                chatTurns.clear()
+                                lastSubmittedPrompt = ""
+                                liveResponseText = ""
+                                isErrorResponse = false
+                                stage = 0
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "＋", color = JarvisColors.CyanGlow, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
+        // 2. Compact iOS Segmented Control (Mulai Chat | Percakapan | Detail & Struktur)
+        JarvisSegmentedGlassTabs(
+            tabs = listOf("Mulai Chat", "Percakapan", "Detail & Struktur"),
+            selectedIndex = stage,
+            onSelect = { stage = it }
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 3. Conversation-Focused Main Area (Modifier.weight(1f)) — Zero Dead Space
         AnimatedContent(
             targetState = stage,
             transitionSpec = {
@@ -477,200 +664,301 @@ fun JarvisB8ChatExperienceScreen(
             label = "chat_stage_content"
         ) { currentStage ->
             when (currentStage) {
-                0 -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Apa yang ingin Anda kerjakan hari ini?",
-                                color = JarvisColors.TextPrimary,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Pilih template di bawah untuk mengirim request langsung ke model aktif ($activeModelLabel).",
-                                color = JarvisColors.TextSecondary,
-                                fontSize = 12.sp
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            val templates = listOf(
-                                "Analisis" to "Analisis arsitektur backend multi-tenant dan rekomendasi RLS database.",
-                                "Coding" to "Buatkan struktur modul API Gateway, Auth, dan Rate Limiter yang aman.",
-                                "Riset" to "Bandingkan strategi caching Redis vs Read-Replica PostgreSQL untuk beban tinggi.",
-                                "Ringkas" to "Susun checklist kesiapan rilis produksi dan mitigasi risiko operasional."
-                            )
-                            templates.chunked(2).forEach { rowItems ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    rowItems.forEach { (title, promptTemplate) ->
-                                        Column(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(JarvisColors.SurfaceCard)
-                                                .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(12.dp))
-                                                .clickable { submitChatPrompt(promptTemplate) }
-                                                .padding(12.dp)
-                                        ) {
-                                            Text(text = title, color = JarvisColors.CyanGlow, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(text = promptTemplate, color = JarvisColors.TextSecondary, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf("📎 File", "🖼️ Foto", "📄 Dokumen", "🎙️ Suara").forEach { item ->
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(JarvisColors.SurfaceCard)
-                                        .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(10.dp))
-                                        .clickable {
-                                            if (item.contains("Suara")) onSwitchToVoice() else stage = 1
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                                ) {
-                                    Text(text = item, color = JarvisColors.TextSecondary, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                1 -> {
+                0, 1 -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        if (lastSubmittedPrompt.isNotBlank()) {
+                        // Show compact Quick-Start Workspace & Templates when on "Mulai Chat" or when conversation is empty
+                        if (currentStage == 0 || chatTurns.isEmpty()) {
                             item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(Color(0xFF102A4C))
-                                        .padding(12.dp)
-                                ) {
-                                    Text(text = lastSubmittedPrompt, color = JarvisColors.TextPrimary, fontSize = 14.sp)
-                                }
-                            }
-                        }
-
-                        if (isStreamingOrLoading) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(JarvisColors.SurfaceCard)
-                                        .border(1.dp, JarvisColors.CyanPrimary, RoundedCornerShape(12.dp))
-                                        .padding(12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Menghubungi $activeModelLabel...",
-                                        color = JarvisColors.CyanGlow,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    OutlinedButton(onClick = {
-                                        cancelActiveCall?.invoke()
-                                        cancelActiveCall = null
-                                        isStreamingOrLoading = false
-                                        liveResponseText = "Permintaan dibatalkan oleh pengguna."
-                                    }) {
-                                        Text("Batalkan", color = JarvisColors.CoralDanger, fontSize = 11.sp)
-                                    }
-                                }
-                            }
-                        }
-
-                        if (liveResponseText.isNotBlank()) {
-                            item {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(JarvisColors.SurfaceCard)
-                                        .border(
-                                            1.dp,
-                                            if (isErrorResponse) JarvisColors.CoralDanger else JarvisColors.PanelBorder,
-                                            RoundedCornerShape(14.dp)
-                                        )
-                                        .padding(14.dp)
+                                JarvisLiquidGlassCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    isHighlighted = true,
+                                    accentColor = JarvisColors.CyanPrimary,
+                                    cornerRadius = 20.dp,
+                                    contentPadding = 14.dp
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = if (isErrorResponse) "J.A.R.V.I.S. · PROVIDER ERROR" else "J.A.R.V.I.S. · $activeModelLabel",
-                                            color = if (isErrorResponse) JarvisColors.CoralDanger else JarvisColors.CyanGlow,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 13.sp
-                                        )
-                                        Text(
-                                            text = if (onSendLiveChatPrompt != null) "LIVE" else "OFFLINE",
-                                            color = if (onSendLiveChatPrompt != null) JarvisColors.EmeraldSuccess else JarvisColors.AmberWarning,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text(
-                                        text = liveResponseText,
-                                        color = JarvisColors.TextPrimary,
-                                        fontSize = 13.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if (isErrorResponse && lastSubmittedPrompt.isNotBlank()) {
-                                            Button(
-                                                onClick = { submitChatPrompt(lastSubmittedPrompt) },
-                                                colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CoralDanger)
-                                            ) {
-                                                Text("Coba Lagi (Retry)", color = Color.White, fontSize = 11.sp)
-                                            }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Apa yang ingin Anda kerjakan hari ini?",
+                                                color = JarvisColors.TextPrimary,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Spacer(modifier = Modifier.height(3.dp))
+                                            Text(
+                                                text = "Pilih template cepat atau tulis instruksi langsung ke $activeModelLabel.",
+                                                color = JarvisColors.TextSecondary,
+                                                fontSize = 11.5.sp
+                                            )
                                         }
                                         Box(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color(0xFF0E223D))
-                                                .clickable { stage = 2 }
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                        ) {
-                                            Text("Lihat Struktur & Eskalasi", color = JarvisColors.CyanGlow, fontSize = 11.sp)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color(0xFF0E223D))
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(JarvisColors.VioletAccent.copy(alpha = 0.18f))
+                                                .border(1.dp, JarvisColors.VioletAccent.copy(alpha = 0.5f), RoundedCornerShape(999.dp))
                                                 .clickable {
                                                     onOpenCollaborationWithTopic(
-                                                        lastSubmittedPrompt.ifBlank { liveResponseText.take(200) }
+                                                        lastSubmittedPrompt.ifBlank {
+                                                            "Evaluasi arsitektur sistem dan skalabilitas multi-agent"
+                                                        }
                                                     )
                                                 }
-                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
                                         ) {
-                                            Text("Buka di Kolaborasi", color = JarvisColors.CyanGlow, fontSize = 11.sp)
+                                            Text(
+                                                text = "⚡ Multi-AI",
+                                                color = Color(0xFFD8B4FE),
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    quickTemplates.chunked(2).forEach { rowItems ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 3.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            rowItems.forEach { (badgeTitle, subtitle, promptTemplate) ->
+                                                Column(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .background(Color(0x990D182A))
+                                                        .border(1.dp, JarvisColors.GlassBorder, RoundedCornerShape(14.dp))
+                                                        .clickable { submitChatPrompt(promptTemplate) }
+                                                        .padding(10.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = badgeTitle,
+                                                            color = JarvisColors.CyanGlow,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 12.5.sp
+                                                        )
+                                                        Text(
+                                                            text = "↗",
+                                                            color = JarvisColors.TextMuted,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    Text(
+                                                        text = subtitle,
+                                                        color = JarvisColors.TextPrimary,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        fontSize = 11.sp
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = promptTemplate,
+                                                        color = JarvisColors.TextSecondary,
+                                                        fontSize = 10.5.sp,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (savedConversations.isNotEmpty()) {
+                                item {
+                                    JarvisLiquidGlassCard(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        cornerRadius = 16.dp,
+                                        contentPadding = 12.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Lanjutkan Percakapan Tersimpan",
+                                                color = JarvisColors.TextPrimary,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.5.sp
+                                            )
+                                            Text(
+                                                text = "Lihat Semua (${savedConversations.size}) ›",
+                                                color = JarvisColors.CyanGlow,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.clickable { onOpenHistory() }
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            items(savedConversations.take(5), key = { it.id }) { conv ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(Color(0x990F1E33))
+                                                        .border(1.dp, JarvisColors.GlassBorder, RoundedCornerShape(12.dp))
+                                                        .clickable { onSelectSavedConversation(conv.id) }
+                                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text("💬", fontSize = 12.sp)
+                                                    Column {
+                                                        Text(
+                                                            text = conv.title.ifBlank { "Percakapan" }.take(28),
+                                                            color = JarvisColors.TextPrimary,
+                                                            fontSize = 11.5.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            maxLines = 1
+                                                        )
+                                                        Text(
+                                                            text = conv.updatedAt.take(10),
+                                                            color = JarvisColors.TextMuted,
+                                                            fontSize = 10.sp
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Multi-turn Conversation Bubbles
+                        items(chatTurns, key = { it.id }) { turn ->
+                            if (turn.role == "user") {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.End
+                                ) {
+                                    if (turn.attachmentLabel.isNotBlank()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(bottom = 4.dp)
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(JarvisColors.CyanPrimary.copy(alpha = 0.16f))
+                                                .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                                                .padding(horizontal = 10.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(
+                                                text = "📎 ${turn.attachmentLabel}",
+                                                color = JarvisColors.CyanGlow,
+                                                fontSize = 10.5.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+                                    JarvisUserBubble(
+                                        message = turn.content,
+                                        timestamp = turn.timestamp
+                                    )
+                                }
+                            } else if (turn.isError) {
+                                JarvisChatErrorCard(
+                                    errorTitle = "J.A.R.V.I.S. · PROVIDER ERROR",
+                                    errorDescription = turn.content,
+                                    onRetry = {
+                                        if (lastSubmittedPrompt.isNotBlank()) {
+                                            submitChatPrompt(lastSubmittedPrompt)
+                                        }
+                                    }
+                                )
+                            } else {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    JarvisAssistantBubble(
+                                        modelName = turn.modelLabel.ifBlank { activeModelLabel },
+                                        responseText = turn.content
+                                    )
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(Color(0x99102238))
+                                                .border(1.dp, JarvisColors.GlassBorder, RoundedCornerShape(999.dp))
+                                                .clickable { stage = 2 }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text("Lihat Struktur & Eskalasi", color = JarvisColors.CyanGlow, fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(999.dp))
+                                                .background(Color(0x99102238))
+                                                .border(1.dp, JarvisColors.VioletAccent.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                                                .clickable {
+                                                    onOpenCollaborationWithTopic(
+                                                        lastSubmittedPrompt.ifBlank { turn.content.take(200) }
+                                                    )
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Text("Buka di Kolaborasi", color = Color(0xFFD8B4FE), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Live Streaming / Loading Indicator
+                        if (isStreamingOrLoading) {
+                            item {
+                                JarvisLiquidGlassCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    isHighlighted = true,
+                                    accentColor = JarvisColors.CyanPrimary,
+                                    cornerRadius = 16.dp,
+                                    contentPadding = 12.dp
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "Menghubungi $activeModelLabel...",
+                                                color = JarvisColors.CyanGlow,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(3.dp)
+                                                    .clip(RoundedCornerShape(999.dp)),
+                                                color = JarvisColors.CyanGlow,
+                                                trackColor = JarvisColors.SurfaceElevated
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        OutlinedButton(onClick = {
+                                            cancelActiveCall?.invoke()
+                                            cancelActiveCall = null
+                                            isStreamingOrLoading = false
+                                            liveResponseText = "Permintaan dibatalkan oleh pengguna."
+                                            JarvisStabilityGuard.releaseRequestLock("b8_chat_send")
+                                        }) {
+                                            Text("Batalkan", color = JarvisColors.CoralDanger, fontSize = 11.sp)
                                         }
                                     }
                                 }
@@ -681,20 +969,19 @@ fun JarvisB8ChatExperienceScreen(
 
                 else -> {
                     val extractedLines = remember(liveResponseText) {
-                        liveResponseText.lines().filter { it.trim().isNotEmpty() }.take(8)
+                        liveResponseText.lines().filter { it.trim().isNotEmpty() }.take(10)
                     }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         item {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(JarvisColors.SurfaceCard)
-                                    .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(14.dp))
-                                    .padding(14.dp)
+                            JarvisLiquidGlassCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                isHighlighted = true,
+                                accentColor = JarvisColors.CyanPrimary,
+                                cornerRadius = 18.dp,
+                                contentPadding = 14.dp
                             ) {
                                 Text(
                                     text = if (liveResponseText.isNotBlank()) "Ekstraksi Poin Respons Aktual" else "Struktur Respons [UNAVAILABLE — Belum Ada Chat Aktif]",
@@ -704,29 +991,33 @@ fun JarvisB8ChatExperienceScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 if (extractedLines.isNotEmpty()) {
-                                    extractedLines.forEach { line ->
-                                        Text(
-                                            text = "• ${line.take(140)}",
-                                            color = JarvisColors.TextPrimary,
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(vertical = 2.dp)
-                                        )
+                                    SelectionContainer {
+                                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            extractedLines.forEach { line ->
+                                                Text(
+                                                    text = "• ${line.take(160)}",
+                                                    color = JarvisColors.TextPrimary,
+                                                    fontSize = 12.5.sp
+                                                )
+                                            }
+                                        }
                                     }
                                 } else {
                                     Text(
-                                        text = "Kirim pesan di tab Mulai Chat / Percakapan untuk mengekstrak struktur arsitektur dari respons model aktual.",
+                                        text = "Kirim pesan di ruang percakapan untuk mengekstrak poin arsitektur & tindak lanjut dari respons model aktual.",
                                         color = JarvisColors.TextSecondary,
                                         fontSize = 12.sp
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(10.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
                                 Button(
                                     onClick = {
                                         onOpenCollaborationWithTopic(
                                             lastSubmittedPrompt.ifBlank { "Evaluasi arsitektur sistem dan skalabilitas" }
                                         )
                                     },
-                                    colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary)
+                                    colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text("Diskusikan di Multi-AI Collaboration", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
@@ -739,26 +1030,68 @@ fun JarvisB8ChatExperienceScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextField(
-                value = inputPrompt,
-                onValueChange = { inputPrompt = it },
-                placeholder = { Text("Tulis pesan ke J.A.R.V.I.S...", fontSize = 13.sp) },
-                modifier = Modifier.weight(1f),
-                singleLine = true
-            )
-            Button(
-                onClick = { submitChatPrompt(inputPrompt) },
-                enabled = !isStreamingOrLoading && inputPrompt.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary)
+        // 4. Active Attachment Badge (if any file/photo/document was picked)
+        AnimatedVisibility(visible = !attachedLabel.isNullOrBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xCC102238))
+                    .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (isStreamingOrLoading) "..." else "Kirim", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "📎 ${attachedLabel.orEmpty()}",
+                    color = JarvisColors.CyanGlow,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "✕ Hapus",
+                    color = JarvisColors.CoralDanger,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable {
+                        attachedLabel = null
+                        attachedContextSummary = ""
+                    }
+                )
             }
         }
+
+        // 5. Unified Attachment Menu (File, Foto, Dokumen, Suara in a single sleek popover)
+        JarvisUnifiedAttachmentMenu(
+            expanded = showAttachmentMenu,
+            onDismiss = { showAttachmentMenu = false },
+            onSelectFile = { filePickerLauncher.launch("*/*") },
+            onSelectPhoto = { photoPickerLauncher.launch("image/*") },
+            onSelectDocument = { documentPickerLauncher.launch("application/*") },
+            onSelectVoice = { onSwitchToVoice() },
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
+
+        // 6. Modern, Compact Liquid Glass Composer
+        JarvisChatComposer(
+            value = inputPrompt,
+            onValueChange = { inputPrompt = it },
+            onSend = { submitChatPrompt(inputPrompt) },
+            onVoiceClick = { onSwitchToVoice() },
+            onAttachmentClick = { showAttachmentMenu = !showAttachmentMenu },
+            isAttachmentMenuOpen = showAttachmentMenu,
+            isStreaming = isStreamingOrLoading,
+            onCancelStream = {
+                cancelActiveCall?.invoke()
+                cancelActiveCall = null
+                isStreamingOrLoading = false
+                JarvisStabilityGuard.releaseRequestLock("b8_chat_send")
+            }
+        )
     }
 }
 
@@ -775,225 +1108,400 @@ fun JarvisB8VoiceExperienceScreen(
     onStopSpeaking: () -> Unit = {},
     onSpeakText: (String) -> Unit = {},
     onSwitchToChat: (String) -> Unit,
+    onSendLiveChatPrompt: ((String, (String, Boolean) -> Unit) -> (() -> Unit))? = null,
+    onConsumeRecognizedText: () -> Unit = {},
+    onOpenModelSelector: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val derivedStage = when {
-        liveVoiceStatus.contains("SPEAK", ignoreCase = true) ||
-            liveVoiceStatus.contains("FALLBACK", ignoreCase = true) -> 3
-        liveVoiceStatus.contains("PROCESSING", ignoreCase = true) ||
-            liveVoiceStatus.contains("COUNCIL", ignoreCase = true) -> 2
-        liveVoiceStatus.contains("LISTENING", ignoreCase = true) ||
-            liveVoiceStatus.contains("HEARING", ignoreCase = true) ||
-            liveVoiceStatus.contains("INPUT ACTIVE", ignoreCase = true) -> 1
-        else -> 0
+    var isProcessingVoiceQuery by remember { mutableStateOf(false) }
+    var lastProcessedTranscript by remember { mutableStateOf("") }
+    var lastVoiceAiAnswer by remember { mutableStateOf("") }
+    var voiceQueryError by remember { mutableStateOf(false) }
+
+    // Automatically send recognized speech to AI backend and speak the reply aloud!
+    LaunchedEffect(liveVoiceStatus, liveRecognizedText) {
+        val cleanTranscript = liveRecognizedText.trim()
+        val isCommandReady = liveVoiceStatus.contains("COMMAND RECEIVED", ignoreCase = true)
+        if (isCommandReady && cleanTranscript.isNotBlank() && cleanTranscript != lastProcessedTranscript && !isProcessingVoiceQuery) {
+            lastProcessedTranscript = cleanTranscript
+            if (onSendLiveChatPrompt != null) {
+                isProcessingVoiceQuery = true
+                voiceQueryError = false
+                onSendLiveChatPrompt(cleanTranscript) { answer, isErr ->
+                    isProcessingVoiceQuery = false
+                    voiceQueryError = isErr
+                    lastVoiceAiAnswer = answer
+                    if (!isErr && answer.isNotBlank()) {
+                        val spokenSummary = answer
+                            .replace(Regex("[#*`_~>]"), "")
+                            .lines()
+                            .filter { it.isNotBlank() }
+                            .take(4)
+                            .joinToString(". ")
+                            .take(360)
+                        onSpeakText(spokenSummary)
+                    }
+                    onConsumeRecognizedText()
+                }
+            }
+        }
     }
-    var manualStageOverride by remember { mutableIntStateOf(-1) }
-    val voiceStage = if (manualStageOverride >= 0) manualStageOverride else derivedStage
+
+    val isSpeakingState = liveVoiceStatus.contains("SPEAK", ignoreCase = true) ||
+        liveVoiceStatus.contains("FALLBACK", ignoreCase = true)
+    val isProcessingState = isProcessingVoiceQuery ||
+        liveVoiceStatus.contains("PROCESSING", ignoreCase = true) ||
+        liveVoiceStatus.contains("COUNCIL", ignoreCase = true)
+    val isListeningState = liveVoiceStatus.contains("LISTENING", ignoreCase = true) ||
+        liveVoiceStatus.contains("HEARING", ignoreCase = true) ||
+        liveVoiceStatus.contains("INPUT ACTIVE", ignoreCase = true) ||
+        liveVoiceStatus.contains("STARTING", ignoreCase = true)
+    val isErrorState = voiceQueryError ||
+        liveVoiceStatus.contains("ERROR", ignoreCase = true) ||
+        liveVoiceStatus.contains("DENIED", ignoreCase = true)
     val isFishAudioFallback = liveVoiceStatus.contains("FISH AUDIO FAILED", ignoreCase = true) ||
         liveVoiceStatus.contains("ANDROID TTS", ignoreCase = true)
 
-    val stageLabels = listOf("Siap", "Mendengar", "Proses", "Respons", "Hasil")
+    val orbState = resolveVoiceOrbState(
+        voiceEnabled = true, // Always render vibrant 3D holographic orb in Voice Mode (never dull grey Muted slash)
+        recognitionActive = isListeningState,
+        processing = isProcessingState,
+        speaking = isSpeakingState,
+        error = isErrorState
+    )
+
+    val dynamicHeadline = when {
+        isErrorState -> "Periksa Status Mikrofon / Jaringan"
+        isSpeakingState -> if (isFishAudioFallback) "Berbicara (Android TTS Fallback)" else "Berbicara (Fish Audio Neural TTS)"
+        isProcessingState -> "Memproses Respons di $activeModelLabel..."
+        isListeningState -> "Mendengarkan Suara Anda..."
+        lastVoiceAiAnswer.isNotBlank() -> "Respons Suara Selesai"
+        else -> "Holographic Voice Core Siap"
+    }
+
+    val dynamicSubtext = when {
+        isListeningState -> liveRecognizedText.ifBlank { "Silakan berbicara — gelombang suara dianalisis secara real-time." }
+        isProcessingState -> "Transkrip: "${liveRecognizedText.ifBlank { lastProcessedTranscript }}""
+        isSpeakingState -> lastVoiceAiAnswer.ifBlank { "Menyuarakan respons asisten J.A.R.V.I.S..." }
+        lastVoiceAiAnswer.isNotBlank() -> lastVoiceAiAnswer
+        liveRecognizedText.isNotBlank() -> "Transkrip Terakhir: "$liveRecognizedText""
+        else -> "Ketuk Mulai Dengar atau langsung ketuk Orb Hologram untuk berbicara dengan J.A.R.V.I.S."
+    }
+
+    val eqTransition = rememberInfiniteTransition(label = "voice_eq_bars")
+    val eqPhase by eqTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * Math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = if (isListeningState || isSpeakingState) 650 else 1800,
+                easing = LinearEasing
+            ),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "eq_phase"
+    )
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(JarvisColors.BackgroundDeep)
-            .padding(16.dp),
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF050A14),
+                        JarvisColors.BackgroundDeep,
+                        Color(0xFF030710)
+                    )
+                )
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // 1. Sleek Top Header (Title + Active Model Pill)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("J.A.R.V.I.S. VOICE", color = JarvisColors.CyanGlow, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            Text(activeModelLabel, color = JarvisColors.TextSecondary, fontSize = 12.sp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(9.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                isErrorState -> JarvisColors.CoralDanger
+                                isListeningState -> JarvisColors.EmeraldSuccess
+                                isSpeakingState || isProcessingState -> JarvisColors.CyanGlow
+                                else -> JarvisColors.CyanPrimary
+                            }
+                        )
+                )
+                Text(
+                    text = "J.A.R.V.I.S. VOICE",
+                    color = JarvisColors.TextPrimary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0x99112239))
+                    .border(1.dp, JarvisColors.GlassBorder, RoundedCornerShape(999.dp))
+                    .clickable { onOpenModelSelector() }
+                    .padding(horizontal = 11.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = activeModelLabel,
+                    color = JarvisColors.CyanGlow,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "▾", color = JarvisColors.TextSecondary, fontSize = 11.sp)
+            }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
-        Box(
+        // 2. Dynamic Audio Status Pill (Replaces the cluttered 5-tab top bar)
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isFishAudioFallback) JarvisColors.AmberWarning.copy(alpha = 0.16f) else JarvisColors.SurfaceCard)
+                .clip(RoundedCornerShape(999.dp))
+                .background(
+                    if (isFishAudioFallback) JarvisColors.AmberWarning.copy(alpha = 0.14f)
+                    else Color(0x990D1A2D)
+                )
                 .border(
                     1.dp,
-                    if (isFishAudioFallback) JarvisColors.AmberWarning else JarvisColors.PanelBorder,
-                    RoundedCornerShape(8.dp)
+                    when {
+                        isErrorState -> JarvisColors.CoralDanger.copy(alpha = 0.7f)
+                        isFishAudioFallback -> JarvisColors.AmberWarning.copy(alpha = 0.7f)
+                        isListeningState -> JarvisColors.EmeraldSuccess.copy(alpha = 0.7f)
+                        else -> JarvisColors.CyanPrimary.copy(alpha = 0.45f)
+                    },
+                    RoundedCornerShape(999.dp)
                 )
-                .padding(horizontal = 10.dp, vertical = 6.dp)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
                 text = "STATUS AUDIO: $liveVoiceStatus",
-                color = if (isFishAudioFallback) JarvisColors.AmberWarning else JarvisColors.CyanGlow,
+                color = when {
+                    isErrorState -> JarvisColors.CoralDanger
+                    isFishAudioFallback -> JarvisColors.AmberWarning
+                    isListeningState -> JarvisColors.EmeraldSuccess
+                    else -> JarvisColors.CyanGlow
+                },
                 fontSize = 11.sp,
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.Bold
             )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        // 3. Centerpiece Hero Area: Large 252.dp 3D Holographic Orb + Live Audio Waveform
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            stageLabels.forEachIndexed { idx, label ->
-                val selected = voiceStage == idx
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
                 Box(
                     modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (selected) JarvisColors.CyanPrimary.copy(alpha = 0.22f) else JarvisColors.SurfaceCard)
-                        .border(1.dp, if (selected) JarvisColors.CyanPrimary else JarvisColors.PanelBorder, RoundedCornerShape(8.dp))
-                        .clickable { manualStageOverride = if (manualStageOverride == idx) -1 else idx }
-                        .padding(vertical = 6.dp),
+                        .clip(CircleShape)
+                        .clickable {
+                            if (isSpeakingState) onStopSpeaking() else onStartListening()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(label, color = if (selected) JarvisColors.CyanGlow else JarvisColors.TextSecondary, fontSize = 11.sp)
+                    HolographicOrb(
+                        state = orbState,
+                        rmsLevel = liveRmsLevel,
+                        size = 252.dp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Live 21-Bar Acoustic Waveform Visualizer
+                Row(
+                    modifier = Modifier
+                        .height(28.dp)
+                        .fillMaxWidth(0.68f),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val activeAmplitude = when {
+                        isListeningState -> (liveRmsLevel / 10f).coerceIn(0.25f, 1f)
+                        isSpeakingState -> 0.82f
+                        isProcessingState -> 0.48f
+                        else -> 0.16f
+                    }
+                    for (barIdx in 0 until 21) {
+                        val wave = ((sin(eqPhase + barIdx * 0.45f) + 1f) / 2f)
+                        val barFraction = (0.18f + wave * activeAmplitude * 0.82f).coerceIn(0.15f, 1f)
+                        Box(
+                            modifier = Modifier
+                                .width(3.5.dp)
+                                .height((26f * barFraction).dp)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = when {
+                                            isErrorState -> listOf(JarvisColors.CoralDanger, JarvisColors.AmberWarning)
+                                            isListeningState -> listOf(JarvisColors.CyanGlow, JarvisColors.EmeraldSuccess)
+                                            isSpeakingState -> listOf(JarvisColors.VioletAccent, JarvisColors.CyanGlow)
+                                            else -> listOf(
+                                                JarvisColors.CyanPrimary.copy(alpha = 0.65f),
+                                                JarvisColors.VioletAccent.copy(alpha = 0.35f)
+                                            )
+                                        }
+                                    )
+                                )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = dynamicHeadline,
+                    color = JarvisColors.TextPrimary,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        // 4. Dynamic Live Transcript & AI Response Card
+        JarvisLiquidGlassCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 68.dp, max = 128.dp),
+            isHighlighted = isListeningState || isSpeakingState || isProcessingState,
+            accentColor = when {
+                isErrorState -> JarvisColors.CoralDanger
+                isListeningState -> JarvisColors.EmeraldSuccess
+                isSpeakingState -> JarvisColors.VioletAccent
+                else -> JarvisColors.CyanPrimary
+            },
+            cornerRadius = 18.dp,
+            contentPadding = 12.dp
+        ) {
+            Text(
+                text = dynamicSubtext,
+                color = if (liveRecognizedText.isNotBlank() || lastVoiceAiAnswer.isNotBlank()) {
+                    JarvisColors.TextPrimary
+                } else {
+                    JarvisColors.TextSecondary
+                },
+                fontSize = 12.5.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (liveRecognizedText.isNotBlank() || lastVoiceAiAnswer.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0x9912253E))
+                            .border(1.dp, JarvisColors.CyanPrimary.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                            .clickable {
+                                onSwitchToChat(
+                                    lastVoiceAiAnswer.ifBlank {
+                                        liveRecognizedText.ifBlank { "Lanjutkan diskusi dari Voice Mode" }
+                                    }
+                                )
+                            }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "Lanjutkan di Chat →",
+                            color = JarvisColors.CyanGlow,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        val orbState = resolveVoiceOrbState(
-            voiceEnabled = voiceStage != 0,
-            recognitionActive = voiceStage == 1,
-            processing = voiceStage == 2,
-            speaking = voiceStage == 3,
-            error = liveVoiceStatus.contains("ERROR", ignoreCase = true) || liveVoiceStatus.contains("DENIED", ignoreCase = true)
-        )
-
-        HolographicOrb(
-            state = orbState,
-            rmsLevel = liveRmsLevel,
-            size = 156.dp
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        AnimatedContent(
-            targetState = voiceStage,
-            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(180)) },
-            modifier = Modifier.weight(1f),
-            label = "voice_stage_card"
-        ) { st ->
-            when (st) {
-                0 -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Siap Mendengarkan (Mic Default: OFF)", color = JarvisColors.TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text("Ketuk tombol Mulai Dengar di bawah untuk mengaktifkan SpeechRecognizer.", color = JarvisColors.TextSecondary, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                manualStageOverride = -1
-                                onStartListening()
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary)
-                        ) {
-                            Text("🎙️ Mulai Dengar", color = Color.Black, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(onClick = { onStopSpeaking() }) {
-                            Text("Hentikan Suara", color = JarvisColors.CoralDanger)
-                        }
-                    }
-                }
-
-                1 -> Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.CyanPrimary, RoundedCornerShape(14.dp))
-                        .padding(14.dp)
-                ) {
-                    Text("Mendengarkan Input Suara Aktual...", color = JarvisColors.CyanGlow, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = liveRecognizedText.ifBlank { "[Menunggu ucapan Anda melalui mikrofon perangkat...]" },
-                        color = JarvisColors.TextPrimary,
-                        fontSize = 14.sp
+        // 5. Elegant Cupertino Liquid Glass Capsule Controls (Mulai Dengar & Hentikan Suara)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Primary Capsule: Mulai Dengar
+            Box(
+                modifier = Modifier
+                    .weight(1.15f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = if (isListeningState) {
+                                listOf(JarvisColors.EmeraldSuccess, JarvisColors.CyanPrimary)
+                            } else {
+                                listOf(JarvisColors.CyanPrimary, Color(0xFF0284C7))
+                            }
+                        )
                     )
-                }
+                    .border(1.dp, Color.White.copy(alpha = 0.32f), RoundedCornerShape(999.dp))
+                    .clickable { onStartListening() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (isListeningState) "🎙️ Mendengarkan..." else "🎙️ Mulai Dengar",
+                    color = Color(0xFF03101D),
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 13.5.sp
+                )
+            }
 
-                2 -> Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(14.dp))
-                        .padding(14.dp)
-                ) {
-                    Text("Memproses Permintaan Suara", color = JarvisColors.CyanGlow, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text("✓ Transkripsi SpeechRecognizer selesai", color = JarvisColors.EmeraldSuccess, fontSize = 13.sp)
-                    Text("✓ Mengirim ke Worker & AI Provider ($activeModelLabel)", color = JarvisColors.EmeraldSuccess, fontSize = 13.sp)
-                    Text("◐ Menyiapkan sintesis suara (Fish Audio / Android TTS)...", color = JarvisColors.CyanGlow, fontSize = 13.sp)
-                }
-
-                3 -> Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.CyanPrimary, RoundedCornerShape(14.dp))
-                        .padding(14.dp)
-                ) {
-                    Text(
-                        text = if (isFishAudioFallback) "Respons Suara (Fallback Android TTS Aktif)" else "Respons Suara (Fish Audio Neural TTS)",
-                        color = if (isFishAudioFallback) JarvisColors.AmberWarning else JarvisColors.CyanGlow,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+            // Secondary Capsule: Hentikan Suara
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(Color(0xCC161B29))
+                    .border(
+                        1.dp,
+                        JarvisColors.CoralDanger.copy(alpha = 0.65f),
+                        RoundedCornerShape(999.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Status Engine: $liveVoiceStatus",
-                        color = JarvisColors.TextPrimary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = { onStopSpeaking() },
-                        colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CoralDanger)
-                    ) {
-                        Text("Stop Speaking", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                else -> Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(JarvisColors.SurfaceCard)
-                        .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(14.dp))
-                        .padding(14.dp)
-                ) {
-                    Text("Hasil Transkrip & Tindak Lanjut", color = JarvisColors.CyanGlow, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = liveRecognizedText.ifBlank { "UNAVAILABLE — Belum ada transkrip suara aktif." },
-                        color = JarvisColors.TextPrimary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { onSwitchToChat(liveRecognizedText.ifBlank { "Lanjutkan diskusi dari Voice Mode" }) },
-                            colors = ButtonDefaults.buttonColors(containerColor = JarvisColors.CyanPrimary)
-                        ) {
-                            Text("Lanjutkan di Chat", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-                        OutlinedButton(onClick = {
-                            manualStageOverride = -1
-                            onStartListening()
-                        }) {
-                            Text("Tanya Lagi", color = JarvisColors.CyanGlow, fontSize = 12.sp)
-                        }
-                    }
-                }
+                    .clickable { onStopSpeaking() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "⏹ Hentikan Suara",
+                    color = JarvisColors.CoralDanger,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp
+                )
             }
         }
     }
@@ -1089,13 +1597,10 @@ fun JarvisB8ConversationHistoryScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         if (filtered.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(JarvisColors.SurfaceCard)
-                    .border(1.dp, JarvisColors.PanelBorder, RoundedCornerShape(12.dp))
-                    .padding(14.dp)
+            JarvisLiquidGlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 16.dp,
+                contentPadding = 14.dp
             ) {
                 Text(
                     text = "Belum ada riwayat percakapan tersimpan dari akun Supabase aktif.",
@@ -1106,14 +1611,13 @@ fun JarvisB8ConversationHistoryScreen(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(filtered, key = { it.id }) { item ->
-                    Column(
+                    JarvisLiquidGlassCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(JarvisColors.SurfaceCard)
-                            .border(1.dp, if (item.isPinned) JarvisColors.CyanPrimary.copy(alpha = 0.6f) else JarvisColors.PanelBorder, RoundedCornerShape(12.dp))
-                            .clickable { onSelectConversation(item.id) }
-                            .padding(12.dp)
+                            .clickable { onSelectConversation(item.id) },
+                        isHighlighted = item.isPinned,
+                        cornerRadius = 14.dp,
+                        contentPadding = 12.dp
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1146,7 +1650,6 @@ fun JarvisB8ConversationHistoryScreen(
     }
 }
 
-// ============================================================================
 // SCREENS 21–30 — REAL MULTI-AI COLLABORATION SUITE CONNECTED TO WORKER BACKEND
 // ============================================================================
 @Composable
@@ -1504,6 +2007,7 @@ fun JarvisB8CollaborationSuiteScreen(
                     conn.responseCode
                     conn.disconnect()
                 }.onFailure { err ->
+                    JarvisStabilityGuard.rethrowIfCancellation(err)
                     JarvisStabilityGuard.recordDiagnostic(JarvisStabilityGuard.Subsystem.COLLABORATION, "COLLAB_CANCEL_WARN", err)
                 }
             }

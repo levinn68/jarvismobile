@@ -449,6 +449,8 @@ class MainActivity : ComponentActivity() {
                         supabaseClient.flushPendingTurns()
                         conversationsState.value = supabaseClient.listConversations()
                         accountStatus.value = "ANTREAN OFFLINE TERSINKRON"
+                    }.onFailure { err ->
+                        JarvisStabilityGuard.rethrowIfCancellation(err)
                     }
                 }
             }
@@ -756,11 +758,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             var showB8MasterSuite by remember {
-                mutableStateOf(true)
+                mutableStateOf(prefs.getBoolean("show_b8_master_suite", true))
             }
-            // B8 is the single supported frontend. Keep the legacy HUD dormant for existing installs.
             LaunchedEffect(Unit) {
-                prefs.edit().putBoolean("show_b8_master_suite", true).apply()
+                if (!prefs.contains("show_b8_master_suite")) {
+                    prefs.edit().putBoolean("show_b8_master_suite", true).apply()
+                }
             }
             if (showB8MasterSuite) {
                 JarvisB8MasterShell(
@@ -777,8 +780,19 @@ class MainActivity : ComponentActivity() {
                             cb(payload.answer, payload.isError)
                         }
                     },
-                    onStartListening = { startListening() },
-                    onStopSpeaking = { stopSpeaking(resumeListeningIfActive = voiceModeEnabled) },
+                    onStartListening = {
+                        voiceModeEnabled = true
+                        voiceModeState.value = true
+                        permissionAsked = false
+                        requestMicFocus()
+                        startVoiceForegroundService()
+                        voiceStatus.value = "MICROPHONE STARTING"
+                        startListening()
+                    },
+                    onStopSpeaking = {
+                        stopSpeaking(resumeListeningIfActive = false)
+                        stopVoiceMode()
+                    },
                     onSpeakText = { speak(it) },
                     onRefreshConversations = { refreshHistory() },
                     onOpenSavedConversation = { id -> openConversation(id) },
@@ -787,7 +801,9 @@ class MainActivity : ComponentActivity() {
                         showB8MasterSuite = false
                     },
                     onTriggerGoogleSignIn = { signInGoogle() },
-                    onTriggerSignOut = { signOutGoogle() }
+                    onTriggerSignOut = { signOutGoogle() },
+                    onOpenDeviceSetup = { openDeviceSetup() },
+                    onConsumeVoiceText = { voiceText.value = "" }
                 )
             } else {
             Box(Modifier.fillMaxSize()) {
@@ -1128,20 +1144,19 @@ class MainActivity : ComponentActivity() {
                 for (attempt in 1..2) {
                     if (speechGeneration.get() != gen) return@Thread
                     val endpoint = URL("$workerBaseUrl/v1/tts")
-                    val activeConnection = endpoint.openConnection() as HttpURLConnection
-                    connection = activeConnection
-                    activeTtsConnection.set(activeConnection)
-                    activeConnection.requestMethod = "POST"
-                    activeConnection.connectTimeout = 20000
-                    activeConnection.readTimeout = 90000
-                    activeConnection.doOutput = true
-                    activeConnection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    activeConnection.setRequestProperty("Authorization", "Bearer $accessToken")
+                    connection = endpoint.openConnection() as HttpURLConnection
+                    activeTtsConnection.set(connection)
+                    connection.requestMethod = "POST"
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 90000
+                    connection.doOutput = true
+                    connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    connection.setRequestProperty("Authorization", "Bearer $accessToken")
                     val body = JSONObject().put("text", cleanSpeech)
-                    activeConnection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                    val code = activeConnection.responseCode
+                    connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+                    val code = connection.responseCode
                     if (code == 401 && attempt == 1 && supabaseClient.hasSession()) {
-                        activeConnection.disconnect()
+                        connection.disconnect()
                         connection = null
                         val refreshed = runCatching { supabaseClient.refreshSessionBlocking() }.getOrDefault("")
                         if (refreshed.isNotBlank()) {
@@ -1150,12 +1165,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     if (code !in 200..299) {
-                        val detail = activeConnection.errorStream?.let { stream ->
-                            BufferedReader(InputStreamReader(stream, Charsets.UTF_8)).use { it.readText() }
+                        val detail = connection.errorStream?.let { stream ->
+                            String(JarvisStabilityGuard.readBoundedBytes(stream, 64 * 1024), Charsets.UTF_8)
                         }.orEmpty()
                         throw IllegalStateException("Fish Audio HTTP $code: $detail")
                     }
-                    resolvedAudio = JarvisStabilityGuard.readBoundedBytes(activeConnection.inputStream, JarvisStabilityGuard.MAX_TTS_AUDIO_BYTES)
+                    resolvedAudio = JarvisStabilityGuard.readBoundedBytes(connection.inputStream, JarvisStabilityGuard.MAX_TTS_AUDIO_BYTES)
                     break
                 }
                 if (speechGeneration.get() != gen) return@Thread
@@ -1627,6 +1642,7 @@ private fun InlineMarkdownText(markdown: String, fontSize: androidx.compose.ui.u
         }
     )
 }
+
 @Composable
 private fun RemoteMarkdownImage(alt: String, url: String) {
     val context = LocalContext.current
@@ -2294,9 +2310,16 @@ private fun SourceLogo(url: String) {
             runCatching {
                 val encoded = URLEncoder.encode(url, "UTF-8")
                 val conn = URL("https://www.google.com/s2/favicons?domain_url=" + encoded + "&sz=64").openConnection() as HttpURLConnection
-                conn.connectTimeout = 4000
-                conn.readTimeout = 4000
-                conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                try {
+                    conn.connectTimeout = 4000
+                    conn.readTimeout = 4000
+                    val bytes = JarvisStabilityGuard.readBoundedBytes(conn.inputStream, 256 * 1024)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } finally {
+                    conn.disconnect()
+                }
+            }.onFailure { err ->
+                JarvisStabilityGuard.rethrowIfCancellation(err)
             }.getOrNull()
         }
     }
@@ -4538,4 +4561,3 @@ private fun JarvisScreen(
         }
     }
 }
-

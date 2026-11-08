@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,6 +95,8 @@ fun JarvisB8MasterShell(
     onReturnToClassicHud: () -> Unit = {},
     onTriggerGoogleSignIn: () -> Unit = {},
     onTriggerSignOut: () -> Unit = {},
+    onOpenDeviceSetup: () -> Unit = {},
+    onConsumeVoiceText: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -103,7 +107,12 @@ fun JarvisB8MasterShell(
 
     var activeTab by remember { mutableStateOf(JarvisB8NavTab.CHAT) }
     var overlayRoute by remember { mutableStateOf(JarvisB8OverlayRoute.NONE) }
-    var selectedTier by remember { mutableStateOf(JarvisIntelligenceTier.APEX) }
+    var selectedTier by remember {
+        val savedTier = prefs.getString("selected_tier", JarvisIntelligenceTier.APEX.name).orEmpty()
+        val resolvedTier = JarvisIntelligenceTier.entries.find { it.name.equals(savedTier, ignoreCase = true) }
+            ?: JarvisIntelligenceTier.APEX
+        mutableStateOf(resolvedTier)
+    }
     var selectedModelId by remember {
         mutableStateOf(prefs.getString("selected_model_id", "gpt-4o") ?: "gpt-4o")
     }
@@ -488,6 +497,8 @@ fun JarvisB8MasterShell(
                     conn.disconnect()
                 }
                 syncProvidersAndAccountsFromBackend()
+            }.onFailure { err ->
+                JarvisStabilityGuard.rethrowIfCancellation(err)
             }
         }
     }
@@ -541,6 +552,7 @@ fun JarvisB8MasterShell(
                         conn.disconnect()
                     }
                 } catch (err: Exception) {
+                    JarvisStabilityGuard.rethrowIfCancellation(err)
                     Triple(false, "NETWORK_ERROR: ${err.message ?: "Gagal menghubungi backend"}", emptyList())
                 }
             }
@@ -605,7 +617,41 @@ fun JarvisB8MasterShell(
         modifier = modifier
             .fillMaxSize()
             .background(JarvisColors.BackgroundDeep)
+            .statusBarsPadding()
+            .imePadding()
     ) {
+        if (overlayRoute == JarvisB8OverlayRoute.HISTORY_SEARCH || overlayRoute == JarvisB8OverlayRoute.ONBOARDING_FLOW) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(JarvisColors.GlassSurfaceStrong)
+                        .border(1.dp, JarvisColors.GlassBorder, RoundedCornerShape(999.dp))
+                        .clickable { overlayRoute = JarvisB8OverlayRoute.NONE }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "‹ Kembali",
+                        color = JarvisColors.CyanGlow,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = if (overlayRoute == JarvisB8OverlayRoute.HISTORY_SEARCH) "Riwayat Percakapan" else "Onboarding & Setup",
+                    color = JarvisColors.TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
+
         Box(modifier = Modifier.weight(1f)) {
             AnimatedContent(
                 targetState = overlayRoute to activeTab,
@@ -625,7 +671,7 @@ fun JarvisB8MasterShell(
                             },
                             onFlowCompleted = {
                                 overlayRoute = JarvisB8OverlayRoute.NONE
-                                activeTab = JarvisB8NavTab.BERANDA
+                                activeTab = JarvisB8NavTab.CHAT
                             }
                         )
                     }
@@ -674,15 +720,19 @@ fun JarvisB8MasterShell(
                                         }
                                         conn.responseCode
                                         conn.disconnect()
+                                    }.onFailure { err ->
+                                        JarvisStabilityGuard.rethrowIfCancellation(err)
                                     }
                                 }
                                 overlayRoute = JarvisB8OverlayRoute.NONE
                             },
                             onSelectTier = { tier ->
                                 selectedTier = tier
+                                selectedModelId = tier.defaultModelId
                                 activeModelLabel = "${tier.displayTitle} (${tier.defaultModelName})"
                                 prefs.edit()
                                     .putString("selected_tier", selectedTier.name)
+                                    .putString("selected_model_id", selectedModelId)
                                     .putString("active_model_label", activeModelLabel)
                                     .apply()
                                 scope.launch(Dispatchers.IO) {
@@ -698,10 +748,12 @@ fun JarvisB8MasterShell(
                                             if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
                                         }
                                         conn.outputStream.use {
-                                            it.write(JSONObject().put("tier", tier.name).toString().toByteArray(Charsets.UTF_8))
+                                            it.write(JSONObject().put("tier", tier.name).put("modelId", tier.defaultModelId).toString().toByteArray(Charsets.UTF_8))
                                         }
                                         conn.responseCode
                                         conn.disconnect()
+                                    }.onFailure { err ->
+                                        JarvisStabilityGuard.rethrowIfCancellation(err)
                                     }
                                 }
                                 overlayRoute = JarvisB8OverlayRoute.NONE
@@ -743,6 +795,8 @@ fun JarvisB8MasterShell(
                                         }
                                         conn.responseCode
                                         conn.disconnect()
+                                    }.onFailure { err ->
+                                        JarvisStabilityGuard.rethrowIfCancellation(err)
                                     }
                                 }
                             },
@@ -851,7 +905,7 @@ fun JarvisB8MasterShell(
                         when (currentTab) {
                             JarvisB8NavTab.BERANDA -> {
                                 JarvisDashboardScreen(
-                                    userName = userName ?: "Fajar",
+                                    userName = userName.orEmpty(),
                                     activeTier = selectedTier,
                                     activeProviderCount = providersState.count { it.connected },
                                     activeAccountCount = accountsState.count { it.active },
@@ -876,7 +930,12 @@ fun JarvisB8MasterShell(
                                         activeTab = JarvisB8NavTab.KOLABORASI
                                     },
                                     onSwitchToVoice = { activeTab = JarvisB8NavTab.VOICE },
-                                    onSendLiveChatPrompt = onSendLiveChatPrompt
+                                    onSendLiveChatPrompt = onSendLiveChatPrompt,
+                                    savedConversations = savedConversations,
+                                    onOpenHistory = { overlayRoute = JarvisB8OverlayRoute.HISTORY_SEARCH },
+                                    onSelectSavedConversation = { convId ->
+                                        onOpenSavedConversation(convId)
+                                    }
                                 )
                             }
 
@@ -891,7 +950,10 @@ fun JarvisB8MasterShell(
                                     onSpeakText = onSpeakText,
                                     onSwitchToChat = {
                                         activeTab = JarvisB8NavTab.CHAT
-                                    }
+                                    },
+                                    onSendLiveChatPrompt = onSendLiveChatPrompt,
+                                    onConsumeRecognizedText = onConsumeVoiceText,
+                                    onOpenModelSelector = { overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR }
                                 )
                             }
 
@@ -907,9 +969,23 @@ fun JarvisB8MasterShell(
 
                             JarvisB8NavTab.PENGATURAN -> {
                                 JarvisExtensibilityAndSettingsSuite(
-                                    userEmail = userEmail ?: "fajar@email.com",
-                                    userName = userName ?: "Fajar",
+                                    userEmail = userEmail,
+                                    userName = userName,
+                                    activeModelLabel = activeModelLabel,
+                                    connectedProviderCount = providersState.count { it.connected },
+                                    totalProviderCount = providersState.size,
+                                    activeAccountCount = accountsState.count { it.active },
+                                    savedConversationCount = savedConversations.size,
                                     accessTokenProvider = accessTokenProvider,
+                                    onOpenModelSelector = { overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR },
+                                    onOpenProviders = { overlayRoute = JarvisB8OverlayRoute.AI_PROVIDERS },
+                                    onOpenMultiAccounts = { overlayRoute = JarvisB8OverlayRoute.MULTI_ACCOUNTS },
+                                    onOpenCollaboration = { activeTab = JarvisB8NavTab.KOLABORASI },
+                                    onOpenHistory = { overlayRoute = JarvisB8OverlayRoute.HISTORY_SEARCH },
+                                    onOpenOnboarding = { overlayRoute = JarvisB8OverlayRoute.ONBOARDING_FLOW },
+                                    onOpenDeviceSetup = onOpenDeviceSetup,
+                                    onReturnToClassicHud = onReturnToClassicHud,
+                                    onTriggerGoogleSignIn = onTriggerGoogleSignIn,
                                     onSignOut = onTriggerSignOut
                                 )
                             }
@@ -920,14 +996,10 @@ fun JarvisB8MasterShell(
         }
 
         JarvisB8BottomNavigationBar(
-            selectedTab = if (overlayRoute == JarvisB8OverlayRoute.MODEL_SELECTOR) JarvisB8NavTab.BERANDA else activeTab,
+            selectedTab = activeTab,
             onSelectTab = { tab ->
-                if (tab == JarvisB8NavTab.BERANDA) {
-                    overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR
-                } else {
-                    overlayRoute = JarvisB8OverlayRoute.NONE
-                    activeTab = tab
-                }
+                overlayRoute = JarvisB8OverlayRoute.NONE
+                activeTab = tab
             }
         )
     }

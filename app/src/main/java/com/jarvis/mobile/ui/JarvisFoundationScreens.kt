@@ -1,21 +1,19 @@
 package com.jarvis.mobile.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,11 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -47,19 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
-/**
- * Storyboard Sheet 1 (Screens 1–10):
- * 1. Splash Screen (v8.0.0)
- * 2. Welcome / Onboarding
- * 3. Login ke J.A.R.V.I.S. (Google, GitHub, Email, Guest)
- * 4. Login Sukses
- * 5. System Initialization (42%)
- * 6. Core Formation (68%)
- * 7. Core Ready (Core Online)
- * 8. Fitur: Chat (55%)
- * 9. Fitur: Voice & Kolaborasi (78%)
- * 10. Fitur Lengkap (Beranda Dashboard + 5-Tab Bottom Bar)
- */
 enum class JarvisOnboardingStage {
     SPLASH,
     WELCOME,
@@ -203,13 +185,6 @@ fun JarvisB8OnboardingFlow(
 
 @Composable
 fun JarvisSplashScreen() {
-    val infinite = rememberInfiniteTransition(label = "splash_ring")
-    val spin by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Restart),
-        label = "splash_spin"
-    )
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -218,7 +193,7 @@ fun JarvisSplashScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        HolographicOrb(state = VoiceOrbState.Idle, size = 180.dp)
+        HolographicOrb(state = VoiceOrbState.Idle, size = 196.dp)
         Spacer(Modifier.height(28.dp))
         Text(
             text = "J.A.R.V.I.S.",
@@ -235,8 +210,8 @@ fun JarvisSplashScreen() {
         )
         Spacer(Modifier.height(36.dp))
         Text(
-            text = "Initializing...",
-            color = JarvisColors.Cyan,
+            text = "Initializing Liquid Glass Core...",
+            color = JarvisColors.CyanGlow,
             fontSize = 12.sp,
             fontFamily = FontFamily.Monospace
         )
@@ -287,43 +262,30 @@ fun JarvisWelcomeOnboardingScreen(onStartClick: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "Satu platform untuk Multi-AI, kolaborasi cerdas, MCP, Skills, dan kontrol perangkat Android.",
+            text = "Satu platform untuk Multi-AI, kolaborasi cerdas, MCP, Skills, dan kontrol perangkat Android dengan antarmuka Liquid Glass.",
             color = JarvisColors.TextMuted,
             fontSize = 13.5.sp,
             lineHeight = 19.sp
         )
         Spacer(Modifier.height(22.dp))
         features.forEach { (icon, title) ->
-            Row(
+            JarvisLiquidGlassCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 5.dp)
-                    .clip(JarvisShapes.CardSm)
-                    .background(JarvisColors.PanelSolid)
-                    .border(1.dp, JarvisColors.CyanBorder, JarvisShapes.CardSm)
-                    .padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(vertical = 5.dp),
+                shape = JarvisShapes.SquircleMd,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp)
             ) {
-                Icon(icon, contentDescription = title, tint = JarvisColors.Cyan, modifier = Modifier.size(22.dp))
-                Text(title, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(icon, contentDescription = title, tint = JarvisColors.CyanGlow, modifier = Modifier.size(22.dp))
+                    Text(title, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
         Spacer(Modifier.weight(1f))
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
-            repeat(4) { idx ->
-                Box(
-                    Modifier
-                        .padding(horizontal = 4.dp)
-                        .size(if (idx == 0) 8.dp else 6.dp)
-                        .clip(CircleShape)
-                        .background(if (idx == 0) JarvisColors.Cyan else JarvisColors.TextDim)
-                )
-            }
-        }
         Button(
             onClick = onStartClick,
             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -356,12 +318,12 @@ fun JarvisLoginScreen(
                 Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = JarvisColors.Ice)
             }
         }
-        HolographicOrb(state = VoiceOrbState.Idle, size = 96.dp)
+        HolographicOrb(state = VoiceOrbState.Idle, size = 110.dp)
         Spacer(Modifier.height(14.dp))
         Text("Login ke J.A.R.V.I.S.", color = JarvisColors.Ice, fontSize = 21.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Masuk dengan akun Anda untuk menyinkronkan data dan konfigurasi.",
+            "Masuk dengan akun Google Anda untuk menyinkronkan riwayat percakapan, provider AI, dan perangkat.",
             color = JarvisColors.TextMuted,
             fontSize = 13.sp,
             textAlign = TextAlign.Center
@@ -376,7 +338,7 @@ fun JarvisLoginScreen(
                 shape = JarvisShapes.Button,
                 border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.CyanBorder)
             ) {
-                Icon(icon, contentDescription = label, tint = JarvisColors.Cyan, modifier = Modifier.size(18.dp))
+                Icon(icon, contentDescription = label, tint = JarvisColors.CyanGlow, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(label, color = JarvisColors.Ice, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
             }
@@ -395,15 +357,8 @@ fun JarvisLoginScreen(
             shape = JarvisShapes.Button,
             border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.GlassBorder)
         ) {
-            Text("Gunakan sebagai Guest", color = JarvisColors.TextMuted, fontSize = 13.sp)
+            Text("Lanjutkan ke Ruang Kerja", color = JarvisColors.TextMuted, fontSize = 13.sp)
         }
-        Spacer(Modifier.height(18.dp))
-        Text(
-            "Dengan masuk, Anda menyetujui Syarat Penggunaan & Kebijakan Privasi.",
-            color = JarvisColors.TextDim,
-            fontSize = 11.sp,
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -422,13 +377,13 @@ fun JarvisLoginSuccessScreen() {
                 .size(110.dp)
                 .clip(CircleShape)
                 .background(JarvisColors.PanelSolid)
-                .border(2.5.dp, JarvisColors.Cyan, CircleShape),
+                .border(2.5.dp, JarvisColors.CyanGlow, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Check, contentDescription = "Login Berhasil", tint = JarvisColors.Cyan, modifier = Modifier.size(54.dp))
+            Icon(Icons.Default.Check, contentDescription = "Login Berhasil", tint = JarvisColors.CyanGlow, modifier = Modifier.size(54.dp))
         }
         Spacer(Modifier.height(24.dp))
-        Text("Login Berhasil!", color = JarvisColors.Ice, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Text("Autentikasi Siap", color = JarvisColors.Ice, fontSize = 22.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(
             "Menyiapkan lingkungan J.A.R.V.I.S. untuk Anda...",
@@ -459,32 +414,29 @@ fun JarvisSystemInitStageScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        HolographicOrb(state = VoiceOrbState.Processing, size = 148.dp)
+        HolographicOrb(state = VoiceOrbState.Processing, size = 160.dp)
         Spacer(Modifier.height(20.dp))
         Text(title, color = JarvisColors.Ice, fontSize = 19.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(18.dp))
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(JarvisShapes.Card)
-                .background(JarvisColors.PanelSolid)
-                .border(1.dp, JarvisColors.CyanBorder, JarvisShapes.Card)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        JarvisLiquidGlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            highlighted = true
         ) {
-            items.forEach { (label, done) ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(label, color = if (done) JarvisColors.Ice else JarvisColors.TextMuted, fontSize = 13.sp)
-                    Icon(
-                        imageVector = if (done) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                        contentDescription = label,
-                        tint = if (done) JarvisColors.Ok else JarvisColors.Cyan,
-                        modifier = Modifier.size(18.dp)
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                items.forEach { (label, done) ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(label, color = if (done) JarvisColors.Ice else JarvisColors.TextMuted, fontSize = 13.sp)
+                        Icon(
+                            imageVector = if (done) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                            contentDescription = label,
+                            tint = if (done) JarvisColors.Ok else JarvisColors.CyanGlow,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -497,7 +449,7 @@ fun JarvisSystemInitStageScreen(
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier.weight(1f).height(8.dp).clip(JarvisShapes.Chip),
-                color = JarvisColors.Cyan,
+                color = JarvisColors.CyanGlow,
                 trackColor = JarvisColors.PanelSolid
             )
             Text(
@@ -530,9 +482,9 @@ fun JarvisFeatureActivationScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        HolographicOrb(state = VoiceOrbState.Responding, size = 156.dp)
+        HolographicOrb(state = VoiceOrbState.Responding, size = 168.dp)
         Spacer(Modifier.height(18.dp))
-        Text(activeFeature, color = JarvisColors.Cyan, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(activeFeature, color = JarvisColors.CyanGlow, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
         Text(statusLabel, color = JarvisColors.Ice, fontSize = 14.sp, textAlign = TextAlign.Center)
         Spacer(Modifier.height(20.dp))
@@ -544,7 +496,7 @@ fun JarvisFeatureActivationScreen(
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier.weight(1f).height(8.dp).clip(JarvisShapes.Chip),
-                color = JarvisColors.Cyan,
+                color = JarvisColors.CyanGlow,
                 trackColor = JarvisColors.PanelSolid
             )
             Text(
@@ -557,17 +509,14 @@ fun JarvisFeatureActivationScreen(
     }
 }
 
-/**
- * Storyboard Screens 10 & 11 (2.1): Beranda (Dashboard) + Ringkasan Sistem + 5-Tab Bottom Bar.
- */
 @Composable
 fun JarvisDashboardScreen(
     userName: String?,
     activeTier: JarvisIntelligenceTier,
-    activeProviderCount: Int = 4,
-    activeAccountCount: Int = 7,
-    activeMcpCount: Int = 3,
-    installedSkillCount: Int = 29,
+    activeProviderCount: Int = 0,
+    activeAccountCount: Int = 0,
+    activeMcpCount: Int = 4,
+    installedSkillCount: Int = 6,
     onOpenChat: () -> Unit,
     onOpenVoice: () -> Unit,
     onOpenCollaboration: () -> Unit,
@@ -576,14 +525,14 @@ fun JarvisDashboardScreen(
     onOpenMcp: () -> Unit,
     onOpenSystemStatus: () -> Unit = {}
 ) {
+    val greetingName = userName?.trim()?.takeIf { it.isNotBlank() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(vertical = 6.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Greeting + Mini Orb Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -591,52 +540,50 @@ fun JarvisDashboardScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Halo, ${userName?.takeIf { it.isNotBlank() } ?: "User"} 👋",
+                    text = if (greetingName != null) "Halo, $greetingName" else "J.A.R.V.I.S. Command Center",
                     color = JarvisColors.Ice,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Siap menjelajahi ide, menyelesaikan tugas, atau berkolaborasi dengan banyak AI?",
+                    text = "Ruang kerja AI terpadu untuk Chat, Suara Hologram, Kolaborasi Multi-AI, dan Kontrol Perangkat.",
                     color = JarvisColors.TextMuted,
-                    fontSize = 12.5.sp,
+                    fontSize = 12.sp,
                     lineHeight = 17.sp
                 )
             }
             HolographicOrb(state = VoiceOrbState.Idle, size = 64.dp)
         }
 
-        // Active Model Banner (Screen 2.1: JARVIS 4 — APEX · Model Aktif)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(JarvisShapes.Card)
-                .background(Brush.horizontalGradient(listOf(Color(0xFF0C2338), Color(0xFF071524))))
-                .border(1.dp, JarvisColors.Cyan.copy(alpha = 0.55f), JarvisShapes.Card)
-                .clickable { onOpenModels() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        JarvisLiquidGlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            highlighted = true,
+            onClick = onOpenModels
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Icon(Icons.Default.Memory, contentDescription = null, tint = JarvisColors.Cyan, modifier = Modifier.size(22.dp))
-                Column {
-                    Text(activeTier.displayTitle, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Model Aktif · ${activeTier.defaultModelName}", color = JarvisColors.TextMuted, fontSize = 11.5.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(Icons.Default.Memory, contentDescription = null, tint = JarvisColors.CyanGlow, modifier = Modifier.size(22.dp))
+                    Column {
+                        Text(activeTier.displayTitle, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("Model Aktif · ${activeTier.defaultModelName}", color = JarvisColors.TextMuted, fontSize = 11.5.sp)
+                    }
                 }
+                Icon(Icons.Default.ArrowForward, contentDescription = "Pilih Model", tint = JarvisColors.CyanGlow, modifier = Modifier.size(18.dp))
             }
-            Icon(Icons.Default.ArrowForward, contentDescription = "Pilih Model", tint = JarvisColors.Cyan, modifier = Modifier.size(18.dp))
         }
 
-        // 2x3 Primary Module Cards (Chat, Voice, Kolaborasi, Models, Skills, MCP)
         val modules = listOf(
-            Triple("Chat", "Percakapan dengan AI", Icons.Default.Chat) to onOpenChat,
-            Triple("Voice", "Asisten suara JARVIS", Icons.Default.GraphicEq) to onOpenVoice,
-            Triple("Kolaborasi", "Multi-AI Discussion", Icons.Default.Hub) to onOpenCollaboration,
+            Triple("Chat", "Percakapan AI & dokumen", Icons.Default.Chat) to onOpenChat,
+            Triple("Voice", "Hologram asisten suara", Icons.Default.GraphicEq) to onOpenVoice,
+            Triple("Kolaborasi", "7 Mode Multi-AI Studio", Icons.Default.Hub) to onOpenCollaboration,
             Triple("Models", "CORE · PULSE · SPARK · APEX", Icons.Default.Layers) to onOpenModels,
-            Triple("Skills", "Kelola & instal skill", Icons.Default.Extension) to onOpenSkills,
-            Triple("MCP", "Hubungkan tools & server", Icons.Default.Dns) to onOpenMcp
+            Triple("Skills", "Katalog & eksekusi skill", Icons.Default.Extension) to onOpenSkills,
+            Triple("MCP", "Server & JSON-RPC tools", Icons.Default.Dns) to onOpenMcp
         )
 
         for (rowIdx in 0 until 3) {
@@ -646,69 +593,66 @@ fun JarvisDashboardScreen(
             ) {
                 for (colIdx in 0 until 2) {
                     val (info, action) = modules[rowIdx * 2 + colIdx]
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(JarvisShapes.Card)
-                            .background(JarvisColors.PanelSolid)
-                            .border(1.dp, JarvisColors.CyanBorder, JarvisShapes.Card)
-                            .clickable { action() }
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    JarvisLiquidGlassCard(
+                        modifier = Modifier.weight(1f),
+                        onClick = action
                     ) {
-                        Icon(info.third, contentDescription = info.first, tint = JarvisColors.Cyan, modifier = Modifier.size(22.dp))
-                        Text(info.first, color = JarvisColors.Ice, fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
-                        Text(
-                            info.second,
-                            color = JarvisColors.TextMuted,
-                            fontSize = 11.5.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(info.third, contentDescription = info.first, tint = JarvisColors.CyanGlow, modifier = Modifier.size(22.dp))
+                            Text(info.first, color = JarvisColors.Ice, fontSize = 14.5.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                info.second,
+                                color = JarvisColors.TextMuted,
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Ringkasan Sistem Card (Screen 2.1)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(JarvisShapes.Card)
-                .background(JarvisColors.PanelSolid)
-                .border(1.dp, JarvisColors.GlassBorder, JarvisShapes.Card)
-                .clickable { onOpenSystemStatus() }
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        JarvisLiquidGlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onOpenSystemStatus
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Icon(Icons.Default.Analytics, contentDescription = null, tint = JarvisColors.Cyan, modifier = Modifier.size(16.dp))
-                Text("Ringkasan Sistem", color = JarvisColors.Ice, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Provider", color = JarvisColors.TextMuted, fontSize = 11.sp)
-                    Text("$activeProviderCount aktif", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Icon(Icons.Default.Analytics, contentDescription = null, tint = JarvisColors.CyanGlow, modifier = Modifier.size(16.dp))
+                    Text("Status Konfigurasi Aktif", color = JarvisColors.Ice, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Akun", color = JarvisColors.TextMuted, fontSize = 11.sp)
-                    Text("$activeAccountCount akun", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Provider Terverifikasi", color = JarvisColors.TextMuted, fontSize = 11.sp)
+                        Text("$activeProviderCount terhubung", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Akun AI Tersimpan", color = JarvisColors.TextMuted, fontSize = 11.sp)
+                        Text("$activeAccountCount akun", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("MCP Server", color = JarvisColors.TextMuted, fontSize = 11.sp)
-                    Text("$activeMcpCount server", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Skills", color = JarvisColors.TextMuted, fontSize = 11.sp)
-                    Text("$installedSkillCount skill", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("MCP Server", color = JarvisColors.TextMuted, fontSize = 11.sp)
+                        Text("$activeMcpCount aktif", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Skills Terpasang", color = JarvisColors.TextMuted, fontSize = 11.sp)
+                        Text("$installedSkillCount skill", color = JarvisColors.Ice, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }
     }
 }
 
+/**
+ * Cupertino Liquid Glass + Smooth Motion 3-Destination Floating Dock:
+ * - Chat: Modern AI Conversation Workspace
+ * - Voice: Central Elevated Holographic Orb Trigger
+ * - More: Unified Feature & Settings Hub
+ */
 @Composable
 fun JarvisB8BottomNavigationBar(
     selectedTab: JarvisB8NavTab,
@@ -716,7 +660,7 @@ fun JarvisB8BottomNavigationBar(
     modifier: Modifier = Modifier
 ) {
     // Three primary destinations only: Chat, central Voice, and More.
-// Team remains reachable from Chat; Models remains an in-context selector.
+    // Team remains reachable from Chat/More; Models remains an in-context selector.
     val tabs = listOf(
         Triple(JarvisB8NavTab.CHAT, Icons.Default.Chat, "Chat"),
         Triple(JarvisB8NavTab.VOICE, Icons.Default.Mic, "Voice"),
@@ -733,94 +677,130 @@ fun JarvisB8BottomNavigationBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 22.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth(0.88f)
-                .widthIn(max = 350.dp)
+                .fillMaxWidth(0.90f)
+                .widthIn(max = 360.dp)
+                .shadow(18.dp, CircleShape)
                 .clip(CircleShape)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xE62B4052), Color(0xE6101D2B), Color(0xE60A1420))
+                        listOf(
+                            Color(0xEE1A2E44),
+                            Color(0xE80D1A2A),
+                            Color(0xE607101C)
+                        )
                     )
                 )
                 .border(
-                    1.dp,
+                    1.2.dp,
                     Brush.linearGradient(
-                        listOf(Color(0x88D8F5FF), Color(0x5549DDF5), Color(0x336D8DAD))
+                        listOf(
+                            Color(0x99E0F8FF),
+                            Color(0x5538E8FF),
+                            Color(0x448B5CFF)
+                        )
                     ),
                     CircleShape
                 )
-                .padding(horizontal = 7.dp, vertical = 7.dp),
+                .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             tabs.forEach { (tab, icon, label) ->
-                val selected = selectedTab == tab
+                val selected = selectedTab == tab ||
+                    (tab == JarvisB8NavTab.PENGATURAN && (selectedTab == JarvisB8NavTab.KOLABORASI || selectedTab == JarvisB8NavTab.BERANDA))
                 if (tab == JarvisB8NavTab.VOICE) {
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .clip(CircleShape)
                             .clickable { onSelectTab(tab) }
-                            .padding(vertical = 0.dp),
+                            .padding(vertical = 1.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(58.dp)
+                                .size(56.dp)
                                 .scale(voiceScale)
-                                .shadow(12.dp, CircleShape)
+                                .shadow(14.dp, CircleShape)
                                 .background(
                                     Brush.linearGradient(
-                                        if (selected)
-                                            listOf(Color(0xFFB7F7FF), Color(0xFF39DDF5), Color(0xFF0785B5))
-                                        else
-                                            listOf(Color(0xFF426D82), Color(0xFF193C52), Color(0xFF102638))
+                                        if (selected) {
+                                            listOf(Color(0xFFC2FAFF), Color(0xFF28E5FF), Color(0xFF5B8CFF))
+                                        } else {
+                                            listOf(Color(0xFF2D546E), Color(0xFF152F45), Color(0xFF0E2032))
+                                        }
                                     ),
                                     CircleShape
                                 )
                                 .border(
                                     1.2.dp,
-                                    Color(0xCCDAFAFF),
+                                    if (selected) Color(0xFFE6FCFF) else Color(0x889CE8FF),
                                     CircleShape
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
                             Box(
                                 Modifier
-                                    .size(48.dp)
-                                    .border(1.dp, Color.White.copy(alpha = 0.20f), CircleShape),
+                                    .size(46.dp)
+                                    .border(1.dp, Color.White.copy(alpha = 0.24f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = icon,
                                     contentDescription = "Voice",
-                                    tint = if (selected) Color(0xFF042330) else Color(0xFFD7F6FF),
-                                    modifier = Modifier.size(25.dp)
+                                    tint = if (selected) Color(0xFF031B28) else Color(0xFFE2FAFF),
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             text = label,
                             color = if (selected) JarvisColors.CyanGlow else JarvisColors.TextMuted,
-                            fontSize = 9.sp,
+                            fontSize = 10.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 1
                         )
                     }
                 } else {
+                    val itemScale by animateFloatAsState(
+                        targetValue = if (selected) 1.03f else 1f,
+                        animationSpec = JarvisMotion.springSmooth(),
+                        label = "nav_tab_scale_${tab.name}"
+                    )
                     Column(
                         modifier = Modifier
                             .weight(1f)
+                            .scale(itemScale)
                             .clip(CircleShape)
                             .background(
-                                if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent,
+                                if (selected) {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            Color.White.copy(alpha = 0.14f),
+                                            JarvisColors.Cyan.copy(alpha = 0.12f)
+                                        )
+                                    )
+                                } else {
+                                    Brush.linearGradient(listOf(Color.Transparent, Color.Transparent))
+                                },
                                 CircleShape
                             )
+                            .let { mod ->
+                                if (selected) {
+                                    mod.border(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.22f),
+                                        CircleShape
+                                    )
+                                } else mod
+                            }
                             .clickable { onSelectTab(tab) }
                             .padding(vertical = 8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -836,8 +816,8 @@ fun JarvisB8BottomNavigationBar(
                         Text(
                             text = label,
                             color = if (selected) JarvisColors.Ice else Color(0xFF9CB4C5),
-                            fontSize = 9.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            fontSize = 10.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                             maxLines = 1
                         )
                     }

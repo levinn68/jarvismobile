@@ -258,3 +258,43 @@ private fun defaultVisualFallbackFor(
             "Pusat Pemrosesan AI Council" to "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=900&q=80"
         )
     }.take(MAX_VISUAL_CARDS)
+}
+
+private class ClapPatternDetector(
+    private val handler: Handler,
+    private val onDetected: (Int) -> Unit
+) {
+    private var baseline = 0f
+    private var previous = 0f
+    private var initialized = false
+    private var firstClapAt = 0L
+    private var lastSpikeAt = 0L
+    private var lastTriggeredAt = 0L
+    private var pendingCount = 0
+    private var pendingSingle: Runnable? = null
+
+    fun onRms(rmsDb: Float) {
+        if (!rmsDb.isFinite()) return
+        val now = SystemClock.elapsedRealtime()
+        val level = rmsDb.coerceIn(0f, 20f)
+        if (!initialized) {
+            baseline = level
+            previous = level
+            initialized = true
+            return
+        }
+
+        val jump = level - previous
+        if (pendingCount == 0 && level < baseline + 4f) {
+            baseline = baseline * 0.96f + level * 0.04f
+        }
+        previous = level
+
+        val threshold = maxOf(7.5f, baseline + 6f)
+        val isSharpTransient = level >= threshold && jump >= 3.5f
+        if (!isSharpTransient || now - lastSpikeAt < 180L || now - lastTriggeredAt < 1100L) return
+        lastSpikeAt = now
+
+        if (pendingCount == 1 && now - firstClapAt in 140L..650L) {
+            pendingSingle?.let(handler::removeCallbacks)
+            pendingSingle = null
