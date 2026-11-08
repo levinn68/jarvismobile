@@ -1,44 +1,6 @@
 package com.jarvis.mobile.ui
 
 import android.content.Context
-import android.net.Uri
-import android.os.Handler
-import android.os.Looper
-import android.provider.OpenableColumns
-import android.util.Log
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.text.font.FontFamily
-import android.media.MediaPlayer
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -80,9 +42,11 @@ import com.jarvis.mobile.ai.IndependentProviderCatalog
 import com.jarvis.mobile.ai.JarvisAccountItem
 import com.jarvis.mobile.ai.JarvisModelItem
 import com.jarvis.mobile.ai.JarvisModelSelectorScreen
+import com.jarvis.mobile.ai.JarvisMultiAccountsScreen
 import com.jarvis.mobile.ai.JarvisProviderItem
 import com.jarvis.mobile.ai.JarvisProvidersScreen
 import com.jarvis.mobile.device.JarvisDeviceClient
+import com.jarvis.mobile.stability.JarvisStabilityGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -716,7 +680,7 @@ fun JarvisB8MasterShell(
                         JarvisB8ConversationHistoryScreen(
                             savedConversations = savedConversations,
                             onRefreshConversations = onRefreshConversations,
-                            onSelectConversation = { convId: String ->
+                            onSelectConversation = { convId ->
                                 onOpenSavedConversation(convId)
                                 overlayRoute = JarvisB8OverlayRoute.NONE
                                 activeTab = JarvisB8NavTab.CHAT
@@ -730,7 +694,7 @@ fun JarvisB8MasterShell(
                             selectedTier = selectedTier,
                             models = modelsState,
                             connectedProviderIds = connectedProviderIds,
-                            onSelectModel = { model: JarvisModelItem ->
+                            onSelectModel = { model ->
                                 selectedModelId = model.id
                                 selectedTier = model.tier
                                 activeModelLabel = "${model.tier.displayTitle} (${model.name})"
@@ -762,7 +726,7 @@ fun JarvisB8MasterShell(
                                 }
                                 overlayRoute = JarvisB8OverlayRoute.NONE
                             },
-                            onSelectTier = { tier: JarvisIntelligenceTier ->
+                            onSelectTier = { tier ->
                                 selectedTier = tier
                                 selectedModelId = tier.defaultModelId
                                 activeModelLabel = "${tier.displayTitle} (${tier.defaultModelName})"
@@ -802,7 +766,7 @@ fun JarvisB8MasterShell(
                     JarvisB8OverlayRoute.AI_PROVIDERS -> {
                         JarvisProvidersScreen(
                             providers = providersState,
-                            onToggleProvider = { id: String, enabled: Boolean ->
+                            onToggleProvider = { id, enabled ->
                                 val idx = providersState.indexOfFirst { it.id == id }
                                 if (idx >= 0) {
                                     val curr = providersState[idx]
@@ -836,11 +800,11 @@ fun JarvisB8MasterShell(
                                     }
                                 }
                             },
-                            onOpenMultiAccounts = { provId: String ->
+                            onOpenMultiAccounts = { provId ->
                                 selectedAccountProvider = provId
                                 overlayRoute = JarvisB8OverlayRoute.MULTI_ACCOUNTS
                             },
-                            onAddProvider = { provId: String, apiKey: String ->
+                            onAddProvider = { provId, apiKey ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = provId,
                                     label = "${provId.uppercase()} Main",
@@ -848,7 +812,7 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onSaveIndependentProviderConfig = { provId: String, accountLabel: String, emailHint: String, apiKey: String, customEndpoint: String, defaultModel: String ->
+                            onSaveIndependentProviderConfig = { provId, accountLabel, emailHint, apiKey, customEndpoint, defaultModel ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = provId,
                                     label = accountLabel,
@@ -858,7 +822,7 @@ fun JarvisB8MasterShell(
                                     defaultModel = defaultModel
                                 )
                             },
-                            onTestProviderConnection = { provId: String, apiKey: String, customEndpoint: String, onResult: (Boolean, String, List<String>) -> Unit ->
+                            onTestProviderConnection = { provId, apiKey, customEndpoint, onResult ->
                                 executeLiveProviderConnectionTest(
                                     providerId = provId,
                                     apiKey = apiKey,
@@ -874,8 +838,8 @@ fun JarvisB8MasterShell(
                         JarvisMultiAccountsScreen(
                             selectedProvider = selectedAccountProvider,
                             accounts = accountsState,
-                            onSelectProviderTab = { provTab: String -> selectedAccountProvider = provTab },
-                            onToggleAccountActive = { accId: String ->
+                            onSelectProviderTab = { selectedAccountProvider = it },
+                            onToggleAccountActive = { accId ->
                                 val idx = accountsState.indexOfFirst { it.accountId == accId }
                                 if (idx >= 0) {
                                     val curr = accountsState[idx]
@@ -891,7 +855,7 @@ fun JarvisB8MasterShell(
                                     )
                                 }
                             },
-                            onAddAccount = { prov: String, label: String, email: String, apiKey: String ->
+                            onAddAccount = { prov, label, email, apiKey ->
                                 saveAccountOrProviderConfigToBackend(
                                     providerId = prov,
                                     label = label,
@@ -899,7 +863,7 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onEditAccount = { accId: String, prov: String, label: String, email: String, apiKey: String ->
+                            onEditAccount = { accId, prov, label, email, apiKey ->
                                 saveAccountOrProviderConfigToBackend(
                                     accountId = accId,
                                     providerId = prov,
@@ -908,10 +872,10 @@ fun JarvisB8MasterShell(
                                     apiKey = apiKey
                                 )
                             },
-                            onDeleteAccount = { accId: String, prov: String ->
+                            onDeleteAccount = { accId, prov ->
                                 deleteAccountFromBackend(accId, prov)
                             },
-                            onSetDefaultAccount = { accId: String, prov: String ->
+                            onSetDefaultAccount = { accId, prov ->
                                 val target = accountsState.find { it.accountId == accId }
                                 if (target != null) {
                                     prefs.edit().putString("selected_account_id", accId).apply()
@@ -925,7 +889,7 @@ fun JarvisB8MasterShell(
                                     )
                                 }
                             },
-                            onTestAccountConnection = { accId: String, prov: String, onResult: (Boolean, String) -> Unit ->
+                            onTestAccountConnection = { accId, prov, onResult ->
                                 executeLiveProviderConnectionTest(
                                     providerId = prov,
                                     accountId = accId
@@ -961,7 +925,7 @@ fun JarvisB8MasterShell(
                                 JarvisB8ChatExperienceScreen(
                                     activeModelLabel = activeModelLabel,
                                     onOpenModelSelector = { overlayRoute = JarvisB8OverlayRoute.MODEL_SELECTOR },
-                                    onOpenCollaborationWithTopic = { topic: String ->
+                                    onOpenCollaborationWithTopic = { topic ->
                                         collaborationTopic = topic
                                         activeTab = JarvisB8NavTab.KOLABORASI
                                     },
@@ -969,7 +933,7 @@ fun JarvisB8MasterShell(
                                     onSendLiveChatPrompt = onSendLiveChatPrompt,
                                     savedConversations = savedConversations,
                                     onOpenHistory = { overlayRoute = JarvisB8OverlayRoute.HISTORY_SEARCH },
-                                    onSelectSavedConversation = { convId: String ->
+                                    onSelectSavedConversation = { convId ->
                                         onOpenSavedConversation(convId)
                                     }
                                 )
@@ -984,7 +948,7 @@ fun JarvisB8MasterShell(
                                     onStartListening = onStartListening,
                                     onStopSpeaking = onStopSpeaking,
                                     onSpeakText = onSpeakText,
-                                    onSwitchToChat = { _: String ->
+                                    onSwitchToChat = {
                                         activeTab = JarvisB8NavTab.CHAT
                                     },
                                     onSendLiveChatPrompt = onSendLiveChatPrompt,
@@ -997,7 +961,7 @@ fun JarvisB8MasterShell(
                                 JarvisB8CollaborationSuiteScreen(
                                     initialTopic = collaborationTopic,
                                     accessTokenProvider = accessTokenProvider,
-                                    onSendSynthesisToChat = { _: String ->
+                                    onSendSynthesisToChat = {
                                         activeTab = JarvisB8NavTab.CHAT
                                     }
                                 )
@@ -1040,597 +1004,3 @@ fun JarvisB8MasterShell(
         )
     }
 }
-
-object JarvisStabilityGuard {
-    private const val TAG = "JarvisStabilityGuard"
-    const val MAX_TTS_AUDIO_BYTES = 8 * 1024 * 1024 // 8 MB ceiling for TTS audio streams
-    const val MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024L // 15 MB ceiling for attachments
-    const val MAX_TEXT_SNIPPET_CHARS = 16_384
-
-    enum class Subsystem {
-        CHAT,
-        VOICE,
-        COLLABORATION,
-        PROVIDER,
-        STORAGE,
-        NAVIGATION,
-        DEVICE_CONTROL,
-        NETWORK
-    }
-
-    data class DiagnosticEvent(
-        val timestampMs: Long = System.currentTimeMillis(),
-        val subsystem: Subsystem,
-        val code: String,
-        val message: String,
-        val recoverable: Boolean = true
-    )
-
-    private val recentDiagnostics = CopyOnWriteArrayList<DiagnosticEvent>()
-    private val activeRequestLocks = ConcurrentHashMap<String, Long>()
-    private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val bearerRegex = Regex("(?i)Bearer\\s+[A-Za-z0-9._\\-~+/]+=*")
-    private val secretKeyRegex = Regex("\\b(?:sk-|AIza|gsk_|hf_|rk_|pk_|sb_publishable_|eyJ)[A-Za-z0-9._\\-]{8,}\\b")
-    private val queryKeyRegex = Regex("(?i)([?&](?:key|api_key|token|access_token|refresh_token)=)[^&\\s]+")
-
-    fun redactSecrets(raw: String?): String {
-        if (raw.isNullOrBlank()) return ""
-        return raw
-            .replace(bearerRegex, "Bearer [REDACTED]")
-            .replace(secretKeyRegex, "[REDACTED_KEY]")
-            .replace(queryKeyRegex, "$1[REDACTED]")
-            .take(600)
-    }
-
-    fun recordDiagnostic(
-        subsystem: Subsystem,
-        code: String,
-        throwable: Throwable? = null,
-        detail: String = "",
-        recoverable: Boolean = true
-    ): DiagnosticEvent {
-        if (throwable is CancellationException) throw throwable
-        val rawMsg = buildString {
-            if (detail.isNotBlank()) append(detail)
-            if (throwable != null) {
-                if (isNotEmpty()) append(" | ")
-                append(throwable::class.java.simpleName)
-                val msg = throwable.message.orEmpty()
-                if (msg.isNotBlank()) append(": ").append(msg)
-            }
-        }
-        val event = DiagnosticEvent(
-            subsystem = subsystem,
-            code = code,
-            message = redactSecrets(rawMsg.ifBlank { "Subsystem diagnostic event" }),
-            recoverable = recoverable
-        )
-        recentDiagnostics.add(0, event)
-        while (recentDiagnostics.size > 60) {
-            runCatching { recentDiagnostics.removeAt(recentDiagnostics.lastIndex) }
-        }
-        runCatching {
-            Log.w(TAG, "[${subsystem.name}:$code] ${event.message}")
-        }
-        return event
-    }
-
-    fun recentEvents(limit: Int = 20): List<DiagnosticEvent> =
-        recentDiagnostics.take(limit.coerceIn(1, 60))
-
-    fun rethrowIfCancellation(error: Throwable) {
-        if (error is CancellationException) throw error
-    }
-
-    fun launchIsolated(
-        scope: CoroutineScope,
-        subsystem: Subsystem,
-        code: String,
-        onError: (String) -> Unit = {},
-        block: suspend CoroutineScope.() -> Unit
-    ): Job {
-        return scope.launch {
-            try {
-                block()
-            } catch (cancel: CancellationException) {
-                throw cancel
-            } catch (error: Throwable) {
-                val event = recordDiagnostic(subsystem, code, error, recoverable = true)
-                runOnMainSafe {
-                    onError(event.message)
-                }
-            }
-        }
-    }
-
-    fun runOnMainSafe(action: () -> Unit) {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            runCatching(action).onFailure { err ->
-                if (err is CancellationException) throw err
-                recordDiagnostic(Subsystem.NAVIGATION, "MAIN_THREAD_ACTION_ERROR", err)
-            }
-        } else {
-            mainHandler.post {
-                runCatching(action).onFailure { err ->
-                    if (err is CancellationException) throw err
-                    recordDiagnostic(Subsystem.NAVIGATION, "MAIN_POST_ACTION_ERROR", err)
-                }
-            }
-        }
-    }
-
-    fun acquireRequestLock(key: String, windowMs: Long = 800L): Boolean {
-        val now = System.currentTimeMillis()
-        val previous = activeRequestLocks.put(key, now)
-        if (previous != null && (now - previous) < windowMs) {
-            return false
-        }
-        return true
-    }
-
-    fun releaseRequestLock(key: String) {
-        activeRequestLocks.remove(key)
-    }
-
-    fun parseJsonObjectSafe(raw: String?): JSONObject? {
-        if (raw.isNullOrBlank()) return null
-        return try {
-            JSONObject(raw.trim())
-        } catch (err: Exception) {
-            recordDiagnostic(Subsystem.PROVIDER, "JSON_OBJECT_PARSE_WARN", err)
-            null
-        }
-    }
-
-    fun parseJsonArraySafe(raw: String?): JSONArray? {
-        if (raw.isNullOrBlank()) return null
-        return try {
-            JSONArray(raw.trim())
-        } catch (err: Exception) {
-            recordDiagnostic(Subsystem.PROVIDER, "JSON_ARRAY_PARSE_WARN", err)
-            null
-        }
-    }
-
-    fun readBoundedBytes(stream: InputStream, maxBytes: Int = MAX_TTS_AUDIO_BYTES): ByteArray {
-        return stream.use { input ->
-            val output = ByteArrayOutputStream()
-            val buffer = ByteArray(8192)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                total += count
-                if (total > maxBytes) {
-                    val limitLabel = if (maxBytes >= 1024 * 1024) "${maxBytes / (1024 * 1024)} MB" else "${(maxBytes / 1024).coerceAtLeast(1)} KB"
-                    throw IllegalStateException("Ukuran stream melebihi batas aman ($limitLabel).")
-                }
-                output.write(buffer, 0, count)
-            }
-            output.toByteArray()
-        }
-    }
-
-    fun validateAttachmentSize(context: Context, uri: Uri, maxBytes: Long = MAX_ATTACHMENT_BYTES): Boolean {
-        return runCatching {
-            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (idx >= 0 && !cursor.isNull(idx)) {
-                        val size = cursor.getLong(idx)
-                        return@runCatching size in 0..maxBytes
-                    }
-                }
-                true
-            } ?: true
-        }.getOrElse { err ->
-            recordDiagnostic(Subsystem.CHAT, "ATTACHMENT_SIZE_CHECK_WARN", err)
-            false
-        }
-    }
-
-    fun safeReleaseMediaPlayer(player: MediaPlayer?) {
-        if (player == null) return
-        runCatching {
-            if (player.isPlaying) {
-                player.stop()
-            }
-        }
-        runCatching { player.reset() }
-        runCatching { player.release() }
-    }
-
-    fun safeDestroySpeechRecognizer(recognizer: SpeechRecognizer?) {
-        if (recognizer == null) return
-        runOnMainSafe {
-            runCatching { recognizer.cancel() }
-            runCatching { recognizer.destroy() }
-        }
-    }
-
-    fun safeStopTts(tts: TextToSpeech?, shutdown: Boolean = false) {
-        if (tts == null) return
-        runCatching { tts.stop() }
-        if (shutdown) {
-            runCatching { tts.shutdown() }
-        }
-    }
-}
-
-@Composable
-fun JarvisMultiAccountsScreen(
-    selectedProvider: String,
-    accounts: List<JarvisAccountItem>,
-    onSelectProviderTab: (String) -> Unit,
-    onToggleAccountActive: (String) -> Unit,
-    onAddAccount: (String, String, String, String) -> Unit,
-    onBack: () -> Unit,
-    onEditAccount: ((accountId: String, provider: String, label: String, email: String, apiKey: String) -> Unit)? = null,
-    onDeleteAccount: ((accountId: String, provider: String) -> Unit)? = null,
-    onSetDefaultAccount: ((accountId: String, provider: String) -> Unit)? = null,
-    onTestAccountConnection: ((accountId: String, provider: String, onResult: (Boolean, String) -> Unit) -> Unit)? = null
-) {
-    var showAddOrEditModal by remember { mutableStateOf(false) }
-    var editingAccountId by remember { mutableStateOf<String?>(null) }
-    var labelDraft by remember { mutableStateOf("") }
-    var emailDraft by remember { mutableStateOf("") }
-    var keyDraft by remember { mutableStateOf("") }
-    var modalError by remember { mutableStateOf("") }
-    var accountFeedbackBanner by remember { mutableStateOf("") }
-
-    val providerTabs = listOf(
-        "openai" to "OpenAI",
-        "gemini" to "Gemini",
-        "anthropic" to "Claude",
-        "deepseek" to "DeepSeek",
-        "groq" to "Groq",
-        "openrouter" to "OpenRouter",
-        "custom" to "Custom"
-    )
-    // Strictly isolate accounts for the selected provider only
-    val visibleAccounts = accounts.filter { it.provider.equals(selectedProvider, ignoreCase = true) }
-    val primaryQuota = visibleAccounts.find { it.isDefault } ?: visibleAccounts.firstOrNull()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Kembali", tint = JarvisColors.Ice)
-            }
-            Text("Multi-Accounts (${selectedProvider.uppercase()})", color = JarvisColors.Ice, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Text(
-            "Kelola banyak akun secara terpisah untuk masing-masing provider (mis. Personal, Work, Research). Akun antar-provider dan Worker Secret diisolasi penuh.",
-            color = JarvisColors.TextMuted,
-            fontSize = 12.sp
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            providerTabs.forEach { (id, label) ->
-                val active = selectedProvider.equals(id, ignoreCase = true)
-                Box(
-                    modifier = Modifier
-                        .clip(JarvisShapes.Chip)
-                        .background(if (active) Color(0xFF0E2B44) else JarvisColors.PanelSolid)
-                        .border(1.dp, if (active) JarvisColors.Cyan else JarvisColors.GlassBorder, JarvisShapes.Chip)
-                        .clickable {
-                            accountFeedbackBanner = ""
-                            onSelectProviderTab(id)
-                        }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(label, color = if (active) JarvisColors.Ice else JarvisColors.TextMuted, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
-        if (accountFeedbackBanner.isNotBlank()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF0B2238))
-                    .border(1.dp, JarvisColors.Cyan, RoundedCornerShape(8.dp))
-                    .padding(10.dp)
-            ) {
-                Text(accountFeedbackBanner, color = JarvisColors.Ice, fontSize = 12.sp)
-            }
-        }
-
-        if (visibleAccounts.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(JarvisShapes.Card)
-                    .background(JarvisColors.PanelSolid)
-                    .border(1.dp, JarvisColors.GlassBorder, JarvisShapes.Card)
-                    .padding(14.dp)
-            ) {
-                Text(
-                    text = "Belum ada akun pribadi untuk provider ${selectedProvider.uppercase()}. Ketuk tombol Tambah Akun di bawah untuk menambahkan.",
-                    color = JarvisColors.TextMuted,
-                    fontSize = 12.sp
-                )
-            }
-        }
-
-        visibleAccounts.forEach { acc ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(JarvisShapes.Card)
-                    .background(JarvisColors.PanelSolid)
-                    .border(
-                        1.dp,
-                        if (acc.isDefault) JarvisColors.Cyan else if (acc.active) JarvisColors.CyanBorder else JarvisColors.GlassBorder,
-                        JarvisShapes.Card
-                    )
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = JarvisColors.Cyan, modifier = Modifier.size(28.dp))
-                        Column {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(acc.label, color = JarvisColors.Ice, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                if (acc.isDefault) {
-                                    Text(
-                                        text = "UTAMA",
-                                        color = JarvisColors.Cyan,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                            Text("${acc.emailHint} · Key: ${acc.maskedKey}", color = JarvisColors.TextMuted, fontSize = 11.5.sp, fontFamily = FontFamily.Monospace)
-                            Text(
-                                text = when {
-                                    acc.connectionVerified || acc.status == "working_live" -> "Status Koneksi: TERHUBUNG (Live Verified)"
-                                    acc.status == "connection_failed" -> "Status Koneksi: GAGAL (${acc.errorMessage.ifBlank { "Periksa API Key" }})"
-                                    else -> "Status Koneksi: BELUM DIUJI (Configured Unverified)"
-                                },
-                                color = when {
-                                    acc.connectionVerified || acc.status == "working_live" -> JarvisColors.Ok
-                                    acc.status == "connection_failed" -> JarvisColors.CoralDanger
-                                    else -> JarvisColors.Warn
-                                },
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.clickable { onToggleAccountActive(acc.accountId) }
-                    ) {
-                        Text(
-                            if (acc.active) "Aktif" else "Nonaktif",
-                            color = if (acc.active) JarvisColors.Ok else JarvisColors.TextMuted,
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Icon(
-                            imageVector = if (acc.active) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                            contentDescription = null,
-                            tint = if (acc.active) JarvisColors.Ok else JarvisColors.TextMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                // Per-account action bar: Test Connection, Set Default, Edit, Delete
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    if (onTestAccountConnection != null) {
-                        TextButton(
-                            onClick = {
-                                accountFeedbackBanner = "Menguji koneksi akun '${acc.label}' (${acc.provider.uppercase()})..."
-                                onTestAccountConnection(acc.accountId, acc.provider) { _, msg ->
-                                    accountFeedbackBanner = msg
-                                }
-                            }
-                        ) {
-                            Text("Test Koneksi", color = JarvisColors.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    if (!acc.isDefault && onSetDefaultAccount != null) {
-                        TextButton(onClick = { onSetDefaultAccount(acc.accountId, acc.provider) }) {
-                            Text("Jadikan Utama", color = JarvisColors.Ice, fontSize = 11.sp)
-                        }
-                    }
-                    TextButton(
-                        onClick = {
-                            editingAccountId = acc.accountId
-                            labelDraft = acc.label
-                            emailDraft = acc.emailHint
-                            keyDraft = ""
-                            modalError = ""
-                            showAddOrEditModal = true
-                        }
-                    ) {
-                        Text("Edit", color = JarvisColors.Ice, fontSize = 11.sp)
-                    }
-                    if (onDeleteAccount != null) {
-                        TextButton(onClick = { onDeleteAccount(acc.accountId, acc.provider) }) {
-                            Text("Hapus", color = JarvisColors.CoralDanger, fontSize = 11.sp)
-                        }
-                    }
-                }
-            }
-        }
-
-        OutlinedButton(
-            onClick = {
-                editingAccountId = null
-                labelDraft = "${selectedProvider.replaceFirstChar { it.uppercase() }} Personal"
-                emailDraft = ""
-                keyDraft = ""
-                modalError = ""
-                showAddOrEditModal = true
-            },
-            modifier = Modifier.fillMaxWidth().height(46.dp),
-            shape = JarvisShapes.Chip,
-            border = androidx.compose.foundation.BorderStroke(1.dp, JarvisColors.Cyan)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = JarvisColors.Cyan)
-            Spacer(Modifier.width(6.dp))
-            Text("Tambah Akun ${selectedProvider.replaceFirstChar { it.uppercase() }}", color = JarvisColors.Ice, fontWeight = FontWeight.SemiBold)
-        }
-
-        if (primaryQuota != null) {
-            val pct = (primaryQuota.quotaUsedTokens.toFloat() / primaryQuota.quotaLimitTokens.coerceAtLeast(1)).coerceIn(0f, 1f)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(JarvisShapes.Card)
-                    .background(JarvisColors.PanelSolid)
-                    .border(1.dp, JarvisColors.GlassBorder, JarvisShapes.Card)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Kuota & Penggunaan (${primaryQuota.label} · ${selectedProvider.uppercase()})",
-                    color = JarvisColors.Ice,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Terpakai", color = JarvisColors.TextMuted, fontSize = 11.5.sp)
-                    Text("${(pct * 100).toInt()}%", color = JarvisColors.Cyan, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                }
-                LinearProgressIndicator(
-                    progress = { pct },
-                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(JarvisShapes.Chip),
-                    color = JarvisColors.Cyan,
-                    trackColor = Color(0xFF06101B)
-                )
-                Text(
-                    "${primaryQuota.quotaUsedTokens} / ${primaryQuota.quotaLimitTokens} token",
-                    color = JarvisColors.TextMuted,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
-        }
-    }
-
-    if (showAddOrEditModal) {
-        val isEditing = editingAccountId != null
-        AlertDialog(
-            onDismissRequest = { showAddOrEditModal = false },
-            containerColor = Color(0xFF0B1826),
-            title = {
-                Text(
-                    text = if (isEditing) "Edit Akun ${selectedProvider.uppercase()}" else "Tambah Akun ${selectedProvider.uppercase()}",
-                    color = JarvisColors.Ice,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = labelDraft,
-                        onValueChange = { labelDraft = it },
-                        singleLine = true,
-                        label = { Text("Nama Akun (mis. ${selectedProvider.uppercase()} Work)") }
-                    )
-                    OutlinedTextField(
-                        value = emailDraft,
-                        onValueChange = { emailDraft = it },
-                        singleLine = true,
-                        label = { Text("Email / Identitas") }
-                    )
-                    OutlinedTextField(
-                        value = keyDraft,
-                        onValueChange = { keyDraft = it },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        label = { Text(if (isEditing) "API Key Baru (Kosongkan jika tetap)" else "API Key Khusus ${selectedProvider.uppercase()}") }
-                    )
-                    if (modalError.isNotBlank()) {
-                        Text(modalError, color = JarvisColors.CoralDanger, fontSize = 11.5.sp)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = labelDraft.isNotBlank() && (isEditing || keyDraft.isNotBlank()),
-                    onClick = {
-                        if (keyDraft.isNotBlank()) {
-                            val err = validateProviderKeyClientSide(selectedProvider, keyDraft)
-                            if (err != null) {
-                                modalError = err
-                                return@TextButton
-                            }
-                        }
-                        if (isEditing && onEditAccount != null) {
-                            onEditAccount(
-                                editingAccountId!!,
-                                selectedProvider,
-                                labelDraft.trim(),
-                                emailDraft.trim().ifBlank { "${selectedProvider}@user.jarvis" },
-                                keyDraft.trim()
-                            )
-                        } else {
-                            onAddAccount(
-                                selectedProvider,
-                                labelDraft.trim(),
-                                emailDraft.trim().ifBlank { "${selectedProvider}@user.jarvis" },
-                                keyDraft.trim()
-                            )
-                        }
-                        keyDraft = ""
-                        modalError = ""
-                        showAddOrEditModal = false
-                    }
-                ) { Text("Simpan", color = JarvisColors.Cyan) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddOrEditModal = false }) { Text("Batal", color = JarvisColors.TextMuted) }
-            }
-        )
-    }
-}
-
-private fun validateProviderKeyClientSide(providerId: String, rawKey: String): String? {
-    val clean = rawKey.trim()
-    if (clean.isEmpty()) return "API Key wajib diisi untuk provider $providerId."
-    if (clean.length < 8) return "API Key terlalu pendek."
-    val p = providerId.lowercase()
-    if (p == "gemini" && (clean.startsWith("sk-") || clean.startsWith("gsk_"))) {
-        return "API Key OpenAI/Claude/Groq ('sk-*' / 'gsk_*') tidak dapat digunakan untuk Google Gemini. Gunakan Google AI Studio Key ('AIza...')."
-    }
-    if (p == "anthropic" && (clean.startsWith("AIza") || clean.startsWith("gsk_") || clean.startsWith("sk-proj-") || clean.startsWith("sk-or-"))) {
-        return "API Key ini milik provider lain dan tidak dapat digunakan untuk Anthropic Claude ('sk-ant-...')."
-    }
-    if (p == "openai" && (clean.startsWith("AIza") || clean.startsWith("sk-ant-") || clean.startsWith("gsk_") || clean.startsWith("sk-or-"))) {
-        return "API Key ini milik provider lain dan tidak dapat digunakan untuk OpenAI."
-    }
-    if (p == "groq" && (clean.startsWith("AIza") || clean.startsWith("sk-ant-") || clean.startsWith("sk-proj-") || clean.startsWith("sk-or-"))) {
-        return "API Key ini milik provider lain dan tidak dapat digunakan untuk Groq ('gsk_...')."
-    }
-    return null
-}
-
-/**
- * Storyboard Screen 31 (4.1): Model Selector (`Models`).
- * Models are strictly bound to their owning provider and reflect real provider connection availability.
- */
